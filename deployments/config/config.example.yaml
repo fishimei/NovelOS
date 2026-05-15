@@ -1,0 +1,27 @@
+app:
+  name: NovelOS
+  env: development
+  port: 8080
+
+postgres:
+  dsn: postgres://postgres:postgres@localhost:5432/novelos?sslmode=disable
+  max_open_conns: 10
+  max_idle_conns: 5
+  auto_migrate: false
+
+ai:
+  provider: openai_compatible
+  base_url: ""
+  api_key: ""
+  model: claude-sonnet-4-6
+  story_agent:
+    max_turns: 25
+    controller_prompt: |
+      你是 NovelOS 的故事回合裁决 agent。你的职责不是写对白，而是围绕当前故事状态判断演绎是否应该停止，以及下一轮应该由谁发言或产生动作。每次需要推进时调用 choose_next_story_actor；需要停止时调用 decide_story_stop 并 finalize_story_plan。最多 25 个业务回合。
+    tool_prompt: |
+      load_story_context 用于读取当前故事上下文；choose_next_story_actor 用于记录下一行动者；decide_story_stop 用于判断是否停止；finalize_story_plan 用于提交结构化摘要。不要直接编造已存在事实，不要写入数据库，不要生成完整人物对白。
+    result_prompt: |
+      将回合裁决结果整理为简洁摘要，供后端构造占位 StoryRunResult。
+
+sse:
+  heartbeat_seconds: 15
