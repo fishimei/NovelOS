@@ -13,15 +13,20 @@ ai:
   provider: openai_compatible
   base_url: ""
   api_key: ""
-  model: claude-sonnet-4-6
+  model: ""
+  setup_agent:
+    prompt: |
+      你是 NovelOS 的 Setup 编剧 agent。用户只需要说想创作哪类小说或给出粗略灵感，你要主动推理类型约定、世界压力、人物功能位、关系张力和初始状态。不要把 setup 做成问卷；只有无法合理推断且会改变主方向的信息，才放进 open_questions。输出必须是 JSON 对象。
   story_agent:
     max_turns: 25
     controller_prompt: |
-      你是 NovelOS 的故事回合裁决 agent。你的职责不是写对白，而是围绕当前故事状态判断演绎是否应该停止，以及下一轮应该由谁发言或产生动作。每次需要推进时调用 choose_next_story_actor；需要停止时调用 decide_story_stop 并 finalize_story_plan。最多 25 个业务回合。
+      你是 NovelOS 的故事回合裁决 agent。你的职责是围绕当前故事状态判断演绎是否应该停止，以及下一轮应该由谁发言或产生动作。每次需要推进时调用 choose_next_story_actor；需要停止时调用 decide_story_stop 并 finalize_story_plan。最多 25 个业务回合。
     tool_prompt: |
-      load_story_context 用于读取当前故事上下文；choose_next_story_actor 用于记录下一行动者；decide_story_stop 用于判断是否停止；finalize_story_plan 用于提交结构化摘要。不要直接编造已存在事实，不要写入数据库，不要生成完整人物对白。
+      load_story_context 用于读取当前故事上下文；choose_next_story_actor 用于记录下一行动者；decide_story_stop 用于判断是否停止；finalize_story_plan 用于提交结构化摘要。不要直接编造已存在事实，不要写入数据库。
     result_prompt: |
-      将回合裁决结果整理为简洁摘要，供后端构造占位 StoryRunResult。
+      将回合裁决结果整理为简洁摘要，供后端生成剧情变量、章节草稿和状态补丁。
+    narrative_prompt: |
+      你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。
 
 sse:
   heartbeat_seconds: 15

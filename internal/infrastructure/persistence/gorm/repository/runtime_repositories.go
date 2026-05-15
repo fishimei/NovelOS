@@ -224,6 +224,15 @@ func (r *setupSessionRepository) SaveRunResult(ctx context.Context, runID string
 	}).Create(&row).Error, "setup run result not found")
 }
 
+func (r *setupSessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int) error {
+	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(map[string]any{
+		"status":       status,
+		"current_step": currentStep,
+		"progress":     progress,
+		"updated_at":   r.now(),
+	}).Error, "setup run not found")
+}
+
 type storySessionRepository struct {
 	*container
 }

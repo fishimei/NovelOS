@@ -50,7 +50,16 @@ func New(cfg config.Config) *App {
 	eventStream := service.NewInMemoryEventStream()
 
 	setupStarter := service.NewSetupSessionStarter(repos.SetupSessions)
-	setupAdvancer := service.NewSetupSessionAdvancer(repos.SetupSessions)
+	setupGenerator, err := einoai.NewSetupRunGenerator(context.Background(), einoai.SetupRunGeneratorDeps{
+		Config: cfg.AI,
+		Events: eventStream,
+		Clock:  clock,
+		IDs:    idGenerator,
+	})
+	if err != nil {
+		log.Fatalf("bootstrap setup generator: %v", err)
+	}
+	setupAdvancer := service.NewSetupSessionAdvancer(repos.SetupSessions, setupGenerator, eventStream)
 	setupApplier := service.NewSetupRunApplier(
 		repos.SetupSessions,
 		repos.AuthorBibles,

@@ -41,7 +41,12 @@ type AIConfig struct {
 	BaseURL    string           `mapstructure:"base_url"`
 	APIKey     string           `mapstructure:"api_key"`
 	Model      string           `mapstructure:"model"`
+	SetupAgent SetupAgentConfig `mapstructure:"setup_agent"`
 	StoryAgent StoryAgentConfig `mapstructure:"story_agent"`
+}
+
+type SetupAgentConfig struct {
+	Prompt string `mapstructure:"prompt"`
 }
 
 type StoryAgentConfig struct {
@@ -49,6 +54,7 @@ type StoryAgentConfig struct {
 	ControllerPrompt string `mapstructure:"controller_prompt"`
 	ToolPrompt       string `mapstructure:"tool_prompt"`
 	ResultPrompt     string `mapstructure:"result_prompt"`
+	NarrativePrompt  string `mapstructure:"narrative_prompt"`
 }
 
 // SSEConfig 包含服务器发送事件（Server-Sent Events）的配置。
@@ -56,11 +62,15 @@ type SSEConfig struct {
 	HeartbeatSeconds int `mapstructure:"heartbeat_seconds"`
 }
 
-const defaultStoryAgentControllerPrompt = `你是 NovelOS 的故事回合裁决 agent。你的职责不是写对白，而是围绕当前故事状态判断演绎是否应该停止，以及下一轮应该由谁发言或产生动作。每次需要推进时调用 choose_next_story_actor；需要停止时调用 decide_story_stop 并 finalize_story_plan。最多 25 个业务回合。`
+const defaultSetupAgentPrompt = `你是 NovelOS 的 Setup 编剧 agent。用户只需要说想创作哪类小说或给出粗略灵感，你要主动推理类型约定、世界压力、人物功能位、关系张力和初始状态。不要把 setup 做成问卷；只有无法合理推断且会改变主方向的信息，才放进 open_questions。输出必须是 JSON 对象。`
 
-const defaultStoryAgentToolPrompt = `load_story_context 用于读取当前故事上下文；choose_next_story_actor 用于记录下一行动者；decide_story_stop 用于判断是否停止；finalize_story_plan 用于提交结构化摘要。不要直接编造已存在事实，不要写入数据库，不要生成完整人物对白。`
+const defaultStoryAgentControllerPrompt = `你是 NovelOS 的故事回合裁决 agent。你的职责是围绕当前故事状态判断演绎是否应该停止，以及下一轮应该由谁发言或产生动作。每次需要推进时调用 choose_next_story_actor；需要停止时调用 decide_story_stop 并 finalize_story_plan。最多 25 个业务回合。`
 
-const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘要，供后端构造占位 StoryRunResult。`
+const defaultStoryAgentToolPrompt = `load_story_context 用于读取当前故事上下文；choose_next_story_actor 用于记录下一行动者；decide_story_stop 用于判断是否停止；finalize_story_plan 用于提交结构化摘要。不要直接编造已存在事实，不要写入数据库。`
+
+const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘要，供后端生成剧情变量、章节草稿和状态补丁。`
+
+const defaultStoryAgentNarrativePrompt = `你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。`
 
 // Load 从多个来源加载配置并返回 Config 结构体。
 // 配置优先级（从高到低）：命令行参数 > 环境变量 > 配置文件 > 默认值。
@@ -92,10 +102,12 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("ai.base_url", "")
 	v.SetDefault("ai.api_key", "")
 	v.SetDefault("ai.model", "claude-sonnet-4-6")
+	v.SetDefault("ai.setup_agent.prompt", defaultSetupAgentPrompt)
 	v.SetDefault("ai.story_agent.max_turns", 25)
 	v.SetDefault("ai.story_agent.controller_prompt", defaultStoryAgentControllerPrompt)
 	v.SetDefault("ai.story_agent.tool_prompt", defaultStoryAgentToolPrompt)
 	v.SetDefault("ai.story_agent.result_prompt", defaultStoryAgentResultPrompt)
+	v.SetDefault("ai.story_agent.narrative_prompt", defaultStoryAgentNarrativePrompt)
 	v.SetDefault("sse.heartbeat_seconds", 15)
 
 	if configFile != "" {

@@ -37,7 +37,7 @@ func (fakeIDGenerator) New(prefix string) string {
 	return prefix + "_id"
 }
 
-func TestBuildResultUsesTurnPlan(t *testing.T) {
+func TestBuildResultUsesNarrativeOutput(t *testing.T) {
 	generator := &StoryRunGenerator{
 		cfg:   config.AIConfig{},
 		deps:  storyGeneratorDeps{chapters: fakeChapterRepository{}},
@@ -57,6 +57,16 @@ func TestBuildResultUsesTurnPlan(t *testing.T) {
 		Turns: []StoryTurnPlan{
 			{TurnIndex: 1, ActorID: "character_1", ActorName: "林澈", ActionType: "speak", Intent: "试探对方"},
 		},
+	}, StoryNarrativeResult{
+		Summary: "密信引发怀疑",
+		Content: "林澈压低声音试探对方。",
+		PlotVariable: StoryNarrativePlotVariable{
+			RelatedCharacterIDs: []string{"character_1"},
+		},
+		MemoryPatch: StoryNarrativeMemoryPatch{
+			CharacterMemoryUpdates: []StoryNarrativeCharacterMemoryUpdate{{CharacterID: "character_1", Content: "林澈试探密信下落", Importance: 4}},
+		},
+		Review: StoryNarrativeReview{Pass: true},
 	})
 	if err != nil {
 		t.Fatalf("buildResult returned error: %v", err)
@@ -67,13 +77,36 @@ func TestBuildResultUsesTurnPlan(t *testing.T) {
 	if result.Draft.ChapterNumber != 3 {
 		t.Fatalf("expected chapter number 3, got %d", result.Draft.ChapterNumber)
 	}
-	if !strings.Contains(result.Draft.Content, "林澈") {
-		t.Fatalf("expected draft content to include actor name, got %q", result.Draft.Content)
+	if !strings.Contains(result.Draft.Content, "林澈压低声音") {
+		t.Fatalf("expected draft content to include narrative content, got %q", result.Draft.Content)
 	}
 	if result.MemoryPatch.ID == "" {
 		t.Fatal("expected memory patch id")
 	}
+	if len(result.MemoryPatch.CharacterMemoryUpdates) != 1 {
+		t.Fatalf("unexpected memory updates: %#v", result.MemoryPatch.CharacterMemoryUpdates)
+	}
 	if len(result.PlotVariable.RelatedCharacterIDs) != 1 || result.PlotVariable.RelatedCharacterIDs[0] != "character_1" {
 		t.Fatalf("unexpected related character ids: %#v", result.PlotVariable.RelatedCharacterIDs)
+	}
+}
+
+func TestPerspectiveForTurnOnlyIncludesActorRelationshipViews(t *testing.T) {
+	generator := &StoryRunGenerator{}
+	perspective := generator.perspectiveForTurn(StoryContextSnapshot{
+		Characters: []model.Character{{ID: "character_1", Name: "林澈"}, {ID: "character_2", Name: "沈砚"}},
+		Relationships: []model.Relationship{{Views: []model.RelationshipView{
+			{SourceCharacterID: "character_1", TargetCharacterID: "character_2", PrivateAttitude: "警惕"},
+			{SourceCharacterID: "character_2", TargetCharacterID: "character_1", PrivateAttitude: "嫉妒"},
+		}}},
+	}, StoryTurnPlan{ActorID: "character_1"})
+	if perspective == nil {
+		t.Fatal("expected perspective")
+	}
+	if len(perspective.RelationshipViews) != 1 {
+		t.Fatalf("expected one relationship view, got %#v", perspective.RelationshipViews)
+	}
+	if perspective.RelationshipViews[0].PrivateAttitude != "警惕" {
+		t.Fatalf("unexpected private attitude %q", perspective.RelationshipViews[0].PrivateAttitude)
 	}
 }

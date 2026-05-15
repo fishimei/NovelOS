@@ -157,6 +157,24 @@ func (c *StoryRunCommitter) upsertWorldState(ctx context.Context, projectID stri
 func (c *StoryRunCommitter) applyRelationshipUpdates(ctx context.Context, projectID string, updates []model.RelationshipUpdate) error {
 	for _, update := range updates {
 		if update.Pair == nil {
+			if update.PairID == "" || update.Summary == "" {
+				continue
+			}
+			current, err := c.relationships.GetByID(ctx, update.PairID)
+			if err != nil {
+				return err
+			}
+			current.Pair.Summary = update.Summary
+			current.Pair.UpdatedAt = currentTime(c.clock)
+			if _, err := c.relationships.UpsertPair(ctx, current.Pair); err != nil {
+				return err
+			}
+			if update.TensionDelta != "" {
+				event := model.RelationshipEvent{EventType: "tension_delta", Summary: update.TensionDelta}
+				if err := c.addRelationshipEvent(ctx, projectID, current.Pair.ID, event); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		pair := *update.Pair

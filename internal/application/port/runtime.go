@@ -27,6 +27,15 @@ type GenerationEventStream interface {
 	Subscribe(ctx context.Context, runID string) (<-chan GenerationEvent, func(), error)
 }
 
+type SetupRunGenerator interface {
+	Generate(ctx context.Context, input SetupRunGenerationInput) (model.SetupRunResult, error)
+}
+
+type SetupRunGenerationInput struct {
+	Run     model.SetupRun
+	Session model.SetupSession
+}
+
 type StoryRunGenerator interface {
 	Generate(ctx context.Context, input StoryRunGenerationInput) (model.StoryRunResult, error)
 }
