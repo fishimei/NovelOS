@@ -1,6 +1,11 @@
-import { BookMarked, FileText, GitBranch, PenLine, Users } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { BookMarked, FileText, GitBranch, PenLine, Save, Users, X } from 'lucide-react';
+import { FormEvent, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 
+import { updateProject } from '../../api/projects';
+import { ErrorState } from '../../components/feedback/ErrorState';
+import { useRecentProjects } from '../../hooks/useRecentProjects';
 import type { Project } from '../../types/api';
 
 const actions = [
@@ -14,6 +19,44 @@ const actions = [
 export function ProjectOverviewPage() {
   const { projectId } = useParams();
   const { project } = useOutletContext<{ project?: Project }>();
+  const queryClient = useQueryClient();
+  const { rememberProject } = useRecentProjects();
+  const [isEditing, setIsEditing] = useState(false);
+  const [title, setTitle] = useState('');
+  const [genre, setGenre] = useState('');
+  const [description, setDescription] = useState('');
+
+  const updateProjectMutation = useMutation({
+    mutationFn: () =>
+      updateProject(projectId ?? '', {
+        title: title.trim(),
+        genre: genre.trim() || undefined,
+        description: description.trim() || undefined,
+      }),
+    onSuccess: (updatedProject) => {
+      queryClient.setQueryData(['project', projectId], updatedProject);
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      rememberProject(updatedProject);
+      setIsEditing(false);
+    },
+  });
+
+  const startEditing = () => {
+    setTitle(project?.title ?? '');
+    setGenre(project?.genre ?? '');
+    setDescription(project?.description ?? '');
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    updateProjectMutation.reset();
+  };
+
+  const saveProject = (event: FormEvent) => {
+    event.preventDefault();
+    updateProjectMutation.mutate();
+  };
 
   return (
     <div className="page">
@@ -22,7 +65,39 @@ export function ProjectOverviewPage() {
           <h1>{project?.title ?? '项目总览'}</h1>
           <p>{project?.description || '项目详情加载后会显示在这里。'}</p>
         </div>
+        <button className="button button--secondary" disabled={!project || isEditing} onClick={startEditing} type="button">
+          <PenLine size={17} />
+          编辑项目
+        </button>
       </div>
+
+      {isEditing ? (
+        <form className="project-edit-form" onSubmit={saveProject}>
+          {updateProjectMutation.isError ? <ErrorState message={(updateProjectMutation.error as Error).message} /> : null}
+          <label className="field">
+            <span>标题</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+          </label>
+          <label className="field">
+            <span>类型</span>
+            <input value={genre} onChange={(event) => setGenre(event.target.value)} placeholder="悬疑 / 都市 / 情感" />
+          </label>
+          <label className="field field--stack">
+            <span>简介</span>
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
+          </label>
+          <div className="form-actions">
+            <button className="button" disabled={!title.trim() || updateProjectMutation.isPending} type="submit">
+              <Save size={17} />
+              保存
+            </button>
+            <button className="button button--secondary" disabled={updateProjectMutation.isPending} onClick={cancelEditing} type="button">
+              <X size={17} />
+              取消
+            </button>
+          </div>
+        </form>
+      ) : null}
 
       <div className="stats-row">
         <div className="stat">
