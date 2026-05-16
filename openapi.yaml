@@ -1,0 +1,942 @@
+openapi: 3.0.3
+
+info:
+  title: NovelOS API
+  version: 0.3.0
+  description: |
+    NovelOS 是一个“助手建模 + 主控 AI 推进剧情”的小说创作后端。
+
+    它分成两层：
+    - 设定采集层：用户先说一句模糊想法，助手拆解成作者圣经、角色、关系、世界变量，并在必要时追问。
+    - 故事推进层：在完成设定建模后，作者只需提供一句推进语，系统生成具备选择压力的剧情变量并推进故事。
+
+    当前规范描述后端资源边界与流程语义。
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+tags:
+  - name: Projects
+  - name: AuthorBible
+  - name: Characters
+  - name: Relationships
+  - name: SetupSessions
+  - name: SetupRuns
+  - name: StorySessions
+  - name: StoryRuns
+  - name: Chapters
+  - name: Memories
+
+paths:
+  /projects:
+    post:
+      tags: [Projects]
+      summary: Create project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}:
+    get:
+      tags: [Projects]
+      summary: Get project detail
+      operationId: getProject
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    put:
+      tags: [Projects]
+      summary: Update project
+      operationId: updateProject
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}/author-bible:
+    get:
+      tags: [AuthorBible]
+      summary: Get author bible
+      operationId: getAuthorBible
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    put:
+      tags: [AuthorBible]
+      summary: Update author bible
+      operationId: updateAuthorBible
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAuthorBibleRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}/characters:
+    post:
+      tags: [Characters]
+      summary: Create character
+      operationId: createCharacter
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCharacterRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    get:
+      tags: [Characters]
+      summary: List characters
+      operationId: listCharacters
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /characters/{character_id}:
+    get:
+      tags: [Characters]
+      summary: Get character
+      operationId: getCharacter
+      parameters:
+        - $ref: "#/components/parameters/CharacterId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    put:
+      tags: [Characters]
+      summary: Update character
+      operationId: updateCharacter
+      parameters:
+        - $ref: "#/components/parameters/CharacterId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCharacterRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}/relationships:
+    post:
+      tags: [Relationships]
+      summary: Create relationship
+      operationId: createRelationship
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRelationshipRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    get:
+      tags: [Relationships]
+      summary: List relationships
+      operationId: listRelationships
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /relationships/{relationship_id}:
+    get:
+      tags: [Relationships]
+      summary: Get relationship
+      operationId: getRelationship
+      parameters:
+        - $ref: "#/components/parameters/RelationshipId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    put:
+      tags: [Relationships]
+      summary: Update relationship
+      operationId: updateRelationship
+      parameters:
+        - $ref: "#/components/parameters/RelationshipId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRelationshipRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}/setup-sessions:
+    post:
+      tags: [SetupSessions]
+      summary: Create setup session
+      description: 从一句模糊想法开始，启动助手建模会话。
+      operationId: createSetupSession
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSetupSessionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    get:
+      tags: [SetupSessions]
+      summary: List setup sessions
+      operationId: listSetupSessions
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /setup-sessions/{session_id}:
+    get:
+      tags: [SetupSessions]
+      summary: Get setup session
+      operationId: getSetupSession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /setup-sessions/{session_id}/advance:
+    post:
+      tags: [SetupSessions]
+      summary: Advance setup session
+      description: |
+        用户追加一句说明，助手继续拆解、补全、追问，并输出可审校结构稿。
+      operationId: advanceSetupSession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceSetupSessionRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /setup-runs/{run_id}:
+    get:
+      tags: [SetupRuns]
+      summary: Get setup run
+      operationId: getSetupRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /setup-runs/{run_id}/result:
+    get:
+      tags: [SetupRuns]
+      summary: Get setup run result
+      description: 返回助手拆解出来的作者圣经、角色、关系、世界变量草稿，以及待追问问题。
+      operationId: getSetupRunResult
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /setup-sessions/{session_id}/apply:
+    post:
+      tags: [SetupSessions]
+      summary: Apply setup run
+      description: 将用户审校通过的设定草稿写入项目正式状态。
+      operationId: applySetupRun
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplySetupRunRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}/story-sessions:
+    post:
+      tags: [StorySessions]
+      summary: Create story session
+      operationId: createStorySession
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStorySessionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    get:
+      tags: [StorySessions]
+      summary: List story sessions
+      operationId: listStorySessions
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /story-sessions/{session_id}:
+    get:
+      tags: [StorySessions]
+      summary: Get story session
+      operationId: getStorySession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /story-sessions/{session_id}/advance:
+    post:
+      tags: [StorySessions]
+      summary: Advance story session
+      description: |
+        用户输入一句推进语，系统会自动：
+        - 读取正式设定状态
+        - 识别当前冲突轴
+        - 生成具备选择压力的剧情变量
+        - 驱动角色互动并产出正文草稿
+      operationId: advanceStorySession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceStorySessionRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /story-runs/{run_id}:
+    get:
+      tags: [StoryRuns]
+      summary: Get story run
+      operationId: getStoryRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /story-runs/{run_id}/result:
+    get:
+      tags: [StoryRuns]
+      summary: Get story run result
+      operationId: getStoryRunResult
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /story-runs/{run_id}/events:
+    get:
+      tags: [StoryRuns]
+      summary: Subscribe to story run SSE
+      description: |
+        返回 text/event-stream。事件名可能包括：
+        - generation_step
+        - plot_variable
+        - character_turn
+        - draft_delta
+        - review_required
+      operationId: subscribeStoryRunEvents
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /story-runs/{run_id}/commit:
+    post:
+      tags: [StoryRuns]
+      summary: Commit story run into canon
+      operationId: commitStoryRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommitStoryRunRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}/chapters:
+    get:
+      tags: [Chapters]
+      summary: List committed chapters
+      operationId: listChapters
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /chapters/{chapter_id}:
+    get:
+      tags: [Chapters]
+      summary: Get committed chapter
+      operationId: getChapter
+      parameters:
+        - $ref: "#/components/parameters/ChapterId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /characters/{character_id}/memories:
+    get:
+      tags: [Memories]
+      summary: List character memories
+      operationId: listCharacterMemories
+      parameters:
+        - $ref: "#/components/parameters/CharacterId"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    post:
+      tags: [Memories]
+      summary: Create character memory
+      operationId: createCharacterMemory
+      parameters:
+        - $ref: "#/components/parameters/CharacterId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemoryRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+components:
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    CharacterId:
+      name: character_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    RelationshipId:
+      name: relationship_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    ChapterId:
+      name: chapter_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+  schemas:
+    StandardResponse:
+      type: object
+      properties:
+        data: {}
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {}
+        meta:
+          $ref: "#/components/schemas/PaginatedMeta"
+
+    Meta:
+      type: object
+      properties:
+        request_id:
+          type: string
+
+    PaginatedMeta:
+      type: object
+      properties:
+        request_id:
+          type: string
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+
+    CreateProjectRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        genre:
+          type: string
+        description:
+          type: string
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        genre:
+          type: string
+        description:
+          type: string
+
+    WorldStateEntryRequest:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        value: {}
+        note:
+          type: string
+
+    UpdateAuthorBibleRequest:
+      type: object
+      properties:
+        theme:
+          type: string
+        style_guide:
+          type: string
+        world_rules:
+          type: array
+          items:
+            type: string
+        aesthetic_principles:
+          type: array
+          items:
+            type: string
+        hard_constraints:
+          type: array
+          items:
+            type: string
+        soft_preferences:
+          type: array
+          items:
+            type: string
+        forbidden_moves:
+          type: array
+          items:
+            type: string
+        initial_world_state:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorldStateEntryRequest"
+
+    CreateCharacterRequest:
+      type: object
+      required: [name, role]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        profile:
+          type: string
+        personality:
+          type: string
+        voice_style:
+          type: string
+        goals:
+          type: array
+          items:
+            type: string
+        fears:
+          type: array
+          items:
+            type: string
+        secrets:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: array
+          items:
+            type: string
+
+    UpdateCharacterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        profile:
+          type: string
+        personality:
+          type: string
+        voice_style:
+          type: string
+        goals:
+          type: array
+          items:
+            type: string
+        fears:
+          type: array
+          items:
+            type: string
+        secrets:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: array
+          items:
+            type: string
+
+    CreateRelationshipRequest:
+      type: object
+      required: [character_a_id, character_b_id, summary]
+      properties:
+        character_a_id:
+          type: string
+        character_b_id:
+          type: string
+        summary:
+          type: string
+        anchors:
+          type: array
+          items:
+            type: string
+        tension_points:
+          type: array
+          items:
+            type: string
+        volatility:
+          type: integer
+
+    UpdateRelationshipRequest:
+      type: object
+      properties:
+        summary:
+          type: string
+        anchors:
+          type: array
+          items:
+            type: string
+        tension_points:
+          type: array
+          items:
+            type: string
+        volatility:
+          type: integer
+
+    CreateSetupSessionRequest:
+      type: object
+      required: [seed_idea]
+      properties:
+        seed_idea:
+          type: string
+
+    AdvanceSetupSessionRequest:
+      type: object
+      required: [user_message]
+      properties:
+        user_message:
+          type: string
+
+    ApplySetupRunRequest:
+      type: object
+      required: [run_id]
+      properties:
+        run_id:
+          type: string
+        accept_author_bible:
+          type: boolean
+        accept_characters:
+          type: boolean
+        accept_relationships:
+          type: boolean
+        accept_world_state:
+          type: boolean
+        author_note:
+          type: string
+
+    CreateStorySessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        opening_situation:
+          type: string
+        author_intent:
+          type: string
+
+    AdvanceStorySessionRequest:
+      type: object
+      required: [author_message]
+      properties:
+        author_message:
+          type: string
+
+    CommitStoryRunRequest:
+      type: object
+      required: [draft_id, memory_patch_id]
+      properties:
+        draft_id:
+          type: string
+        memory_patch_id:
+          type: string
+        author_note:
+          type: string
+
+    CreateMemoryRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        importance:
+          type: integer
+        note:
+          type: string

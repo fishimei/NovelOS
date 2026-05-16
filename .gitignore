@@ -5,6 +5,16 @@ node_modules/
 dist/
 build/
 coverage/
+tmp/
+bin/
+vendor/
+
+# Go build and test artifacts
+*.exe
+*.test
+*.out
+*.coverprofile
+coverage.out
 
 # Vite / TypeScript cache
 .vite/
@@ -14,6 +24,7 @@ coverage/
 .env
 .env.*
 !.env.example
+deployments/config/config.local.yaml
 
 # Logs
 *.log
@@ -28,4 +39,11 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Local tool metadata
+.claude/
+*.skill
+
+# Project docs are generated/temporary by convention in this repo
 docs/
+*.md
+!CLAUDE.md
