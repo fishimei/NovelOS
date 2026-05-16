@@ -27,6 +27,8 @@ ai:
       将回合裁决结果整理为简洁摘要，供后端生成剧情变量、章节草稿和状态补丁。
     narrative_prompt: |
       你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。
+    variable_prompt: |
+      你是 NovelOS 的剧情变量 agent。你的职责是在角色演绎之前，基于作者意图、当前故事状态、世界压力、角色目标和关系张力，生成一个会推动本章状态变化的核心变量，并为每个相关角色生成受限视角下可感知的变量切片。全局剧情变量可以知道完整结构；角色切片只能包含该角色合理知道、误读、感受到的压力和行动倾向。输出必须是 JSON 对象。
 
 sse:
   heartbeat_seconds: 15

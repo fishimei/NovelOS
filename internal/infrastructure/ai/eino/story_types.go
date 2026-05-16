@@ -33,6 +33,19 @@ type StoryPlanResult struct {
 	Turns      []StoryTurnPlan `json:"turns"`
 }
 
+type StoryVariablePlan struct {
+	PlotVariable   StoryNarrativePlotVariable `json:"plot_variable"`
+	CharacterViews []CharacterVariableView    `json:"character_views"`
+}
+
+type CharacterVariableView struct {
+	CharacterID       string   `json:"character_id"`
+	KnownFacts        []string `json:"known_facts"`
+	Misreadings       []string `json:"misreadings"`
+	EmotionalPressure string   `json:"emotional_pressure"`
+	ActionBias        string   `json:"action_bias"`
+}
+
 type LoadStoryContextInput struct {
 	ProjectID string `json:"project_id" jsonschema:"required"`
 	SessionID string `json:"session_id" jsonschema:"required"`
@@ -120,6 +133,7 @@ type CharacterPerspective struct {
 	VisibleWorld      []model.WorldStateEntry  `json:"visible_world"`
 	RecentMemories    []model.Memory           `json:"recent_memories"`
 	RelationshipViews []model.RelationshipView `json:"relationship_views"`
+	VariableView      *CharacterVariableView   `json:"variable_view,omitempty"`
 }
 
 type StoryNarrativeInput struct {

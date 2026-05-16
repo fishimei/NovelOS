@@ -34,6 +34,7 @@ type storyRunState struct {
 	turns      []StoryTurnPlan
 	stopReason string
 	summary    string
+	variable   StoryVariablePlan
 }
 
 func newStoryTools(deps storyGeneratorDeps, state *storyRunState) ([]tool.BaseTool, error) {

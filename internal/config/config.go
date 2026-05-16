@@ -55,6 +55,7 @@ type StoryAgentConfig struct {
 	ToolPrompt       string `mapstructure:"tool_prompt"`
 	ResultPrompt     string `mapstructure:"result_prompt"`
 	NarrativePrompt  string `mapstructure:"narrative_prompt"`
+	VariablePrompt   string `mapstructure:"variable_prompt"`
 }
 
 // SSEConfig 包含服务器发送事件（Server-Sent Events）的配置。
@@ -71,6 +72,8 @@ const defaultStoryAgentToolPrompt = `load_story_context 用于读取当前故事
 const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘要，供后端生成剧情变量、章节草稿和状态补丁。`
 
 const defaultStoryAgentNarrativePrompt = `你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。`
+
+const defaultStoryAgentVariablePrompt = `你是 NovelOS 的剧情变量 agent。你的职责是在角色演绎之前，基于作者意图、当前故事状态、世界压力、角色目标和关系张力，生成一个会推动本章状态变化的核心变量，并为每个相关角色生成受限视角下可感知的变量切片。全局剧情变量可以知道完整结构；角色切片只能包含该角色合理知道、误读、感受到的压力和行动倾向。输出必须是 JSON 对象。`
 
 // Load 从多个来源加载配置并返回 Config 结构体。
 // 配置优先级（从高到低）：命令行参数 > 环境变量 > 配置文件 > 默认值。
@@ -108,6 +111,7 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("ai.story_agent.tool_prompt", defaultStoryAgentToolPrompt)
 	v.SetDefault("ai.story_agent.result_prompt", defaultStoryAgentResultPrompt)
 	v.SetDefault("ai.story_agent.narrative_prompt", defaultStoryAgentNarrativePrompt)
+	v.SetDefault("ai.story_agent.variable_prompt", defaultStoryAgentVariablePrompt)
 	v.SetDefault("sse.heartbeat_seconds", 15)
 
 	if configFile != "" {
