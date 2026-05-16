@@ -14,5 +14,8 @@ deployments/config/config.local.yaml
 *.out
 *.md
 !CLAUDE.md
+.claude/
+*.skill
+*.html
 *.coverprofile
 .DS_Store
