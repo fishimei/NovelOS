@@ -1,3 +1,4 @@
+// Relationships API 客户端：维护两个项目角色之间的关系摘要和张力信息。
 import { getData, getPage, pageParams, postData, putData } from './http';
 import type {
   CreateRelationshipRequest,

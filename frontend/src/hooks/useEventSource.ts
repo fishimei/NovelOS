@@ -1,3 +1,4 @@
+// 通用 SSE hook。这里负责 EventSource 生命周期，并把具名服务端事件归一化成 { event, data }。
 import { useEffect, useRef, useState } from 'react';
 
 export type SseConnectionStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error';
@@ -45,6 +46,7 @@ export function useEventSource(options: {
       }
     };
 
+    // 保持 listener 引用稳定，确保 cleanup 能移除当前 EventSource 实例上注册的同一批回调。
     const handleEvent =
       (eventName: string): EventListener =>
       (event) => {

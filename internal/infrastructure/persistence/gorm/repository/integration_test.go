@@ -331,3 +331,66 @@ func TestStoryCommitRunPersistsChapterMemoryRelationshipAndWorldState(t *testing
 		t.Fatalf("unexpected world state: %+v", world)
 	}
 }
+
+func TestStoryCommitRunRejectsMismatchedDraftOrPatchID(t *testing.T) {
+	_, repos, txm, ids, clock := testRepos(t)
+	project := createProject(t, repos)
+	committer := service.NewStoryRunCommitter(
+		repos.StorySessions,
+		repos.Chapters,
+		repos.Memories,
+		repos.WorldState,
+		repos.Relationships,
+		repos.Audit,
+		txm,
+		clock,
+		ids,
+	)
+
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "Mismatch"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	if err != nil {
+		t.Fatalf("create story run: %v", err)
+	}
+	if err := repos.StorySessions.SaveRunResult(context.Background(), run.RunID, model.StoryRunResult{
+		RunID:     run.RunID,
+		SessionID: session.ID,
+		Status:    "review_required",
+		Draft: model.Draft{
+			ID:            "draft_1",
+			Title:         "Mismatch",
+			ChapterNumber: 1,
+			Content:       "body",
+			Summary:       "summary",
+			WordCount:     10,
+		},
+		MemoryPatch: model.MemoryPatch{ID: "patch_1"},
+	}); err != nil {
+		t.Fatalf("save story result: %v", err)
+	}
+
+	// Commit validation must match the reviewed candidate result before any canon writes happen.
+	if _, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
+		DraftID:       "draft_bad",
+		MemoryPatchID: "patch_1",
+	}); err == nil {
+		t.Fatalf("expected draft id mismatch")
+	}
+	if _, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
+		DraftID:       "draft_1",
+		MemoryPatchID: "patch_bad",
+	}); err == nil {
+		t.Fatalf("expected memory patch id mismatch")
+	}
+
+	chapters, err := repos.Chapters.ListByProjectID(context.Background(), project.ID, model.PageInput{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list chapters: %v", err)
+	}
+	if chapters.Total != 0 {
+		t.Fatalf("expected no chapters after rejected commits, got %d", chapters.Total)
+	}
+}

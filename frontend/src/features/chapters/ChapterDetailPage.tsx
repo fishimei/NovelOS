@@ -1,3 +1,4 @@
+// 章节阅读页。展示后端在 story run commit 后返回的正史章节内容。
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 

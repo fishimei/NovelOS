@@ -1,3 +1,4 @@
+// Chapters API 客户端。前端当前只读取章节；章节会在 story run 提交为正史后出现。
 import { getData, getPage, pageParams } from './http';
 import type { Chapter } from '../types/api';
 

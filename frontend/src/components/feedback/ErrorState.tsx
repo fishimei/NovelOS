@@ -1,3 +1,4 @@
+// API 查询和写操作失败时使用的通用错误提示。
 import { AlertTriangle } from 'lucide-react';
 
 type ErrorStateProps = {

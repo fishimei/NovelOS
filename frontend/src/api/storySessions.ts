@@ -1,3 +1,4 @@
+// StorySession API 客户端。故事会话接收作者推进语，并创建用于生成候选正文的 story run。
 import { getData, getPage, pageParams, postData } from './http';
 import type {
   AdvanceStorySessionRequest,

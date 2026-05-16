@@ -1,3 +1,4 @@
+// 角色记忆 API 客户端。记忆挂在具体角色下，后续会作为故事生成上下文的一部分。
 import { getData, postData } from './http';
 import type { CreateMemoryRequest, Memory } from '../types/api';
 

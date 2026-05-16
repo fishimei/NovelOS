@@ -1,3 +1,4 @@
+// 首页。负责创建新项目、按已知项目 ID 打开项目，并展示本地记录的最近项目。
 import { useMutation } from '@tanstack/react-query';
 import { ArrowRight, Plus } from 'lucide-react';
 import { FormEvent, useState } from 'react';
@@ -18,6 +19,7 @@ export function HomePage() {
   const createProjectMutation = useMutation({
     mutationFn: createProject,
     onSuccess: (project) => {
+      // 创建项目是 MVP 流程第一步；后端返回项目 id 后，立即进入项目工作台。
       rememberProject(project);
       navigate(`/projects/${project.id}`);
     },

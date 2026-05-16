@@ -1,3 +1,4 @@
+// 角色列表和创建页。覆盖项目级角色集合接口，并在 POST 前整理表单值。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { FormEvent, useState } from 'react';
@@ -7,12 +8,25 @@ import { createCharacter, listCharacters } from '../../api/characters';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
+import { TextArrayField } from '../../components/forms/TextArrayField';
+import type { CreateCharacterRequest } from '../../types/api';
+
+const emptyCharacterForm: CreateCharacterRequest = {
+  name: '',
+  role: '',
+  profile: '',
+  personality: '',
+  voice_style: '',
+  goals: [],
+  fears: [],
+  secrets: [],
+  constraints: [],
+};
 
 export function CharactersPage() {
   const { projectId = '' } = useParams();
   const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [role, setRole] = useState('');
+  const [form, setForm] = useState<CreateCharacterRequest>(emptyCharacterForm);
 
   const charactersQuery = useQuery({
     queryKey: ['characters', projectId, 1, 50],
@@ -21,10 +35,10 @@ export function CharactersPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => createCharacter(projectId, { name: name.trim(), role: role.trim() }),
+    mutationFn: () => createCharacter(projectId, normalizeCharacterForm(form)),
     onSuccess: () => {
-      setName('');
-      setRole('');
+      // 创建角色后刷新角色列表和项目外壳统计。
+      setForm(emptyCharacterForm);
       queryClient.invalidateQueries({ queryKey: ['characters', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     },
@@ -36,6 +50,7 @@ export function CharactersPage() {
   };
 
   const characters = charactersQuery.data?.data ?? [];
+  const canCreate = Boolean(form.name.trim() && form.role.trim()) && !createMutation.isPending;
 
   return (
     <div className="page">
@@ -46,13 +61,47 @@ export function CharactersPage() {
         </div>
       </div>
 
-      <form className="toolbar-form" onSubmit={handleSubmit}>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="角色名" required />
-        <input value={role} onChange={(event) => setRole(event.target.value)} placeholder="角色定位" required />
-        <button className="button" disabled={!name.trim() || !role.trim() || createMutation.isPending} type="submit">
+      <form className="form-grid" onSubmit={handleSubmit}>
+        <label className="field">
+          <span>姓名</span>
+          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+        </label>
+        <label className="field">
+          <span>定位</span>
+          <input value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} required />
+        </label>
+        <label className="field">
+          <span>简介</span>
+          <textarea value={form.profile ?? ''} onChange={(event) => setForm({ ...form, profile: event.target.value })} />
+        </label>
+        <label className="field">
+          <span>性格</span>
+          <textarea
+            value={form.personality ?? ''}
+            onChange={(event) => setForm({ ...form, personality: event.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>说话风格</span>
+          <textarea
+            value={form.voice_style ?? ''}
+            onChange={(event) => setForm({ ...form, voice_style: event.target.value })}
+          />
+        </label>
+        <TextArrayField label="目标" values={form.goals ?? []} onChange={(goals) => setForm({ ...form, goals })} />
+        <TextArrayField label="恐惧" values={form.fears ?? []} onChange={(fears) => setForm({ ...form, fears })} />
+        <TextArrayField label="秘密" values={form.secrets ?? []} onChange={(secrets) => setForm({ ...form, secrets })} />
+        <TextArrayField
+          label="约束"
+          values={form.constraints ?? []}
+          onChange={(constraints) => setForm({ ...form, constraints })}
+        />
+        <div className="form-actions">
+          <button className="button" disabled={!canCreate} type="submit">
           <Plus size={17} />
           创建角色
-        </button>
+          </button>
+        </div>
       </form>
 
       {charactersQuery.isLoading ? <LoadingState /> : null}
@@ -73,4 +122,29 @@ export function CharactersPage() {
       </div>
     </div>
   );
+}
+
+function normalizeCharacterForm(form: CreateCharacterRequest): CreateCharacterRequest {
+  // 只有作者实际填写的可选字段才发送给后端。
+  return {
+    name: form.name.trim(),
+    role: form.role.trim(),
+    profile: normalizeOptionalText(form.profile),
+    personality: normalizeOptionalText(form.personality),
+    voice_style: normalizeOptionalText(form.voice_style),
+    goals: normalizeStringList(form.goals),
+    fears: normalizeStringList(form.fears),
+    secrets: normalizeStringList(form.secrets),
+    constraints: normalizeStringList(form.constraints),
+  };
+}
+
+function normalizeOptionalText(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function normalizeStringList(values?: string[]) {
+  const normalized = values?.map((value) => value.trim()).filter(Boolean);
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }

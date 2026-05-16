@@ -1,3 +1,5 @@
+/* React 前端全局样式。这里集中定义视觉基调、布局基础、表单、工作台和响应式规则。 */
+
 :root {
   color: #17201b;
   background: #f6f7f4;
@@ -38,6 +40,8 @@ pre {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* 应用外壳和首页布局。 */
 
 .app-shell {
   min-height: 100vh;
@@ -89,6 +93,8 @@ pre {
   gap: 20px;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
 }
+
+/* 通用面板、表单控件和按钮。 */
 
 .panel,
 .workspace-panel,
@@ -186,6 +192,8 @@ textarea:focus {
   min-width: 40px;
 }
 
+/* 项目编辑、关系创建和行内操作使用的表单布局。 */
+
 .inline-row,
 .inline-form,
 .toolbar-form,
@@ -236,6 +244,8 @@ textarea:focus {
 .muted {
   color: #6b756f;
 }
+
+/* 项目工作台外壳、侧边栏、导航和页面标题区。 */
 
 .recent-list {
   margin-top: 24px;
@@ -313,6 +323,8 @@ textarea:focus {
   justify-content: space-between;
   margin-bottom: 22px;
 }
+
+/* 卡片、统计块、列表和结构化表单网格。 */
 
 .stats-row,
 .action-grid,
@@ -408,6 +420,8 @@ textarea:focus {
   display: contents;
 }
 
+/* 错误、加载和空状态反馈。 */
+
 .notice {
   align-items: flex-start;
   border-radius: 8px;
@@ -446,6 +460,8 @@ textarea:focus {
   color: #66716b;
   margin: 0;
 }
+
+/* 设定建模和故事推进工作台，包括 run 事件和提交控件。 */
 
 .workspace {
   display: grid;
@@ -504,9 +520,37 @@ textarea:focus {
   padding: 18px;
 }
 
+.draft-meta {
+  align-items: center;
+  border-bottom: 1px solid #e5eae4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+}
+
+.draft-meta span {
+  color: #66716b;
+  font-size: 13px;
+}
+
 .draft-surface pre {
   font-family: inherit;
   line-height: 1.8;
+}
+
+.structured-result {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.result-section {
+  background: #ffffff;
+  border: 1px solid #dfe5dd;
+  border-radius: 8px;
+  padding: 16px;
 }
 
 .result-preview__header {
@@ -514,6 +558,24 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   margin-bottom: 14px;
+}
+
+.result-section__header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.result-section__header h2,
+.patch-group h3,
+.review-list h3 {
+  margin: 0;
+}
+
+.result-section__header h2 {
+  font-size: 17px;
 }
 
 .status-pill,
@@ -525,6 +587,122 @@ textarea:focus {
   font-size: 12px;
   font-weight: 700;
   padding: 5px 9px;
+}
+
+.status-pill--warning {
+  background: #fff2cf;
+  color: #7a4d00;
+}
+
+.key-value-grid,
+.review-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.kv-item,
+.review-list,
+.patch-item {
+  background: #f8faf7;
+  border: 1px solid #e2e8e1;
+  border-radius: 7px;
+}
+
+.kv-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.kv-item span,
+.patch-item small {
+  color: #66716b;
+  font-size: 12px;
+}
+
+.kv-item strong {
+  color: #1d2822;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.review-list {
+  padding: 12px;
+}
+
+.review-list h3,
+.patch-group h3 {
+  color: #35413b;
+  font-size: 13px;
+}
+
+.review-list ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.patch-group {
+  border-top: 1px solid #edf1ec;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.patch-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.patch-item {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.patch-item--deferred {
+  background: #fffdf5;
+  border-color: #ead99b;
+}
+
+.patch-item__body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.patch-item__body p {
+  color: #36443c;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.segmented-control {
+  background: #eef3ed;
+  border: 1px solid #d6dfd6;
+  border-radius: 7px;
+  display: inline-flex;
+  padding: 2px;
+}
+
+.segmented-control__item {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: #435049;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.segmented-control__item--active {
+  background: #ffffff;
+  color: #173b29;
+  box-shadow: 0 1px 2px rgba(23, 32, 27, 0.1);
 }
 
 .event-section {
@@ -549,6 +727,8 @@ textarea:focus {
   margin-top: 18px;
   padding-top: 16px;
 }
+
+/* 角色详情和记忆侧栏。 */
 
 .detail-layout {
   display: grid;
@@ -575,6 +755,8 @@ textarea:focus {
 .memory-item p {
   margin: 0 0 6px;
 }
+
+/* 章节阅读器和居中兜底页面。 */
 
 .reader-page {
   margin: 0 auto;
@@ -612,6 +794,8 @@ textarea:focus {
   min-height: calc(100vh - 56px);
   justify-content: center;
 }
+
+/* 平板和手机视口下的响应式折叠规则。 */
 
 @media (max-width: 1100px) {
   .workspace--three,
@@ -653,5 +837,13 @@ textarea:focus {
   .toolbar-form {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .patch-item {
+    grid-template-columns: 1fr;
+  }
+
+  .segmented-control {
+    justify-self: start;
   }
 }

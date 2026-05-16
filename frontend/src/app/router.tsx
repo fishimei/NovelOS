@@ -1,3 +1,4 @@
+// 全局路由表。项目内页面统一挂在 ProjectShell 下，共用项目加载、侧边栏和 outlet context。
 import { createBrowserRouter } from 'react-router-dom';
 
 import { AppShell } from '../components/layout/AppShell';
@@ -9,6 +10,7 @@ import { CharacterDetailPage } from '../features/characters/CharacterDetailPage'
 import { CharactersPage } from '../features/characters/CharactersPage';
 import { HomePage } from '../features/projects/HomePage';
 import { ProjectOverviewPage } from '../features/projects/ProjectOverviewPage';
+import { RelationshipDetailPage } from '../features/relationships/RelationshipDetailPage';
 import { RelationshipsPage } from '../features/relationships/RelationshipsPage';
 import { SetupWorkspacePage } from '../features/setup/SetupWorkspacePage';
 import { StoryWorkspacePage } from '../features/story/StoryWorkspacePage';
@@ -33,6 +35,7 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'characters/:characterId', element: <CharacterDetailPage /> },
+      { path: 'relationships/:relationshipId', element: <RelationshipDetailPage /> },
       { path: 'chapters/:chapterId', element: <ChapterDetailPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],

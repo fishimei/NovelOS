@@ -1,3 +1,4 @@
+// AuthorBible API 客户端：读取和保存项目级正式写作规则、风格指南、约束和初始世界状态。
 import { getData, putData } from './http';
 import type { AuthorBible, UpdateAuthorBibleRequest } from '../types/api';
 

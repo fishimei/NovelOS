@@ -1,3 +1,4 @@
+// 章节列表页。只展示 story run commit 后进入正史的章节。
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 

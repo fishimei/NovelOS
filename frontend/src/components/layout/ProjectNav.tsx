@@ -1,3 +1,4 @@
+// 项目工作台内的侧边栏导航。
 import { BookMarked, FileText, GitBranch, Home, PenLine, ScrollText, Users } from 'lucide-react';
 import { NavLink, useParams } from 'react-router-dom';
 

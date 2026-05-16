@@ -533,6 +533,7 @@ func toMemory(row persistencemodels.CharacterMemory) model.Memory {
 		Content:         row.Content,
 		SourceChapterID: row.SourceChapterID,
 		Importance:      row.Importance,
+		Note:            row.Note,
 		Status:          row.Status,
 		CreatedAt:       row.CreatedAt,
 	}

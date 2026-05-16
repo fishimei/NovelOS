@@ -130,21 +130,21 @@ type UpdateCharacterInput struct {
 // Character 是故事中的角色实体。
 // 角色是故事生成的核心要素，AI 会根据角色的目标、恐惧和约束来生成符合角色特点的对话和行为。
 type Character struct {
-	ID                  string    // 角色唯一标识符
-	ProjectID           string    // 所属项目 ID
-	Name                string    // 角色名称
-	Role                string    // 角色定位
-	Profile             string    // 角色简介
-	Personality         string    // 性格特征描述
-	VoiceStyle          string    // 说话风格
-	Goals               []string  // 角色目标列表
-	Fears               []string  // 角色恐惧列表
-	Secrets             []string  // 角色秘密列表
-	Constraints         []string  // 角色行为约束列表
-	RecentMemorySummary string    // 近期记忆摘要（用于 AI 生成时的上下文）
-	Status              string    // 状态标识
-	CreatedAt           time.Time // 创建时间
-	UpdatedAt           time.Time // 最后更新时间
+	ID                  string    `json:"id"`                    // 角色唯一标识符
+	ProjectID           string    `json:"project_id"`            // 所属项目 ID
+	Name                string    `json:"name"`                  // 角色名称
+	Role                string    `json:"role"`                  // 角色定位
+	Profile             string    `json:"profile"`               // 角色简介
+	Personality         string    `json:"personality"`           // 性格特征描述
+	VoiceStyle          string    `json:"voice_style"`           // 说话风格
+	Goals               []string  `json:"goals"`                 // 角色目标列表
+	Fears               []string  `json:"fears"`                 // 角色恐惧列表
+	Secrets             []string  `json:"secrets"`               // 角色秘密列表
+	Constraints         []string  `json:"constraints"`           // 角色行为约束列表
+	RecentMemorySummary string    `json:"recent_memory_summary"` // 近期记忆摘要（用于 AI 生成时的上下文）
+	Status              string    `json:"status"`                // 状态标识
+	CreatedAt           time.Time `json:"created_at"`            // 创建时间
+	UpdatedAt           time.Time `json:"updated_at"`            // 最后更新时间
 }
 
 // CreateRelationshipInput 是创建角色关系的输入参数。
@@ -181,55 +181,55 @@ type RelationshipViewInput struct {
 // RelationshipPair 代表两个角色之间的关系对。
 // 关系对是关系的基础实体，存储双方共同的信息。
 type RelationshipPair struct {
-	ID               string    // 关系对唯一标识符
-	ProjectID        string    // 所属项目 ID
-	LeftCharacterID  string    // 左侧角色 ID（角色 A）
-	RightCharacterID string    // 右侧角色 ID（角色 B）
-	Summary          string    // 关系概要描述
-	Anchors          []string  // 关系锚点
-	TensionPoints    []string  // 紧张点
-	SharedHistory    []string  // 共同经历
-	Volatility       int       // 关系变化程度
-	Status           string    // 状态标识
-	CreatedAt        time.Time // 创建时间
-	UpdatedAt        time.Time // 最后更新时间
+	ID               string    `json:"id"`                 // 关系对唯一标识符
+	ProjectID        string    `json:"project_id"`         // 所属项目 ID
+	LeftCharacterID  string    `json:"left_character_id"`  // 左侧角色 ID（角色 A）
+	RightCharacterID string    `json:"right_character_id"` // 右侧角色 ID（角色 B）
+	Summary          string    `json:"summary"`            // 关系概要描述
+	Anchors          []string  `json:"anchors"`            // 关系锚点
+	TensionPoints    []string  `json:"tension_points"`     // 紧张点
+	SharedHistory    []string  `json:"shared_history"`     // 共同经历
+	Volatility       int       `json:"volatility"`         // 关系变化程度
+	Status           string    `json:"status"`             // 状态标识
+	CreatedAt        time.Time `json:"created_at"`         // 创建时间
+	UpdatedAt        time.Time `json:"updated_at"`         // 最后更新时间
 }
 
 // RelationshipView 代表角色对关系的单方视角。
 // 每个 RelationshipPair 会有两个 RelationshipView，分别描述两个角色对这段关系的认知。
 type RelationshipView struct {
-	ID                     string    // 视角唯一标识符
-	ProjectID              string    // 所属项目 ID
-	PairID                 string    // 所属关系对 ID
-	SourceCharacterID      string    // 视角来源角色 ID
-	TargetCharacterID      string    // 视角目标角色 ID
-	PublicAttitude         string    // 公开态度
-	PrivateAttitude        string    // 私下态度
-	BelievedTargetAttitude string    // 以为对方的态度
-	MaskingStrategy        string    // 掩饰策略
-	Status                 string    // 状态标识
-	CreatedAt              time.Time // 创建时间
-	UpdatedAt              time.Time // 最后更新时间
+	ID                     string    `json:"id"`                       // 视角唯一标识符
+	ProjectID              string    `json:"project_id"`               // 所属项目 ID
+	PairID                 string    `json:"pair_id"`                  // 所属关系对 ID
+	SourceCharacterID      string    `json:"source_character_id"`      // 视角来源角色 ID
+	TargetCharacterID      string    `json:"target_character_id"`      // 视角目标角色 ID
+	PublicAttitude         string    `json:"public_attitude"`          // 公开态度
+	PrivateAttitude        string    `json:"private_attitude"`         // 私下态度
+	BelievedTargetAttitude string    `json:"believed_target_attitude"` // 以为对方的态度
+	MaskingStrategy        string    `json:"masking_strategy"`         // 掩饰策略
+	Status                 string    `json:"status"`                   // 状态标识
+	CreatedAt              time.Time `json:"created_at"`               // 创建时间
+	UpdatedAt              time.Time `json:"updated_at"`               // 最后更新时间
 }
 
 // RelationshipEvent 代表关系中发生的事件，用于跟踪关系的变化历史。
 type RelationshipEvent struct {
-	ID        string         // 事件唯一标识符
-	ProjectID string         // 所属项目 ID
-	PairID    string         // 所属关系对 ID
-	EventType string         // 事件类型
-	Summary   string         // 事件摘要
-	Payload   map[string]any // 事件附加数据
-	CreatedAt time.Time      // 事件发生时间
+	ID        string         `json:"id"`         // 事件唯一标识符
+	ProjectID string         `json:"project_id"` // 所属项目 ID
+	PairID    string         `json:"pair_id"`    // 所属关系对 ID
+	EventType string         `json:"event_type"` // 事件类型
+	Summary   string         `json:"summary"`    // 事件摘要
+	Payload   map[string]any `json:"payload"`    // 事件附加数据
+	CreatedAt time.Time      `json:"created_at"` // 事件发生时间
 }
 
 // Relationship 是关系的完整聚合，包含关系对、双方视角和最近事件。
 type Relationship struct {
-	Pair           RelationshipPair    // 关系对基础信息
-	Views          []RelationshipView  // 所有相关视角
-	RecentEvents   []RelationshipEvent // 最近发生的事件
-	CharacterAView *RelationshipView   // 角色 A 的视角
-	CharacterBView *RelationshipView   // 角色 B 的视角
+	Pair           RelationshipPair    `json:"pair"`             // 关系对基础信息
+	Views          []RelationshipView  `json:"views"`            // 所有相关视角
+	RecentEvents   []RelationshipEvent `json:"recent_events"`    // 最近发生的事件
+	CharacterAView *RelationshipView   `json:"character_a_view"` // 角色 A 的视角
+	CharacterBView *RelationshipView   `json:"character_b_view"` // 角色 B 的视角
 }
 
 // CreateSetupSessionInput 是创建设置会话的输入参数。
@@ -246,80 +246,80 @@ type AdvanceSetupSessionInput struct {
 // ApplySetupRunInput 是应用设置运行结果的输入参数。
 // 用户可以选择性地接受生成的各项内容。
 type ApplySetupRunInput struct {
-	RunID               string // 要应用的运行 ID
-	AcceptAuthorBible   bool   // 是否接受作者圣经
-	AcceptCharacters    bool   // 是否接受角色
-	AcceptRelationships bool   // 是否接受关系
-	AcceptWorldState    bool   // 是否接受世界状态
-	AuthorNote          string // 作者备注
+	RunID               string `json:"run_id"`               // 要应用的运行 ID
+	AcceptAuthorBible   bool   `json:"accept_author_bible"`  // 是否接受作者圣经
+	AcceptCharacters    bool   `json:"accept_characters"`    // 是否接受角色
+	AcceptRelationships bool   `json:"accept_relationships"` // 是否接受关系
+	AcceptWorldState    bool   `json:"accept_world_state"`   // 是否接受世界状态
+	AuthorNote          string `json:"author_note"`          // 作者备注
 }
 
 // SetupQuestion 是设置过程中 AI 提出的问题。
 type SetupQuestion struct {
-	Key          string // 问题标识键
-	Question     string // 问题内容
-	WhyItMatters string // 为什么这个问题重要
+	Key          string `json:"key"`            // 问题标识键
+	Question     string `json:"question"`       // 问题内容
+	WhyItMatters string `json:"why_it_matters"` // 为什么这个问题重要
 }
 
 // ConversationMessage 是会话消息的模型。
 type ConversationMessage struct {
-	ID        string    // 消息唯一标识符
-	SessionID string    // 所属会话 ID
-	Role      string    // 消息角色（user/assistant）
-	Content   string    // 消息内容
-	CreatedAt time.Time // 创建时间
+	ID        string    `json:"id"`         // 消息唯一标识符
+	SessionID string    `json:"session_id"` // 所属会话 ID
+	Role      string    `json:"role"`       // 消息角色（user/assistant）
+	Content   string    `json:"content"`    // 消息内容
+	CreatedAt time.Time `json:"created_at"` // 创建时间
 }
 
 // SetupSession 是设置会话的模型。
 // 设置会话是作者与 AI 之间的多轮对话，用于逐步构建项目的基础设定。
 type SetupSession struct {
-	ID              string                // 会话唯一标识符
-	ProjectID       string                // 所属项目 ID
-	SeedIdea        string                // 种子想法
-	LastUserMessage string                // 最后一条用户消息
-	Status          string                // 会话状态
-	Messages        []ConversationMessage // 会话消息历史
-	CreatedAt       time.Time             // 创建时间
-	UpdatedAt       time.Time             // 最后更新时间
+	ID              string                `json:"id"`                // 会话唯一标识符
+	ProjectID       string                `json:"project_id"`        // 所属项目 ID
+	SeedIdea        string                `json:"seed_idea"`         // 种子想法
+	LastUserMessage string                `json:"last_user_message"` // 最后一条用户消息
+	Status          string                `json:"status"`            // 会话状态
+	Messages        []ConversationMessage `json:"messages"`          // 会话消息历史
+	CreatedAt       time.Time             `json:"created_at"`        // 创建时间
+	UpdatedAt       time.Time             `json:"updated_at"`        // 最后更新时间
 }
 
 // SetupRun 是设置运行的模型。
 // 每次用户推进设置会话时创建一个运行，跟踪 AI 处理进度。
 type SetupRun struct {
-	RunID       string    // 运行唯一标识符
-	SessionID   string    // 所属会话 ID
-	ProjectID   string    // 所属项目 ID
-	Status      string    // 运行状态
-	CurrentStep string    // 当前步骤
-	Progress    int       // 进度百分比
-	CreatedAt   time.Time // 创建时间
-	UpdatedAt   time.Time // 最后更新时间
+	RunID       string    `json:"run_id"`       // 运行唯一标识符
+	SessionID   string    `json:"session_id"`   // 所属会话 ID
+	ProjectID   string    `json:"project_id"`   // 所属项目 ID
+	Status      string    `json:"status"`       // 运行状态
+	CurrentStep string    `json:"current_step"` // 当前步骤
+	Progress    int       `json:"progress"`     // 进度百分比
+	CreatedAt   time.Time `json:"created_at"`   // 创建时间
+	UpdatedAt   time.Time `json:"updated_at"`   // 最后更新时间
 }
 
 // SetupDraft 是设置生成的草稿。
 // 包含 AI 生成的完整项目设定。
 type SetupDraft struct {
-	AuthorBible      AuthorBible       // 作者圣经
-	Characters       []Character       // 角色列表
-	Relationships    []Relationship    // 关系列表
-	WorldState       []WorldStateEntry // 世界状态
-	OpenQuestions    []SetupQuestion   // 待解答问题
-	AssistantSummary string            // AI 总结
+	AuthorBible      AuthorBible       `json:"author_bible"`      // 作者圣经
+	Characters       []Character       `json:"characters"`        // 角色列表
+	Relationships    []Relationship    `json:"relationships"`     // 关系列表
+	WorldState       []WorldStateEntry `json:"world_state"`       // 世界状态
+	OpenQuestions    []SetupQuestion   `json:"open_questions"`    // 待解答问题
+	AssistantSummary string            `json:"assistant_summary"` // AI 总结
 }
 
 // SetupRunResult 是设置运行结果的模型。
 type SetupRunResult struct {
-	RunID      string     // 运行 ID
-	SessionID  string     // 会话 ID
-	Status     string     // 结果状态
-	SetupDraft SetupDraft // 设置草稿
+	RunID      string     `json:"run_id"`      // 运行 ID
+	SessionID  string     `json:"session_id"`  // 会话 ID
+	Status     string     `json:"status"`      // 结果状态
+	SetupDraft SetupDraft `json:"setup_draft"` // 设置草稿
 }
 
 // ApplySetupRunResult 是应用设置运行后的结果。
 type ApplySetupRunResult struct {
-	ProjectID string // 项目 ID
-	RunID     string // 运行 ID
-	Status    string // 结果状态
+	ProjectID string `json:"project_id"` // 项目 ID
+	RunID     string `json:"run_id"`     // 运行 ID
+	Status    string `json:"status"`     // 结果状态
 }
 
 // CreateStorySessionInput 是创建故事会话的输入参数。
@@ -345,146 +345,147 @@ type CommitStoryRunInput struct {
 // StorySession 是故事会话的模型。
 // 故事会话是单个故事生成周期的上下文容器。
 type StorySession struct {
-	ID                         string                // 会话唯一标识符
-	ProjectID                  string                // 所属项目 ID
-	Title                      string                // 会话标题
-	OpeningSituation           string                // 开局情境
-	AuthorIntent               string                // 作者意图
-	LastAuthorMessage          string                // 最后一条作者消息
-	Status                     string                // 会话状态
-	CurrentPlotVariableSummary string                // 当前剧情变量摘要
-	Messages                   []ConversationMessage // 会话消息历史
-	CreatedAt                  time.Time             // 创建时间
-	UpdatedAt                  time.Time             // 最后更新时间
+	ID                         string                `json:"id"`                            // 会话唯一标识符
+	ProjectID                  string                `json:"project_id"`                    // 所属项目 ID
+	Title                      string                `json:"title"`                         // 会话标题
+	OpeningSituation           string                `json:"opening_situation"`             // 开局情境
+	AuthorIntent               string                `json:"author_intent"`                 // 作者意图
+	LastAuthorMessage          string                `json:"last_author_message"`           // 最后一条作者消息
+	Status                     string                `json:"status"`                        // 会话状态
+	CurrentPlotVariableSummary string                `json:"current_plot_variable_summary"` // 当前剧情变量摘要
+	Messages                   []ConversationMessage `json:"messages"`                      // 会话消息历史
+	CreatedAt                  time.Time             `json:"created_at"`                    // 创建时间
+	UpdatedAt                  time.Time             `json:"updated_at"`                    // 最后更新时间
 }
 
 // StoryRun 是故事运行的模型。
 // 每次用户推进故事会话时创建一个运行，跟踪 AI 内容生成进度。
 type StoryRun struct {
-	RunID       string     // 运行唯一标识符
-	SessionID   string     // 所属会话 ID
-	ProjectID   string     // 所属项目 ID
-	Status      string     // 运行状态
-	CurrentStep string     // 当前步骤
-	Progress    int        // 进度百分比
-	CommittedAt *time.Time // 提交时间（如果有）
-	CreatedAt   time.Time  // 创建时间
-	UpdatedAt   time.Time  // 最后更新时间
+	RunID       string     `json:"run_id"`       // 运行唯一标识符
+	SessionID   string     `json:"session_id"`   // 所属会话 ID
+	ProjectID   string     `json:"project_id"`   // 所属项目 ID
+	Status      string     `json:"status"`       // 运行状态
+	CurrentStep string     `json:"current_step"` // 当前步骤
+	Progress    int        `json:"progress"`     // 进度百分比
+	CommittedAt *time.Time `json:"committed_at"` // 提交时间（如果有）
+	CreatedAt   time.Time  `json:"created_at"`   // 创建时间
+	UpdatedAt   time.Time  `json:"updated_at"`   // 最后更新时间
 }
 
 // Draft 是生成的章节草稿。
+// 草稿是候选数据，只有 commit 后才会变成正式章节。
 type Draft struct {
-	ID            string // 草稿唯一标识符
-	Title         string // 章节标题
-	ChapterNumber int    // 章节编号
-	Content       string // 章节正文
-	Summary       string // 章节摘要
-	WordCount     int    // 字数统计
+	ID            string `json:"id"`             // 草稿唯一标识符
+	Title         string `json:"title"`          // 章节标题
+	ChapterNumber int    `json:"chapter_number"` // 章节编号
+	Content       string `json:"content"`        // 章节正文
+	Summary       string `json:"summary"`        // 章节摘要
+	WordCount     int    `json:"word_count"`     // 字数统计
 }
 
 // PlotVariable 是剧情变量，定义故事中的核心戏剧性选择。
 // AI 在生成内容前会确定剧情变量，为角色提供有意义的选择。
 type PlotVariable struct {
-	PressureSource      string   // 压力来源
-	FocalCharacterID    string   // 核心角色 ID
-	CoreChoice          string   // 核心选择描述
-	OptionA             string   // 选项 A
-	OptionB             string   // 选项 B
-	CostA               string   // 选择 A 的代价
-	CostB               string   // 选择 B 的代价
-	IrreversibleEffect  string   // 不可逆影响
-	RelatedCharacterIDs []string // 相关角色 ID 列表
-	WorldStatePressure  []string // 世界状态压力
+	PressureSource      string   `json:"pressure_source"`       // 压力来源
+	FocalCharacterID    string   `json:"focal_character_id"`    // 核心角色 ID
+	CoreChoice          string   `json:"core_choice"`           // 核心选择描述
+	OptionA             string   `json:"option_a"`              // 选项 A
+	OptionB             string   `json:"option_b"`              // 选项 B
+	CostA               string   `json:"cost_a"`                // 选择 A 的代价
+	CostB               string   `json:"cost_b"`                // 选择 B 的代价
+	IrreversibleEffect  string   `json:"irreversible_effect"`   // 不可逆影响
+	RelatedCharacterIDs []string `json:"related_character_ids"` // 相关角色 ID 列表
+	WorldStatePressure  []string `json:"world_state_pressure"`  // 世界状态压力
 }
 
 // ReviewReport 是审阅报告，包含 AI 对生成内容的质量评估。
 type ReviewReport struct {
-	Pass             bool     // 是否通过
-	HardViolations   []string // 硬性违规（必须修复的问题）
-	ContinuityIssues []string // 连续性问题
-	StyleIssues      []string // 风格问题
-	SuggestedFixes   []string // 建议修复
+	Pass             bool     `json:"pass"`              // 是否通过
+	HardViolations   []string `json:"hard_violations"`   // 硬性违规（必须修复的问题）
+	ContinuityIssues []string `json:"continuity_issues"` // 连续性问题
+	StyleIssues      []string `json:"style_issues"`      // 风格问题
+	SuggestedFixes   []string `json:"suggested_fixes"`   // 建议修复
 }
 
 // CharacterMemoryUpdate 是角色记忆更新。
 type CharacterMemoryUpdate struct {
-	CharacterID string // 角色 ID
-	Type        string // 更新类型
-	Content     string // 更新内容
-	Importance  int    // 重要性
+	CharacterID string `json:"character_id"` // 角色 ID
+	Type        string `json:"type"`         // 更新类型
+	Content     string `json:"content"`      // 更新内容
+	Importance  int    `json:"importance"`   // 重要性
 }
 
 // RelationshipViewUpdate 是关系视角更新。
 type RelationshipViewUpdate struct {
-	ViewID                 string // 视角 ID
-	PairID                 string // 关系对 ID
-	SourceCharacterID      string // 源角色 ID
-	TargetCharacterID      string // 目标角色 ID
-	PublicAttitude         string // 公开态度
-	PrivateAttitude        string // 私下态度
-	BelievedTargetAttitude string // 以为对方的态度
-	MaskingStrategy        string // 掩饰策略
+	ViewID                 string `json:"view_id"`                  // 视角 ID
+	PairID                 string `json:"pair_id"`                  // 关系对 ID
+	SourceCharacterID      string `json:"source_character_id"`      // 源角色 ID
+	TargetCharacterID      string `json:"target_character_id"`      // 目标角色 ID
+	PublicAttitude         string `json:"public_attitude"`          // 公开态度
+	PrivateAttitude        string `json:"private_attitude"`         // 私下态度
+	BelievedTargetAttitude string `json:"believed_target_attitude"` // 以为对方的态度
+	MaskingStrategy        string `json:"masking_strategy"`         // 掩饰策略
 }
 
 // RelationshipUpdate 是关系更新。
 type RelationshipUpdate struct {
-	PairID       string                   // 关系对 ID
-	Summary      string                   // 更新后的摘要
-	TensionDelta string                   // 紧张度变化
-	Pair         *RelationshipPair        // 更新的关系对（可选）
-	Views        []RelationshipViewUpdate // 更新的视角列表
-	Events       []RelationshipEvent      // 新增的事件列表
+	PairID       string                   `json:"pair_id"`       // 关系对 ID
+	Summary      string                   `json:"summary"`       // 更新后的摘要
+	TensionDelta string                   `json:"tension_delta"` // 紧张度变化
+	Pair         *RelationshipPair        `json:"pair"`          // 更新的关系对（可选）
+	Views        []RelationshipViewUpdate `json:"views"`         // 更新的视角列表
+	Events       []RelationshipEvent      `json:"events"`        // 新增的事件列表
 }
 
 // WorldStateUpdate 是世界状态更新。
 type WorldStateUpdate struct {
-	Key       string // 状态键
-	Operation string // 操作类型（set, update, delete）
-	Value     any    // 新值
-	Note      string // 备注说明
+	Key       string `json:"key"`       // 状态键
+	Operation string `json:"operation"` // 操作类型（set, update, delete）
+	Value     any    `json:"value"`     // 新值
+	Note      string `json:"note"`      // 备注说明
 }
 
 // MemoryPatch 是记忆补丁，封装了所有状态更新。
 // 当故事运行被提交时，相关的状态变化会通过记忆补丁统一应用。
 type MemoryPatch struct {
-	ID                     string                  // 补丁唯一标识符
-	Status                 string                  // 补丁状态
-	CharacterMemoryUpdates []CharacterMemoryUpdate // 角色记忆更新列表
-	RelationshipUpdates    []RelationshipUpdate    // 关系更新列表
-	WorldStateUpdates      []WorldStateUpdate      // 世界状态更新列表
+	ID                     string                  `json:"id"`                       // 补丁唯一标识符
+	Status                 string                  `json:"status"`                   // 补丁状态
+	CharacterMemoryUpdates []CharacterMemoryUpdate `json:"character_memory_updates"` // 角色记忆更新列表
+	RelationshipUpdates    []RelationshipUpdate    `json:"relationship_updates"`     // 关系更新列表
+	WorldStateUpdates      []WorldStateUpdate      `json:"world_state_updates"`      // 世界状态更新列表
 }
 
 // StoryRunResult 是故事运行结果的模型。
 type StoryRunResult struct {
-	RunID        string       // 运行 ID
-	SessionID    string       // 会话 ID
-	Status       string       // 结果状态
-	PlotVariable PlotVariable // 剧情变量
-	Draft        Draft        // 章节草稿
-	Review       ReviewReport // 审阅报告
-	MemoryPatch  MemoryPatch  // 记忆补丁
+	RunID        string       `json:"run_id"`        // 运行 ID
+	SessionID    string       `json:"session_id"`    // 会话 ID
+	Status       string       `json:"status"`        // 结果状态
+	PlotVariable PlotVariable `json:"plot_variable"` // 剧情变量
+	Draft        Draft        `json:"draft"`         // 章节草稿
+	Review       ReviewReport `json:"review"`        // 审阅报告
+	MemoryPatch  MemoryPatch  `json:"memory_patch"`  // 记忆补丁
 }
 
 // CommitStoryRunResult 是提交故事运行后的结果。
 type CommitStoryRunResult struct {
-	Chapter  Chapter     // 提交的章节
-	Patch    MemoryPatch // 应用的记忆补丁
-	StoryRun StoryRun    // 关联的故事运行
+	Chapter  Chapter     `json:"chapter"`   // 提交的章节
+	Patch    MemoryPatch `json:"patch"`     // 应用的记忆补丁
+	StoryRun StoryRun    `json:"story_run"` // 关联的故事运行
 }
 
 // Chapter 是已提交的故事章节。
 // 章节是故事的基本单位，每个提交的故事运行会产生一个新的章节。
 type Chapter struct {
-	ID            string    // 章节唯一标识符
-	ProjectID     string    // 所属项目 ID
-	ChapterNumber int       // 章节编号（递增）
-	Title         string    // 章节标题
-	Summary       string    // 章节摘要
-	Content       string    // 章节正文
-	AuthorNote    string    // 作者备注
-	Status        string    // 章节状态
-	WordCount     int       // 字数统计
-	CommittedAt   time.Time // 提交时间
+	ID            string    `json:"id"`             // 章节唯一标识符
+	ProjectID     string    `json:"project_id"`     // 所属项目 ID
+	ChapterNumber int       `json:"chapter_number"` // 章节编号（递增）
+	Title         string    `json:"title"`          // 章节标题
+	Summary       string    `json:"summary"`        // 章节摘要
+	Content       string    `json:"content"`        // 章节正文
+	AuthorNote    string    `json:"author_note"`    // 作者备注
+	Status        string    `json:"status"`         // 章节状态
+	WordCount     int       `json:"word_count"`     // 字数统计
+	CommittedAt   time.Time `json:"committed_at"`   // 提交时间
 }
 
 // CreateMemoryInput 是创建角色记忆的输入参数。
@@ -497,25 +498,26 @@ type CreateMemoryInput struct {
 // Memory 是角色的记忆条目。
 // 记忆是角色在故事中经历事件的记录，用于 AI 生成时的上下文参考。
 type Memory struct {
-	ID              string    // 记忆唯一标识符
-	CharacterID     string    // 所属角色 ID
-	Content         string    // 记忆内容
-	SourceChapterID string    // 来源章节 ID
-	Importance      int       // 重要性等级
-	Status          string    // 状态标识
-	CreatedAt       time.Time // 创建时间
+	ID              string    `json:"id"`                // 记忆唯一标识符
+	CharacterID     string    `json:"character_id"`      // 所属角色 ID
+	Content         string    `json:"content"`           // 记忆内容
+	SourceChapterID string    `json:"source_chapter_id"` // 来源章节 ID
+	Importance      int       `json:"importance"`        // 重要性等级
+	Note            string    `json:"note"`              // 备注说明
+	Status          string    `json:"status"`            // 状态标识
+	CreatedAt       time.Time `json:"created_at"`        // 创建时间
 }
 
 // RunEvent 是运行事件，用于记录 AI 生成过程中的关键事件。
 // 事件通过 SSE 实时推送给客户端，并持久化用于审计。
 type RunEvent struct {
-	ID        string         // 事件唯一标识符
-	RunKind   string         // 运行类型（setup/story）
-	RunID     string         // 所属运行 ID
-	EventName string         // 事件名称
-	Sequence  int            // 事件序号
-	Payload   map[string]any // 事件附加数据
-	CreatedAt time.Time      // 事件发生时间
+	ID        string         `json:"id"`         // 事件唯一标识符
+	RunKind   string         `json:"run_kind"`   // 运行类型（setup/story）
+	RunID     string         `json:"run_id"`     // 所属运行 ID
+	EventName string         `json:"event_name"` // 事件名称
+	Sequence  int            `json:"sequence"`   // 事件序号
+	Payload   map[string]any `json:"payload"`    // 事件附加数据
+	CreatedAt time.Time      `json:"created_at"` // 事件发生时间
 }
 
 // StateRevision 是状态修订快照。

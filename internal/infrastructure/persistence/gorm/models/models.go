@@ -118,6 +118,7 @@ type CharacterMemory struct {
 	Content         string    `gorm:"not null"`
 	SourceChapterID string    `gorm:"not null;default:''"`
 	Importance      int       `gorm:"not null;default:0"`
+	Note            string    `gorm:"not null;default:''"`
 	Status          string    `gorm:"not null;default:''"`
 	CreatedAt       time.Time `gorm:"not null"`
 }

@@ -1,3 +1,4 @@
+// Characters API 客户端：处理项目级角色集合，以及单个角色详情更新。
 import { getData, getPage, pageParams, postData, putData } from './http';
 import type {
   Character,

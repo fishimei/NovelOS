@@ -1,3 +1,4 @@
+// 项目级外壳。这里统一加载当前项目，渲染项目侧边栏，并通过 outlet context 把项目数据传给子页面。
 import { useQuery } from '@tanstack/react-query';
 import { Outlet, useParams } from 'react-router-dom';
 

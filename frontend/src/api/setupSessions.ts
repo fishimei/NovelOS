@@ -1,6 +1,8 @@
+// SetupSession API 客户端。设定会话把种子想法和作者补充信息推进成可审校、可应用的候选设定草稿。
 import { getData, getPage, pageParams, postData } from './http';
 import type {
   AdvanceSetupSessionRequest,
+  ApplySetupRunResult,
   ApplySetupRunRequest,
   CreateSetupSessionRequest,
   Run,
@@ -24,5 +26,5 @@ export function advanceSetupSession(sessionId: string, body: AdvanceSetupSession
 }
 
 export function applySetupRun(sessionId: string, body: ApplySetupRunRequest) {
-  return postData<SetupSession, ApplySetupRunRequest>(`/setup-sessions/${sessionId}/apply`, body);
+  return postData<ApplySetupRunResult, ApplySetupRunRequest>(`/setup-sessions/${sessionId}/apply`, body);
 }

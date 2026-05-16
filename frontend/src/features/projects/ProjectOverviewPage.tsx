@@ -1,3 +1,4 @@
+// 项目总览页。展示项目统计、提供轻量项目编辑，并连接到主要项目工作区。
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { BookMarked, FileText, GitBranch, PenLine, Save, Users, X } from 'lucide-react';
 import { FormEvent, useState } from 'react';
@@ -34,6 +35,7 @@ export function ProjectOverviewPage() {
         description: description.trim() || undefined,
       }),
     onSuccess: (updatedProject) => {
+      // 项目编辑成功后，同步外壳标题和最近项目快捷入口。
       queryClient.setQueryData(['project', projectId], updatedProject);
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       rememberProject(updatedProject);

@@ -399,6 +399,7 @@ func (r *memoryRepository) Create(ctx context.Context, characterID string, input
 		CharacterID: characterID,
 		Content:     input.Content,
 		Importance:  input.Importance,
+		Note:        input.Note,
 		Status:      "active",
 		CreatedAt:   r.now(),
 	}
@@ -426,6 +427,7 @@ func (r *memoryRepository) CreateBatch(ctx context.Context, memories []model.Mem
 			Content:         memory.Content,
 			SourceChapterID: memory.SourceChapterID,
 			Importance:      memory.Importance,
+			Note:            memory.Note,
 			Status:          memory.Status,
 			CreatedAt:       memory.CreatedAt,
 		})

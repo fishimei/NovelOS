@@ -1,6 +1,7 @@
+// 故事推进工作台。这是 MVP 主创作闭环：创建/选择 story session、推进 run、查看流式输出并提交正史。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Send } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { advanceStorySession, createStorySession, listStorySessions } from '../../api/storySessions';
@@ -8,7 +9,17 @@ import { commitStoryRun, getStoryRun, getStoryRunResult } from '../../api/storyR
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
+import type {
+  StoryCharacterMemoryUpdate,
+  StoryMemoryPatch,
+  StoryRelationshipUpdate,
+  StoryReviewReport,
+  StoryRunResult,
+  StoryWorldStateUpdate,
+} from '../../types/api';
 import { useStoryRunEvents } from './useStoryRunEvents';
+
+type PatchDecision = 'accept' | 'defer';
 
 export function StoryWorkspacePage() {
   const { projectId = '' } = useParams();
@@ -18,6 +29,7 @@ export function StoryWorkspacePage() {
   const [authorMessage, setAuthorMessage] = useState('');
   const [activeRunId, setActiveRunId] = useState('');
   const [authorNote, setAuthorNote] = useState('');
+  const [patchDecisions, setPatchDecisions] = useState<Record<string, PatchDecision>>({});
 
   const sessionsQuery = useQuery({
     queryKey: ['storySessions', projectId, 1, 20],
@@ -33,15 +45,16 @@ export function StoryWorkspacePage() {
     queryFn: ({ signal }) => getStoryRun(activeRunId, signal),
     enabled: Boolean(activeRunId),
     refetchInterval: (query) => {
+      // run 状态用轮询；正文增量可通过 SSE 到达。
       const status = query.state.data?.status;
-      return status === 'queued' || status === 'running' ? 1500 : false;
+      return isActiveRunStatus(status) ? 1500 : false;
     },
   });
 
   const resultQuery = useQuery({
     queryKey: ['storyRunResult', activeRunId],
     queryFn: ({ signal }) => getStoryRunResult(activeRunId, signal),
-    enabled: Boolean(activeRunId) && runQuery.data?.status !== 'queued' && runQuery.data?.status !== 'running',
+    enabled: Boolean(activeRunId) && Boolean(runQuery.data?.status) && !isActiveRunStatus(runQuery.data?.status),
   });
 
   const eventState = useStoryRunEvents(activeRunId);
@@ -58,16 +71,26 @@ export function StoryWorkspacePage() {
   const advanceMutation = useMutation({
     mutationFn: () => advanceStorySession(selectedSessionId, { author_message: authorMessage.trim() }),
     onSuccess: (run) => {
-      setActiveRunId(run.id);
+      setActiveRunId(run.run_id ?? run.id ?? '');
       setAuthorMessage('');
     },
   });
 
-  const draftId = resultQuery.data?.draft_id ?? resultQuery.data?.draft?.id ?? '';
-  const memoryPatchId = resultQuery.data?.memory_patch_id ?? resultQuery.data?.memory_patch?.id ?? '';
+  const draftId = resultQuery.data?.draft?.id ?? resultQuery.data?.draft_id ?? '';
+  const memoryPatchId = resultQuery.data?.memory_patch?.id ?? resultQuery.data?.memory_patch_id ?? '';
+  const hasDeferredPatchItems = Object.values(patchDecisions).includes('defer');
+  const committedCharacterIds = useMemo(() => {
+    const updates = resultQuery.data?.memory_patch?.character_memory_updates ?? [];
+    return Array.from(new Set(updates.map((update) => update.character_id).filter(Boolean)));
+  }, [resultQuery.data?.memory_patch?.character_memory_updates]);
+
+  const setPatchDecision = (key: string, decision: PatchDecision) => {
+    setPatchDecisions((current) => ({ ...current, [key]: decision }));
+  };
 
   const commitMutation = useMutation({
     mutationFn: () =>
+      // commit 是前端唯一把候选故事结果写入正式章节/记忆数据的动作。
       commitStoryRun(activeRunId, {
         draft_id: draftId,
         memory_patch_id: memoryPatchId,
@@ -76,10 +99,22 @@ export function StoryWorkspacePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['storySessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['storyRun', activeRunId] });
+      queryClient.invalidateQueries({ queryKey: ['storyRunResult', activeRunId] });
+      queryClient.invalidateQueries({ queryKey: ['relationships', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['authorBible', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['characters', projectId] });
+      committedCharacterIds.forEach((characterId) => {
+        queryClient.invalidateQueries({ queryKey: ['memories', characterId] });
+      });
+      setPatchDecisions({});
+      setAuthorNote('');
     },
   });
 
   const visibleDraft = useMemo(() => {
+    // 有最终 result 时优先展示最终正文，否则展示 SSE 流式增量。
     return resultQuery.data?.content ?? resultQuery.data?.draft?.content ?? eventState.draftText;
   }, [eventState.draftText, resultQuery.data]);
 
@@ -141,8 +176,22 @@ export function StoryWorkspacePage() {
         ) : (
           <>
             <div className="draft-surface">
+              {resultQuery.data?.draft ? (
+                <div className="draft-meta">
+                  <strong>{resultQuery.data.draft.title ?? 'Untitled draft'}</strong>
+                  <span>Chapter {resultQuery.data.draft.chapter_number ?? '-'}</span>
+                  <span>{resultQuery.data.draft.word_count ?? 0} words</span>
+                </div>
+              ) : null}
               {visibleDraft ? <pre>{visibleDraft}</pre> : <p className="muted">Generated draft text will appear here.</p>}
             </div>
+            {resultQuery.data ? (
+              <StoryResultPreview
+                result={resultQuery.data}
+                patchDecisions={patchDecisions}
+                onPatchDecisionChange={setPatchDecision}
+              />
+            ) : null}
             <form className="composer" onSubmit={sendAdvance}>
               <textarea
                 value={authorMessage}
@@ -167,8 +216,8 @@ export function StoryWorkspacePage() {
         <h2>Run Events</h2>
         <div className="status-line">SSE: {eventState.connectionStatus}</div>
         <div className="event-section">
-          <h3>Plot Variables</h3>
-          {eventState.plotVariables.map((item, index) => (
+          <h3>Generation Steps</h3>
+          {eventState.generationSteps.map((item, index) => (
             <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
           ))}
         </div>
@@ -193,7 +242,7 @@ export function StoryWorkspacePage() {
           />
           <button
             className="button"
-            disabled={!activeRunId || !draftId || !memoryPatchId || commitMutation.isPending}
+            disabled={!activeRunId || !draftId || !memoryPatchId || hasDeferredPatchItems || commitMutation.isPending}
             onClick={() => commitMutation.mutate()}
             type="button"
           >
@@ -203,9 +252,301 @@ export function StoryWorkspacePage() {
           {!draftId || !memoryPatchId ? (
             <small className="muted">Waiting for result draft_id and memory_patch_id.</small>
           ) : null}
+          {hasDeferredPatchItems ? <small className="muted">Accept or remove deferred patch items before commit.</small> : null}
           {commitMutation.isError ? <ErrorState message={(commitMutation.error as Error).message} /> : null}
         </div>
       </aside>
     </div>
   );
+}
+
+function isActiveRunStatus(status?: string) {
+  return status === 'queued' || status === 'running' || status === 'loading_state';
+}
+
+function StoryResultPreview({
+  result,
+  patchDecisions,
+  onPatchDecisionChange,
+}: {
+  result: StoryRunResult;
+  patchDecisions: Record<string, PatchDecision>;
+  onPatchDecisionChange: (key: string, decision: PatchDecision) => void;
+}) {
+  const plot = result.plot_variable;
+  const review = result.review;
+  const patch = result.memory_patch;
+
+  return (
+    <div className="structured-result">
+      {plot ? (
+        <section className="result-section">
+          <div className="result-section__header">
+            <h2>Plot Variable</h2>
+            {plot.focal_character_id ? <span className="status-pill">{plot.focal_character_id}</span> : null}
+          </div>
+          <div className="key-value-grid">
+            <KeyValue label="Pressure" value={plot.pressure_source} />
+            <KeyValue label="Core Choice" value={plot.core_choice} />
+            <KeyValue label="Option A" value={plot.option_a} />
+            <KeyValue label="Cost A" value={plot.cost_a} />
+            <KeyValue label="Option B" value={plot.option_b} />
+            <KeyValue label="Cost B" value={plot.cost_b} />
+            <KeyValue label="Effect" value={plot.irreversible_effect} />
+            <KeyValue label="World Pressure" value={plot.world_state_pressure?.join(', ')} />
+          </div>
+        </section>
+      ) : null}
+
+      {review ? <ReviewPreview review={review} /> : null}
+
+      {patch ? (
+        <MemoryPatchPreview
+          patch={patch}
+          decisions={patchDecisions}
+          onDecisionChange={onPatchDecisionChange}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function KeyValue({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="kv-item">
+      <span>{label}</span>
+      <strong>{value || '-'}</strong>
+    </div>
+  );
+}
+
+function ReviewPreview({ review }: { review: StoryReviewReport }) {
+  const groups = [
+    ['Hard Violations', review.hard_violations],
+    ['Continuity Issues', review.continuity_issues],
+    ['Style Issues', review.style_issues],
+    ['Suggested Fixes', review.suggested_fixes],
+  ] as const;
+
+  return (
+    <section className="result-section">
+      <div className="result-section__header">
+        <h2>Review Report</h2>
+        <span className={review.pass ? 'status-pill' : 'status-pill status-pill--warning'}>
+          {review.pass ? 'pass' : 'needs review'}
+        </span>
+      </div>
+      <div className="review-grid">
+        {groups.map(([label, values]) => (
+          <div className="review-list" key={label}>
+            <h3>{label}</h3>
+            {values && values.length > 0 ? (
+              <ul>
+                {values.map((value, index) => (
+                  <li key={`${label}-${index}`}>{value}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">None</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MemoryPatchPreview({
+  patch,
+  decisions,
+  onDecisionChange,
+}: {
+  patch: StoryMemoryPatch;
+  decisions: Record<string, PatchDecision>;
+  onDecisionChange: (key: string, decision: PatchDecision) => void;
+}) {
+  const memoryUpdates = patch.character_memory_updates ?? [];
+  const relationshipUpdates = patch.relationship_updates ?? [];
+  const worldUpdates = patch.world_state_updates ?? [];
+
+  return (
+    <section className="result-section">
+      <div className="result-section__header">
+        <h2>Memory Patch</h2>
+        {patch.status ? <span className="status-pill">{patch.status}</span> : null}
+      </div>
+
+      <PatchGroup title="Character Memories">
+        {memoryUpdates.length > 0 ? (
+          memoryUpdates.map((item, index) => (
+            <CharacterMemoryPatchItem
+              item={item}
+              itemKey={patchItemKey('memory', index, item.character_id)}
+              key={patchItemKey('memory', index, item.character_id)}
+              decision={decisions[patchItemKey('memory', index, item.character_id)] ?? 'accept'}
+              onDecisionChange={onDecisionChange}
+            />
+          ))
+        ) : (
+          <p className="muted">No character memory updates.</p>
+        )}
+      </PatchGroup>
+
+      <PatchGroup title="Relationship Updates">
+        {relationshipUpdates.length > 0 ? (
+          relationshipUpdates.map((item, index) => (
+            <RelationshipPatchItem
+              item={item}
+              itemKey={patchItemKey('relationship', index, item.pair_id ?? item.summary)}
+              key={patchItemKey('relationship', index, item.pair_id ?? item.summary)}
+              decision={decisions[patchItemKey('relationship', index, item.pair_id ?? item.summary)] ?? 'accept'}
+              onDecisionChange={onDecisionChange}
+            />
+          ))
+        ) : (
+          <p className="muted">No relationship updates.</p>
+        )}
+      </PatchGroup>
+
+      <PatchGroup title="World State Updates">
+        {worldUpdates.length > 0 ? (
+          worldUpdates.map((item, index) => (
+            <WorldStatePatchItem
+              item={item}
+              itemKey={patchItemKey('world', index, item.key)}
+              key={patchItemKey('world', index, item.key)}
+              decision={decisions[patchItemKey('world', index, item.key)] ?? 'accept'}
+              onDecisionChange={onDecisionChange}
+            />
+          ))
+        ) : (
+          <p className="muted">No world state updates.</p>
+        )}
+      </PatchGroup>
+    </section>
+  );
+}
+
+function PatchGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="patch-group">
+      <h3>{title}</h3>
+      <div className="patch-list">{children}</div>
+    </div>
+  );
+}
+
+function CharacterMemoryPatchItem({
+  item,
+  itemKey,
+  decision,
+  onDecisionChange,
+}: {
+  item: StoryCharacterMemoryUpdate;
+  itemKey: string;
+  decision: PatchDecision;
+  onDecisionChange: (key: string, decision: PatchDecision) => void;
+}) {
+  return (
+    <PatchItemShell itemKey={itemKey} decision={decision} onDecisionChange={onDecisionChange}>
+      <strong>{item.character_id || 'Unknown character'}</strong>
+      <p>{item.content || '-'}</p>
+      <small>{[item.type, item.importance ? `importance ${item.importance}` : undefined].filter(Boolean).join(' · ')}</small>
+    </PatchItemShell>
+  );
+}
+
+function RelationshipPatchItem({
+  item,
+  itemKey,
+  decision,
+  onDecisionChange,
+}: {
+  item: StoryRelationshipUpdate;
+  itemKey: string;
+  decision: PatchDecision;
+  onDecisionChange: (key: string, decision: PatchDecision) => void;
+}) {
+  return (
+    <PatchItemShell itemKey={itemKey} decision={decision} onDecisionChange={onDecisionChange}>
+      <strong>{item.pair_id || item.pair?.id || 'New relationship update'}</strong>
+      <p>{item.summary || item.tension_delta || '-'}</p>
+      <small>
+        {[
+          item.views?.length ? `${item.views.length} views` : undefined,
+          item.events?.length ? `${item.events.length} events` : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      </small>
+    </PatchItemShell>
+  );
+}
+
+function WorldStatePatchItem({
+  item,
+  itemKey,
+  decision,
+  onDecisionChange,
+}: {
+  item: StoryWorldStateUpdate;
+  itemKey: string;
+  decision: PatchDecision;
+  onDecisionChange: (key: string, decision: PatchDecision) => void;
+}) {
+  return (
+    <PatchItemShell itemKey={itemKey} decision={decision} onDecisionChange={onDecisionChange}>
+      <strong>{item.key || 'World state'}</strong>
+      <p>{item.note || stringifyValue(item.value)}</p>
+      <small>{item.operation || 'update'}</small>
+    </PatchItemShell>
+  );
+}
+
+function PatchItemShell({
+  children,
+  itemKey,
+  decision,
+  onDecisionChange,
+}: {
+  children: ReactNode;
+  itemKey: string;
+  decision: PatchDecision;
+  onDecisionChange: (key: string, decision: PatchDecision) => void;
+}) {
+  return (
+    <div className={decision === 'defer' ? 'patch-item patch-item--deferred' : 'patch-item'}>
+      <div className="patch-item__body">{children}</div>
+      <div className="segmented-control" role="group">
+        <button
+          className={decision === 'accept' ? 'segmented-control__item segmented-control__item--active' : 'segmented-control__item'}
+          onClick={() => onDecisionChange(itemKey, 'accept')}
+          type="button"
+        >
+          Accept
+        </button>
+        <button
+          className={decision === 'defer' ? 'segmented-control__item segmented-control__item--active' : 'segmented-control__item'}
+          onClick={() => onDecisionChange(itemKey, 'defer')}
+          type="button"
+        >
+          Defer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function patchItemKey(kind: string, index: number, id?: string) {
+  return `${kind}:${id || 'new'}:${index}`;
+}
+
+function stringifyValue(value: unknown) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value == null) {
+    return '-';
+  }
+  return JSON.stringify(value);
 }

@@ -1,3 +1,4 @@
+// 关系表单使用的角色下拉选择器。
 import type { Character } from '../../types/api';
 
 type CharacterSelectProps = {

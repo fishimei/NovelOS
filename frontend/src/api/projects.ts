@@ -1,3 +1,4 @@
+// Projects API 客户端：创建、读取和更新项目。首页和项目工作台外壳都会依赖这些数据。
 import { getData, postData, putData } from './http';
 import type { CreateProjectRequest, Project, UpdateProjectRequest } from '../types/api';
 

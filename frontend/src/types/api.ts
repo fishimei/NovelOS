@@ -1,3 +1,5 @@
+// 前端共享 API 类型。当前 OpenAPI 里的 StandardResponse.data 仍是泛型对象，
+// 所以这里尽量按 docs/openapi (1).yaml 手写对齐各资源的实际结构。
 export type ApiMeta = {
   request_id?: string;
 };
@@ -102,17 +104,52 @@ export type CreateCharacterRequest = {
 
 export type UpdateCharacterRequest = Partial<CreateCharacterRequest>;
 
-export type Relationship = {
+export type RelationshipPair = {
   id: string;
   project_id?: string;
-  character_a_id: string;
-  character_b_id: string;
+  left_character_id: string;
+  right_character_id: string;
   summary: string;
   anchors?: string[];
   tension_points?: string[];
+  shared_history?: string[];
   volatility?: number;
+  status?: string;
   created_at?: string;
   updated_at?: string;
+};
+
+export type RelationshipView = {
+  id: string;
+  project_id?: string;
+  pair_id?: string;
+  source_character_id: string;
+  target_character_id: string;
+  public_attitude?: string;
+  private_attitude?: string;
+  believed_target_attitude?: string;
+  masking_strategy?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RelationshipEvent = {
+  id: string;
+  project_id?: string;
+  pair_id?: string;
+  event_type?: string;
+  summary?: string;
+  payload?: Record<string, unknown>;
+  created_at?: string;
+};
+
+export type Relationship = {
+  pair: RelationshipPair;
+  views?: RelationshipView[];
+  recent_events?: RelationshipEvent[];
+  character_a_view?: RelationshipView;
+  character_b_view?: RelationshipView;
 };
 
 export type CreateRelationshipRequest = {
@@ -130,9 +167,19 @@ export type SetupSession = {
   id: string;
   project_id?: string;
   seed_idea?: string;
+  last_user_message?: string;
   status?: string;
+  messages?: ConversationMessage[];
   created_at?: string;
   updated_at?: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  session_id?: string;
+  role: string;
+  content: string;
+  created_at?: string;
 };
 
 export type CreateSetupSessionRequest = {
@@ -146,19 +193,39 @@ export type AdvanceSetupSessionRequest = {
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | string;
 
 export type Run = {
-  id: string;
+  id?: string;
+  run_id?: string;
+  session_id?: string;
+  project_id?: string;
   status?: RunStatus;
+  current_step?: string;
+  progress?: number;
+  committed_at?: string;
   error?: string | { message?: string; code?: string };
   created_at?: string;
   updated_at?: string;
 };
 
-export type SetupRunResult = {
+export type SetupQuestion = {
+  key?: string;
+  question?: string;
+  why_it_matters?: string;
+};
+
+export type SetupDraft = {
   author_bible?: Partial<AuthorBible>;
   characters?: Partial<Character>[];
   relationships?: Partial<Relationship>[];
   world_state?: WorldStateEntry[];
-  questions?: string[];
+  open_questions?: SetupQuestion[];
+  assistant_summary?: string;
+};
+
+export type SetupRunResult = {
+  run_id?: string;
+  session_id?: string;
+  status?: string;
+  setup_draft?: SetupDraft;
   [key: string]: unknown;
 };
 
@@ -171,13 +238,22 @@ export type ApplySetupRunRequest = {
   author_note?: string;
 };
 
+export type ApplySetupRunResult = {
+  project_id?: string;
+  run_id?: string;
+  status?: string;
+};
+
 export type StorySession = {
   id: string;
   project_id?: string;
   title?: string;
   opening_situation?: string;
   author_intent?: string;
+  last_author_message?: string;
   status?: string;
+  current_plot_variable_summary?: string;
+  messages?: ConversationMessage[];
   created_at?: string;
   updated_at?: string;
 };
@@ -192,20 +268,90 @@ export type AdvanceStorySessionRequest = {
   author_message: string;
 };
 
+export type StoryDraft = {
+  id?: string;
+  title?: string;
+  chapter_number?: number;
+  content?: string;
+  summary?: string;
+  word_count?: number;
+};
+
+export type StoryPlotVariable = {
+  pressure_source?: string;
+  focal_character_id?: string;
+  core_choice?: string;
+  option_a?: string;
+  option_b?: string;
+  cost_a?: string;
+  cost_b?: string;
+  irreversible_effect?: string;
+  related_character_ids?: string[];
+  world_state_pressure?: string[];
+};
+
+export type StoryReviewReport = {
+  pass?: boolean;
+  hard_violations?: string[];
+  continuity_issues?: string[];
+  style_issues?: string[];
+  suggested_fixes?: string[];
+};
+
+export type StoryCharacterMemoryUpdate = {
+  character_id?: string;
+  type?: string;
+  content?: string;
+  importance?: number;
+};
+
+export type StoryRelationshipViewUpdate = {
+  view_id?: string;
+  pair_id?: string;
+  source_character_id?: string;
+  target_character_id?: string;
+  public_attitude?: string;
+  private_attitude?: string;
+  believed_target_attitude?: string;
+  masking_strategy?: string;
+};
+
+export type StoryRelationshipUpdate = {
+  pair_id?: string;
+  summary?: string;
+  tension_delta?: string;
+  pair?: Partial<RelationshipPair>;
+  views?: StoryRelationshipViewUpdate[];
+  events?: Partial<RelationshipEvent>[];
+};
+
+export type StoryWorldStateUpdate = {
+  key?: string;
+  operation?: 'set' | 'update' | 'delete' | string;
+  value?: unknown;
+  note?: string;
+};
+
+export type StoryMemoryPatch = {
+  id?: string;
+  status?: string;
+  character_memory_updates?: StoryCharacterMemoryUpdate[];
+  relationship_updates?: StoryRelationshipUpdate[];
+  world_state_updates?: StoryWorldStateUpdate[];
+};
+
 export type StoryRunResult = {
+  run_id?: string;
+  session_id?: string;
+  status?: string;
+  plot_variable?: StoryPlotVariable;
+  draft?: StoryDraft;
+  review?: StoryReviewReport;
+  memory_patch?: StoryMemoryPatch;
+  // Legacy fallbacks kept while old mock/runtime payloads may still be in circulation.
   draft_id?: string;
   memory_patch_id?: string;
   content?: string;
-  draft?: {
-    id?: string;
-    content?: string;
-    [key: string]: unknown;
-  };
-  memory_patch?: {
-    id?: string;
-    [key: string]: unknown;
-  };
-  review?: unknown;
   [key: string]: unknown;
 };
 
@@ -215,12 +361,41 @@ export type CommitStoryRunRequest = {
   author_note?: string;
 };
 
+export type CommitStoryRunResult = {
+  chapter?: Chapter;
+  patch?: StoryMemoryPatch;
+  story_run?: Run;
+};
+
+export type StoryGenerationStepEvent = {
+  step?: string;
+  progress?: number;
+  error?: string;
+  stop?: boolean;
+  reason?: string;
+  [key: string]: unknown;
+};
+
+export type StoryDraftDeltaEvent = {
+  turn_index?: number;
+  actor_id?: string;
+  content?: string;
+  text?: string;
+  delta?: string;
+  [key: string]: unknown;
+};
+
 export type Chapter = {
   id: string;
   project_id?: string;
   title?: string;
   chapter_number?: number;
+  summary?: string;
   content?: string;
+  author_note?: string;
+  status?: string;
+  word_count?: number;
+  committed_at?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -229,8 +404,10 @@ export type Memory = {
   id: string;
   character_id?: string;
   content: string;
+  source_chapter_id?: string;
   importance?: number;
   note?: string;
+  status?: string;
   created_at?: string;
 };
 

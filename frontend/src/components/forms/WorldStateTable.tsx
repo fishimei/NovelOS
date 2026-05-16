@@ -1,3 +1,4 @@
+// AuthorBible.initial_world_state 的编辑器。每行对应 WorldStateEntryRequest：key 加可选 value/note。
 import { Plus, X } from 'lucide-react';
 
 import type { WorldStateEntry } from '../../types/api';

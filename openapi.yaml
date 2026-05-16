@@ -403,7 +403,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/StorySessionResponse"
     get:
       tags: [StorySessions]
       summary: List story sessions
@@ -418,7 +418,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaginatedResponse"
+                $ref: "#/components/schemas/StorySessionListResponse"
 
   /story-sessions/{session_id}:
     get:
@@ -433,7 +433,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/StorySessionResponse"
 
   /story-sessions/{session_id}/advance:
     post:
@@ -460,7 +460,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/StoryRunResponse"
 
   /story-runs/{run_id}:
     get:
@@ -475,7 +475,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/StoryRunResponse"
 
   /story-runs/{run_id}/result:
     get:
@@ -490,7 +490,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/StoryRunResultResponse"
 
   /story-runs/{run_id}/events:
     get:
@@ -503,6 +503,7 @@ paths:
         - character_turn
         - draft_delta
         - review_required
+        其中 story run result、memory patch 和 review report 都是候选数据；只有 commit 成功后才会写入正式章节、记忆、关系和世界状态。
       operationId: subscribeStoryRunEvents
       parameters:
         - $ref: "#/components/parameters/RunId"
@@ -533,7 +534,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/CommitStoryRunResponse"
 
   /projects/{project_id}/chapters:
     get:
@@ -550,7 +551,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaginatedResponse"
+                $ref: "#/components/schemas/ChapterListResponse"
 
   /chapters/{chapter_id}:
     get:
@@ -565,7 +566,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/ChapterResponse"
 
   /characters/{character_id}/memories:
     get:
@@ -588,7 +589,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/MemoryListResponse"
     post:
       tags: [Memories]
       summary: Create character memory
@@ -607,7 +608,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StandardResponse"
+                $ref: "#/components/schemas/MemoryResponse"
 
 components:
   parameters:
@@ -929,6 +930,382 @@ components:
           type: string
         author_note:
           type: string
+
+    ConversationMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+        role:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    StorySession:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        title:
+          type: string
+        opening_situation:
+          type: string
+        author_intent:
+          type: string
+        last_author_message:
+          type: string
+        status:
+          type: string
+        current_plot_variable_summary:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationMessage"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StoryRun:
+      type: object
+      properties:
+        run_id:
+          type: string
+        session_id:
+          type: string
+        project_id:
+          type: string
+        status:
+          type: string
+        current_step:
+          type: string
+        progress:
+          type: integer
+        committed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StoryDraft:
+      type: object
+      description: Candidate chapter draft. It is not canon until commit succeeds.
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        chapter_number:
+          type: integer
+        content:
+          type: string
+        summary:
+          type: string
+        word_count:
+          type: integer
+
+    StoryPlotVariable:
+      type: object
+      properties:
+        pressure_source:
+          type: string
+        focal_character_id:
+          type: string
+        core_choice:
+          type: string
+        option_a:
+          type: string
+        option_b:
+          type: string
+        cost_a:
+          type: string
+        cost_b:
+          type: string
+        irreversible_effect:
+          type: string
+        related_character_ids:
+          type: array
+          items:
+            type: string
+        world_state_pressure:
+          type: array
+          items:
+            type: string
+
+    StoryReviewReport:
+      type: object
+      description: Candidate review report. It is advisory until the author commits or discards the result.
+      properties:
+        pass:
+          type: boolean
+        hard_violations:
+          type: array
+          items:
+            type: string
+        continuity_issues:
+          type: array
+          items:
+            type: string
+        style_issues:
+          type: array
+          items:
+            type: string
+        suggested_fixes:
+          type: array
+          items:
+            type: string
+
+    CharacterMemoryUpdate:
+      type: object
+      properties:
+        character_id:
+          type: string
+        type:
+          type: string
+        content:
+          type: string
+        importance:
+          type: integer
+
+    RelationshipViewUpdate:
+      type: object
+      properties:
+        view_id:
+          type: string
+        pair_id:
+          type: string
+        source_character_id:
+          type: string
+        target_character_id:
+          type: string
+        public_attitude:
+          type: string
+        private_attitude:
+          type: string
+        believed_target_attitude:
+          type: string
+        masking_strategy:
+          type: string
+
+    RelationshipUpdate:
+      type: object
+      properties:
+        pair_id:
+          type: string
+        summary:
+          type: string
+        tension_delta:
+          type: string
+        pair:
+          type: object
+        views:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelationshipViewUpdate"
+        events:
+          type: array
+          items:
+            type: object
+
+    WorldStateUpdate:
+      type: object
+      properties:
+        key:
+          type: string
+        operation:
+          type: string
+        value: {}
+        note:
+          type: string
+
+    MemoryPatch:
+      type: object
+      description: Candidate state patch. It is applied to canon only by POST /story-runs/{run_id}/commit.
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        character_memory_updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CharacterMemoryUpdate"
+        relationship_updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelationshipUpdate"
+        world_state_updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorldStateUpdate"
+
+    StoryRunResult:
+      type: object
+      description: Candidate story output. It must be reviewed and committed before it becomes canon.
+      properties:
+        run_id:
+          type: string
+        session_id:
+          type: string
+        status:
+          type: string
+        plot_variable:
+          $ref: "#/components/schemas/StoryPlotVariable"
+        draft:
+          $ref: "#/components/schemas/StoryDraft"
+        review:
+          $ref: "#/components/schemas/StoryReviewReport"
+        memory_patch:
+          $ref: "#/components/schemas/MemoryPatch"
+
+    Chapter:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        chapter_number:
+          type: integer
+        title:
+          type: string
+        summary:
+          type: string
+        content:
+          type: string
+        author_note:
+          type: string
+        status:
+          type: string
+        word_count:
+          type: integer
+        committed_at:
+          type: string
+          format: date-time
+
+    Memory:
+      type: object
+      properties:
+        id:
+          type: string
+        character_id:
+          type: string
+        content:
+          type: string
+        source_chapter_id:
+          type: string
+        importance:
+          type: integer
+        note:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ChapterResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Chapter"
+
+    ChapterListResponse:
+      allOf:
+        - $ref: "#/components/schemas/PaginatedResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Chapter"
+
+    MemoryResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Memory"
+
+    MemoryListResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Memory"
+
+    StorySessionResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StorySession"
+
+    StorySessionListResponse:
+      allOf:
+        - $ref: "#/components/schemas/PaginatedResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/StorySession"
+
+    StoryRunResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StoryRun"
+
+    StoryRunResultResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StoryRunResult"
+
+    CommitStoryRunResult:
+      type: object
+      properties:
+        chapter:
+          $ref: "#/components/schemas/Chapter"
+        patch:
+          $ref: "#/components/schemas/MemoryPatch"
+        story_run:
+          $ref: "#/components/schemas/StoryRun"
+
+    CommitStoryRunResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/CommitStoryRunResult"
 
     CreateMemoryRequest:
       type: object

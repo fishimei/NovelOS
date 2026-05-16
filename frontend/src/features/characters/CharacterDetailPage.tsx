@@ -1,3 +1,4 @@
+// 角色详情页。编辑完整角色档案，并维护后续可作为生成上下文的角色记忆。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Save } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
@@ -8,13 +9,13 @@ import { createCharacterMemory, listCharacterMemories } from '../../api/memories
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
 import { TextArrayField } from '../../components/forms/TextArrayField';
-import type { UpdateCharacterRequest } from '../../types/api';
+import type { CreateMemoryRequest, UpdateCharacterRequest } from '../../types/api';
 
 export function CharacterDetailPage() {
   const { characterId = '' } = useParams();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<UpdateCharacterRequest>({});
-  const [memoryContent, setMemoryContent] = useState('');
+  const [memoryForm, setMemoryForm] = useState<CreateMemoryRequest>({ content: '', importance: 1, note: '' });
 
   const characterQuery = useQuery({
     queryKey: ['character', characterId],
@@ -23,13 +24,14 @@ export function CharacterDetailPage() {
   });
 
   const memoriesQuery = useQuery({
-    queryKey: ['characterMemories', characterId, 20],
+    queryKey: ['memories', characterId, 20],
     queryFn: ({ signal }) => listCharacterMemories(characterId, 20, signal),
     enabled: Boolean(characterId),
   });
 
   useEffect(() => {
     if (characterQuery.data) {
+      // 用获取到的角色详情填充受控表单。
       setForm({
         name: characterQuery.data.name,
         role: characterQuery.data.role,
@@ -45,7 +47,7 @@ export function CharacterDetailPage() {
   }, [characterQuery.data]);
 
   const saveMutation = useMutation({
-    mutationFn: () => updateCharacter(characterId, form),
+    mutationFn: () => updateCharacter(characterId, normalizeCharacterForm(form)),
     onSuccess: (character) => {
       queryClient.invalidateQueries({ queryKey: ['character', characterId] });
       if (character.project_id) {
@@ -55,10 +57,10 @@ export function CharacterDetailPage() {
   });
 
   const createMemoryMutation = useMutation({
-    mutationFn: () => createCharacterMemory(characterId, { content: memoryContent.trim() }),
+    mutationFn: () => createCharacterMemory(characterId, normalizeMemoryForm(memoryForm)),
     onSuccess: () => {
-      setMemoryContent('');
-      queryClient.invalidateQueries({ queryKey: ['characterMemories', characterId] });
+      setMemoryForm({ content: '', importance: 1, note: '' });
+      queryClient.invalidateQueries({ queryKey: ['memories', characterId] });
     },
   });
 
@@ -127,21 +129,46 @@ export function CharacterDetailPage() {
         <h2>角色记忆</h2>
         <form className="stack-list" onSubmit={addMemory}>
           <textarea
-            value={memoryContent}
-            onChange={(event) => setMemoryContent(event.target.value)}
+            value={memoryForm.content}
+            onChange={(event) => setMemoryForm({ ...memoryForm, content: event.target.value })}
             placeholder="追加一条人物记忆"
             rows={4}
           />
-          <button className="button button--secondary" disabled={!memoryContent.trim()} type="submit">
+          <label className="field">
+            <span>重要度</span>
+            <input
+              min={1}
+              type="number"
+              value={memoryForm.importance ?? 1}
+              onChange={(event) =>
+                setMemoryForm({
+                  ...memoryForm,
+                  importance: event.target.value ? Number(event.target.value) : undefined,
+                })
+              }
+            />
+          </label>
+          <label className="field">
+            <span>备注</span>
+            <textarea
+              value={memoryForm.note ?? ''}
+              onChange={(event) => setMemoryForm({ ...memoryForm, note: event.target.value })}
+              rows={3}
+            />
+          </label>
+          <button className="button button--secondary" disabled={!memoryForm.content.trim()} type="submit">
             <Plus size={17} />
             添加记忆
           </button>
         </form>
         {memoriesQuery.isLoading ? <LoadingState /> : null}
+        {memoriesQuery.isError ? <ErrorState message={(memoriesQuery.error as Error).message} /> : null}
+        {createMemoryMutation.isError ? <ErrorState message={(createMemoryMutation.error as Error).message} /> : null}
         <div className="memory-list">
           {(memoriesQuery.data ?? []).map((memory) => (
             <div className="memory-item" key={memory.id}>
               <p>{memory.content}</p>
+              {typeof memory.importance === 'number' ? <small>重要度：{memory.importance}</small> : null}
               {memory.note ? <small>{memory.note}</small> : null}
             </div>
           ))}
@@ -149,4 +176,42 @@ export function CharacterDetailPage() {
       </aside>
     </main>
   );
+}
+
+function normalizeCharacterForm(form: UpdateCharacterRequest): UpdateCharacterRequest {
+  // PUT 发送完整可编辑档案，同时清理数组字段里的空项。
+  return {
+    name: form.name?.trim() ?? '',
+    role: form.role?.trim() ?? '',
+    profile: form.profile?.trim() ?? '',
+    personality: form.personality?.trim() ?? '',
+    voice_style: form.voice_style?.trim() ?? '',
+    goals: normalizeStringListForUpdate(form.goals),
+    fears: normalizeStringListForUpdate(form.fears),
+    secrets: normalizeStringListForUpdate(form.secrets),
+    constraints: normalizeStringListForUpdate(form.constraints),
+  };
+}
+
+function normalizeMemoryForm(form: CreateMemoryRequest): CreateMemoryRequest {
+  // 记忆内容必填；备注为空时从请求体里省略。
+  return {
+    content: form.content.trim(),
+    importance: form.importance,
+    note: normalizeOptionalText(form.note),
+  };
+}
+
+function normalizeOptionalText(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function normalizeStringList(values?: string[]) {
+  const normalized = values?.map((value) => value.trim()).filter(Boolean);
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeStringListForUpdate(values?: string[]) {
+  return values?.map((value) => value.trim()).filter(Boolean) ?? [];
 }

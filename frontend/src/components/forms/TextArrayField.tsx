@@ -1,3 +1,4 @@
+// 可复用的 string[] 字段编辑器，用于 goals、fears、rules、constraints 等 OpenAPI 数组字段。
 import { Plus, X } from 'lucide-react';
 
 type TextArrayFieldProps = {

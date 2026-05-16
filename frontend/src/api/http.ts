@@ -1,3 +1,4 @@
+// 底层 API 传输封装。src/api/* 的资源客户端都走这里，保证响应解包、JSON 解析和错误处理一致。
 import type { ApiErrorPayload, PaginatedResponse, StandardResponse } from '../types/api';
 
 const API_BASE_URL = '/api/v1';
@@ -52,6 +53,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const payload = await parseJson(response);
 
   if (!response.ok) {
+    // 后端错误预期符合 ApiErrorPayload；保留原始 status 作为兜底，方便 UI 展示可理解的失败信息。
     const errorPayload = payload as ApiErrorPayload | undefined;
     throw new ApiError(
       errorPayload?.error?.message ?? `Request failed with status ${response.status}`,

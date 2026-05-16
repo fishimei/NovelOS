@@ -1,3 +1,4 @@
+// 没有任何路由匹配时展示的兜底页面。
 import { Link } from 'react-router-dom';
 
 export function NotFoundPage() {

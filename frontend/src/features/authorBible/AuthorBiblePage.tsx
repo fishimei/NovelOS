@@ -1,3 +1,4 @@
+// 作者圣经编辑页。维护项目级正式写作规则，并保存 OpenAPI 定义的 UpdateAuthorBibleRequest 结构。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -34,6 +35,7 @@ export function AuthorBiblePage() {
 
   useEffect(() => {
     if (bibleQuery.data) {
+      // 把后端可选字段转换为受控表单值。
       setForm({
         theme: bibleQuery.data.theme ?? '',
         style_guide: bibleQuery.data.style_guide ?? '',
@@ -50,6 +52,7 @@ export function AuthorBiblePage() {
   const saveMutation = useMutation({
     mutationFn: () => updateAuthorBible(projectId, form),
     onSuccess: () => {
+      // 作者圣经可能影响项目上下文，因此同时刷新作者圣经和项目缓存。
       queryClient.invalidateQueries({ queryKey: ['authorBible', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     },

@@ -1,3 +1,4 @@
+// 列表或工作台暂无数据时使用的通用空状态。
 import type { ReactNode } from 'react';
 
 type EmptyStateProps = {

@@ -1,3 +1,4 @@
+// 纯本地最近项目记录。当前后端没有项目列表接口，所以首页用 localStorage 记住最近打开的项目。
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Project } from '../types/api';
