@@ -1,0 +1,67 @@
+/* ================================================================
+   WORKSPACE
+   ================================================================ */
+
+.workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.workspace--three {
+  align-items: start;
+  grid-template-columns: 270px minmax(0, 1fr) 340px;
+}
+
+.workspace-main {
+  min-width: 0;
+}
+
+.workspace-panel {
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 118px);
+  overflow: auto;
+}
+
+.workspace-panel > h2,
+.context-panel > h2 {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.session-item {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #1d2822;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  text-align: left;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.session-item strong {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.session-item--active {
+  background: #ffffff;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+}

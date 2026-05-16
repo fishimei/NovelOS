@@ -1,0 +1,129 @@
+/* ================================================================
+   STATS & GRIDS
+   ================================================================ */
+
+.stats-row,
+.action-grid,
+.list-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.stats-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 22px;
+}
+
+.stat,
+.action-tile,
+.list-card,
+.memory-item,
+.kv-item,
+.review-list,
+.patch-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.stat {
+  padding: 18px;
+}
+
+.stat span {
+  color: var(--text-muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.stat strong {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.action-grid,
+.list-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.action-tile,
+.list-card {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  transition:
+    border-color var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out),
+    transform var(--duration-normal) var(--ease-out);
+}
+
+.action-tile:hover {
+  transform: translateY(-2px);
+}
+
+.action-tile {
+  background: linear-gradient(180deg, #ffffff 0%, #fafbf8 100%);
+}
+
+.action-tile svg {
+  color: var(--accent);
+}
+
+.action-tile span,
+.list-card p {
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.list-card strong,
+.action-tile strong {
+  font-size: 15.5px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 22px;
+  padding: 20px;
+}
+
+.field--stack,
+.table-field {
+  grid-column: 1 / -1;
+}
+
+.table-field__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.world-table {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1.4fr 1.4fr 40px;
+}
+
+.world-table__head {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.world-table__row {
+  display: contents;
+}

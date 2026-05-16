@@ -1,0 +1,17 @@
+/* ================================================================
+   COMPOSER
+   ================================================================ */
+
+.composer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.composer .button {
+  justify-self: end;
+}

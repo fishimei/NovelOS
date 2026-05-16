@@ -1,0 +1,33 @@
+/* ================================================================
+   TOPBAR
+   ================================================================ */
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  align-items: center;
+  background: #111915;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #f0f4ee;
+  display: flex;
+  height: 60px;
+  padding: 0 32px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand {
+  align-items: center;
+  display: inline-flex;
+  font-size: 17px;
+  font-weight: 700;
+  gap: 9px;
+  letter-spacing: -0.01em;
+}
+
+.brand svg {
+  opacity: 0.85;
+}

@@ -1,0 +1,45 @@
+/* ================================================================
+   CHAPTER READER (novel reading experience)
+   ================================================================ */
+
+.reader-page {
+  margin: 0 auto;
+  max-width: 800px;
+  padding: 40px 24px;
+}
+
+.chapter-reader {
+  padding: 40px 48px;
+}
+
+.chapter-reader header {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+  padding-bottom: 18px;
+}
+
+.chapter-reader header h1 {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0 0 8px;
+}
+
+.chapter-reader header span {
+  font-size: 13.5px;
+}
+
+.chapter-content {
+  font-family: var(--font-reading);
+  font-size: 18px;
+  line-height: 2;
+  letter-spacing: 0.01em;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: break-word;
+  /* CJK-friendly line breaking */
+  line-break: strict;
+  word-break: keep-all;
+}

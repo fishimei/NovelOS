@@ -1,0 +1,47 @@
+/* ================================================================
+   PANELS & CARDS
+   ================================================================ */
+
+.panel,
+.workspace-panel,
+.context-panel,
+.form-grid,
+.toolbar-form,
+.relationship-form,
+.project-edit-form,
+.result-preview,
+.draft-surface,
+.result-section,
+.chapter-reader {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-xs);
+}
+
+.panel,
+.workspace-panel,
+.context-panel {
+  padding: 20px;
+}
+
+.panel__header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  margin: -2px 0 16px;
+  padding-bottom: 12px;
+}
+
+.panel__header h2,
+.workspace-panel h2,
+.context-panel h2,
+.result-preview h2 {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  margin: 0;
+}

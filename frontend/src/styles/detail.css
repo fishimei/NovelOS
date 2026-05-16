@@ -1,0 +1,31 @@
+/* ================================================================
+   DETAIL LAYOUT
+   ================================================================ */
+
+.detail-layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.context-panel {
+  align-self: start;
+  position: sticky;
+  top: 88px;
+}
+
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.memory-item {
+  padding: 12px;
+}
+
+.memory-item p {
+  margin: 0 0 6px;
+  line-height: 1.55;
+}

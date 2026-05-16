@@ -1,0 +1,63 @@
+/* ================================================================
+   INLINE FORMS
+   ================================================================ */
+
+.inline-row,
+.inline-form,
+.toolbar-form,
+.relationship-form {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+}
+
+.inline-form {
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.inline-row {
+  align-items: center;
+  color: var(--text);
+}
+
+.toolbar-form,
+.relationship-form,
+.project-edit-form {
+  margin-bottom: 20px;
+  padding: 16px;
+}
+
+.relationship-form {
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr auto;
+}
+
+.project-edit-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.relationship-form .field {
+  margin-bottom: 0;
+}
+
+.stack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.muted {
+  color: var(--text-muted);
+}

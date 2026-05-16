@@ -1,0 +1,45 @@
+/* ================================================================
+   NOTICES & STATES
+   ================================================================ */
+
+.notice {
+  align-items: flex-start;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+}
+
+.notice p {
+  margin: 4px 0 0;
+}
+
+.notice--error {
+  background: var(--danger-soft);
+  border: 1px solid #f0beb5;
+  color: var(--danger);
+}
+
+.loading-state {
+  color: var(--text-muted);
+  padding: 16px 0;
+}
+
+.empty-state {
+  background: #ffffff;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  padding: 32px;
+}
+
+.empty-state h2 {
+  margin: 0 0 8px;
+}
+
+.empty-state p {
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.65;
+}

@@ -1,0 +1,252 @@
+/* ================================================================
+   DRAFT SURFACE & RESULT PREVIEW
+   ================================================================ */
+
+.result-preview,
+.draft-surface {
+  min-height: 360px;
+  padding: 20px;
+}
+
+.draft-surface {
+  margin-bottom: 16px;
+}
+
+.draft-meta {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+}
+
+.draft-meta strong {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.draft-meta span {
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.draft-surface pre {
+  font-family: var(--font-reading);
+  font-size: 16px;
+  line-height: 1.9;
+  letter-spacing: 0.01em;
+}
+
+.structured-result {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.result-section {
+  padding: 16px;
+}
+
+.result-preview__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.result-section__header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.result-section__header h2,
+.patch-group h3,
+.review-list h3 {
+  margin: 0;
+}
+
+.result-section__header h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* ================================================================
+   STATUS PILLS
+   ================================================================ */
+
+.status-pill,
+.status-line {
+  background: var(--accent-soft);
+  border-radius: 999px;
+  color: #2d5038;
+  display: inline-flex;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 5px 12px;
+}
+
+.status-pill--warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+/* ================================================================
+   KEY-VALUE & REVIEW
+   ================================================================ */
+
+.key-value-grid,
+.review-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.kv-item {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.kv-item span,
+.patch-item small {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.kv-item strong {
+  color: #1d2822;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.review-list {
+  padding: 12px;
+}
+
+.review-list h3,
+.patch-group h3 {
+  color: #35413b;
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.review-list ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.review-list li {
+  line-height: 1.6;
+}
+
+.patch-group {
+  border-top: 1px solid #edf1ec;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.patch-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.patch-item {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.patch-item--deferred {
+  background: #fffdf5;
+  border-color: #ead99b;
+}
+
+.patch-item__body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.patch-item__body p {
+  color: #36443c;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ================================================================
+   SEGMENTED CONTROL
+   ================================================================ */
+
+.segmented-control {
+  background: #eef3ed;
+  border: 1px solid #d6dfd6;
+  border-radius: 8px;
+  display: inline-flex;
+  padding: 2px;
+}
+
+.segmented-control__item {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #435049;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 0 12px;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.segmented-control__item--active {
+  background: #ffffff;
+  color: var(--accent-strong);
+  box-shadow: 0 1px 2px rgba(23, 32, 27, 0.1);
+}
+
+/* ================================================================
+   EVENT SECTION
+   ================================================================ */
+
+.event-section {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.event-section pre {
+  background: #f7f9f6;
+  border: 1px solid #e6ece4;
+  border-radius: 8px;
+  color: #334039;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: 8px;
+  max-height: 180px;
+  padding: 10px;
+}
+
+.commit-box {
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+}

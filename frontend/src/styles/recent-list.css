@@ -1,0 +1,40 @@
+/* ================================================================
+   RECENT LIST
+   ================================================================ */
+
+.recent-list {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.recent-list__item {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  transition:
+    border-color var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.recent-list__item:hover,
+.list-card:hover,
+.action-tile:hover,
+.session-item:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.recent-list__item small,
+.list-card span,
+.memory-item small,
+.session-item span,
+.chapter-reader header span {
+  color: var(--text-muted);
+}
