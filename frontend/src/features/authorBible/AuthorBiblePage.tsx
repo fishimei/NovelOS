@@ -5,11 +5,12 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { getAuthorBible, updateAuthorBible } from '../../api/authorBible';
+import { ApiError } from '../../api/http';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
 import { TextArrayField } from '../../components/forms/TextArrayField';
 import { WorldStateTable } from '../../components/forms/WorldStateTable';
-import type { UpdateAuthorBibleRequest } from '../../types/api';
+import type { AuthorBible, UpdateAuthorBibleRequest } from '../../types/api';
 
 const emptyBible: UpdateAuthorBibleRequest = {
   theme: '',
@@ -31,7 +32,13 @@ export function AuthorBiblePage() {
     queryKey: ['authorBible', projectId],
     queryFn: ({ signal }) => getAuthorBible(projectId, signal),
     enabled: Boolean(projectId),
+    retry: (failureCount, error) => !isMissingAuthorBible(error) && failureCount < 3,
   });
+  const isMissingBible = isMissingAuthorBible(bibleQuery.error);
+
+  useEffect(() => {
+    setForm(emptyBible);
+  }, [projectId]);
 
   useEffect(() => {
     if (bibleQuery.data) {
@@ -51,8 +58,10 @@ export function AuthorBiblePage() {
 
   const saveMutation = useMutation({
     mutationFn: () => updateAuthorBible(projectId, form),
-    onSuccess: () => {
+    onSuccess: (savedBible) => {
       // 作者圣经可能影响项目上下文，因此同时刷新作者圣经和项目缓存。
+      queryClient.setQueryData(['authorBible', projectId], savedBible);
+      setForm(toAuthorBibleForm(savedBible));
       queryClient.invalidateQueries({ queryKey: ['authorBible', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     },
@@ -72,7 +81,7 @@ export function AuthorBiblePage() {
       </div>
 
       {bibleQuery.isLoading ? <LoadingState /> : null}
-      {bibleQuery.isError ? <ErrorState message={(bibleQuery.error as Error).message} /> : null}
+      {bibleQuery.isError && !isMissingBible ? <ErrorState message={(bibleQuery.error as Error).message} /> : null}
       {saveMutation.isError ? <ErrorState message={(saveMutation.error as Error).message} /> : null}
 
       <div className="form-grid">
@@ -120,4 +129,21 @@ export function AuthorBiblePage() {
       </div>
     </div>
   );
+}
+
+function isMissingAuthorBible(error: unknown) {
+  return error instanceof ApiError && error.status === 404 && error.code === 'NOT_FOUND';
+}
+
+function toAuthorBibleForm(bible: AuthorBible): UpdateAuthorBibleRequest {
+  return {
+    theme: bible.theme ?? '',
+    style_guide: bible.style_guide ?? '',
+    world_rules: bible.world_rules ?? [],
+    aesthetic_principles: bible.aesthetic_principles ?? [],
+    hard_constraints: bible.hard_constraints ?? [],
+    soft_preferences: bible.soft_preferences ?? [],
+    forbidden_moves: bible.forbidden_moves ?? [],
+    initial_world_state: bible.initial_world_state ?? [],
+  };
 }

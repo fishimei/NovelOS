@@ -41,21 +41,21 @@ type UpdateProjectInput struct {
 
 // Project 是小说的基本项目单元。
 type Project struct {
-	ID          string    // 项目唯一标识符
-	Title       string    // 项目标题
-	Genre       string    // 作品类型/体裁
-	Description string    // 项目描述
-	CreatedAt   time.Time // 创建时间
-	UpdatedAt   time.Time // 最后更新时间
+	ID          string    `json:"id"`          // 项目唯一标识符
+	Title       string    `json:"title"`       // 项目标题
+	Genre       string    `json:"genre"`       // 作品类型/体裁
+	Description string    `json:"description"` // 项目描述
+	CreatedAt   time.Time `json:"created_at"`  // 创建时间
+	UpdatedAt   time.Time `json:"updated_at"`  // 最后更新时间
 }
 
 // ProjectDetail 是项目的详细信息，包含关联实体的统计。
 type ProjectDetail struct {
-	Project                        // 嵌入 Project 的所有字段
-	CharacterCount             int // 项目中的角色数量
-	RelationshipCount          int // 项目中的关系数量
-	StorySessionCount          int // 项目中的故事会话数量
-	LastCommittedChapterNumber int // 最后一个已提交章节的编号
+	Project
+	CharacterCount             int `json:"character_count"`               // 项目中的角色数量
+	RelationshipCount          int `json:"relationship_count"`            // 项目中的关系数量
+	StorySessionCount          int `json:"story_session_count"`           // 项目中的故事会话数量
+	LastCommittedChapterNumber int `json:"last_committed_chapter_number"` // 最后一个已提交章节的编号
 }
 
 // WorldStateEntry 代表世界状态中的一个条目，用于跟踪故事世界中的关键信息。

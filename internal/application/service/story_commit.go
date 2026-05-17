@@ -55,6 +55,10 @@ func (c *StoryRunCommitter) Commit(ctx context.Context, runID string, input mode
 	if err != nil {
 		return model.CommitStoryRunResult{}, err
 	}
+	// 已提交的 run 已经进入正史；重复提交会再次创建章节和记忆，必须在事务前拦截。
+	if run.Status == "committed" || run.CommittedAt != nil {
+		return model.CommitStoryRunResult{}, pkgerr.Conflict(pkgerr.CodeRunAlreadyCommitted, "story run already committed")
+	}
 	result, err := c.sessions.GetRunResultByID(ctx, runID)
 	if err != nil {
 		return model.CommitStoryRunResult{}, err

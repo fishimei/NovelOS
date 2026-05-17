@@ -105,8 +105,8 @@ func New(cfg config.Config) *App {
 		AuthorBibles:  handler.NewAuthorBibleHandler(repos.AuthorBibles),
 		Characters:    handler.NewCharactersHandler(repos.Characters),
 		Relationships: handler.NewRelationshipsHandler(repos.Relationships),
-		SetupSessions: handler.NewSetupSessionsHandler(repos.SetupSessions, setupStarter, setupAdvancer, setupApplier),
-		StorySessions: handler.NewStorySessionsHandler(repos.StorySessions, eventStream, storyAdvancer, storyCommitter),
+		SetupSessions: handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
+		StorySessions: handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCommitter),
 		Chapters:      handler.NewChaptersHandler(repos.Chapters),
 		Memories:      handler.NewMemoriesHandler(repos.Memories),
 	}

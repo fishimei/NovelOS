@@ -14,6 +14,7 @@ import (
 
 type SetupSessionsHandler struct {
 	sessions port.SetupSessionRepository
+	audit    port.AuditRepository
 	starter  *service.SetupSessionStarter
 	advancer *service.SetupSessionAdvancer
 	applier  *service.SetupRunApplier
@@ -21,12 +22,14 @@ type SetupSessionsHandler struct {
 
 func NewSetupSessionsHandler(
 	sessions port.SetupSessionRepository,
+	audit port.AuditRepository,
 	starter *service.SetupSessionStarter,
 	advancer *service.SetupSessionAdvancer,
 	applier *service.SetupRunApplier,
 ) SetupSessionsHandler {
 	return SetupSessionsHandler{
 		sessions: sessions,
+		audit:    audit,
 		starter:  starter,
 		advancer: advancer,
 		applier:  applier,
@@ -105,6 +108,17 @@ func (h SetupSessionsHandler) GetRun(c *gin.Context) {
 
 func (h SetupSessionsHandler) GetRunResult(c *gin.Context) {
 	result, err := h.sessions.GetRunResultByID(c.Request.Context(), c.Param("run_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h SetupSessionsHandler) GetRunEventHistory(c *gin.Context) {
+	// 历史事件是运行态审计数据，setup apply 才会把候选设定写入正式状态。
+	result, err := h.audit.ListRunEvents(c.Request.Context(), "setup", c.Param("run_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return

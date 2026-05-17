@@ -1,7 +1,7 @@
 app:
   name: NovelOS
   env: development
-  port: 8080
+  port: 8000
 
 postgres:
   dsn: postgres://postgres:postgres@localhost:5432/novelos?sslmode=disable

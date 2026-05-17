@@ -15,6 +15,7 @@ export function HomePage() {
   const [genre, setGenre] = useState('');
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
+  const canOpenProject = isValidProjectId(projectId);
 
   const createProjectMutation = useMutation({
     mutationFn: createProject,
@@ -36,8 +37,9 @@ export function HomePage() {
 
   const openProject = (event: FormEvent) => {
     event.preventDefault();
-    if (projectId.trim()) {
-      navigate(`/projects/${projectId.trim()}`);
+    const normalizedProjectId = projectId.trim();
+    if (isValidProjectId(normalizedProjectId)) {
+      navigate(`/projects/${normalizedProjectId}`);
     }
   };
 
@@ -49,28 +51,32 @@ export function HomePage() {
       </section>
 
       <section className="home__grid">
-        <form className="panel" onSubmit={handleCreate}>
+        <section className="home__primary panel">
           <div className="panel__header">
             <h2>创建项目</h2>
           </div>
-          {createProjectMutation.isError ? <ErrorState message={(createProjectMutation.error as Error).message} /> : null}
-          <label className="field">
-            <span>标题</span>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} required />
-          </label>
-          <label className="field">
-            <span>类型</span>
-            <input value={genre} onChange={(event) => setGenre(event.target.value)} placeholder="悬疑 / 都市 / 情感" />
-          </label>
-          <label className="field">
-            <span>简介</span>
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} />
-          </label>
-          <button className="button" disabled={!title.trim() || createProjectMutation.isPending} type="submit">
-            <Plus size={17} />
-            创建
-          </button>
-        </form>
+          <form className="home-create-form" onSubmit={handleCreate}>
+            {createProjectMutation.isError ? <ErrorState message={(createProjectMutation.error as Error).message} /> : null}
+            <label className="field">
+              <span>标题</span>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+            </label>
+            <label className="field">
+              <span>类型</span>
+              <input value={genre} onChange={(event) => setGenre(event.target.value)} placeholder="悬疑 / 都市 / 情感" />
+            </label>
+            <label className="field field--stack">
+              <span>简介</span>
+              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={6} />
+            </label>
+            <div className="form-actions">
+              <button className="button" disabled={!title.trim() || createProjectMutation.isPending} type="submit">
+                <Plus size={17} />
+                创建
+              </button>
+            </div>
+          </form>
+        </section>
 
         <div className="panel">
           <div className="panel__header">
@@ -78,7 +84,7 @@ export function HomePage() {
           </div>
           <form className="inline-form" onSubmit={openProject}>
             <input value={projectId} onChange={(event) => setProjectId(event.target.value)} placeholder="project_..." />
-            <button className="button button--secondary" disabled={!projectId.trim()} type="submit">
+            <button className="button button--secondary" disabled={!canOpenProject} type="submit">
               <ArrowRight size={17} />
               打开
             </button>
@@ -87,8 +93,8 @@ export function HomePage() {
           <div className="recent-list">
             <h3>最近项目</h3>
             {recentProjects.length === 0 ? <p className="muted">暂无最近项目。</p> : null}
-            {recentProjects.map((project) => (
-              <Link className="recent-list__item" key={project.id} to={`/projects/${project.id}`}>
+            {recentProjects.filter((project) => isValidProjectId(project.id)).map((project) => (
+              <Link className="recent-list__item" key={project.id} to={`/projects/${project.id.trim()}`}>
                 <span>{project.title}</span>
                 <small>{project.genre || project.id}</small>
               </Link>
@@ -98,4 +104,9 @@ export function HomePage() {
       </section>
     </main>
   );
+}
+
+function isValidProjectId(id: string) {
+  const normalized = id.trim();
+  return normalized !== '' && normalized !== 'undefined' && normalized !== 'null';
 }

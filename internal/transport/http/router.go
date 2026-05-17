@@ -62,6 +62,7 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.POST("/setup-sessions/:session_id/advance", handlers.SetupSessions.Advance)
 		api.GET("/setup-runs/:run_id", handlers.SetupSessions.GetRun)
 		api.GET("/setup-runs/:run_id/result", handlers.SetupSessions.GetRunResult)
+		api.GET("/setup-runs/:run_id/event-history", handlers.SetupSessions.GetRunEventHistory)
 		api.POST("/setup-sessions/:session_id/apply", handlers.SetupSessions.ApplyRun)
 
 		api.POST("/projects/:project_id/story-sessions", handlers.StorySessions.Create)
@@ -70,6 +71,7 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.POST("/story-sessions/:session_id/advance", handlers.StorySessions.Advance)
 		api.GET("/story-runs/:run_id", handlers.StorySessions.GetRun)
 		api.GET("/story-runs/:run_id/result", handlers.StorySessions.GetRunResult)
+		api.GET("/story-runs/:run_id/event-history", handlers.StorySessions.GetRunEventHistory)
 		api.GET("/story-runs/:run_id/events", handlers.StorySessions.Subscribe)
 		api.POST("/story-runs/:run_id/commit", handlers.StorySessions.CommitRun)
 

@@ -17,7 +17,16 @@ function readRecentProjects(): RecentProject[] {
   }
 
   try {
-    return JSON.parse(raw) as RecentProject[];
+    const parsed = JSON.parse(raw) as Partial<RecentProject>[];
+    const seen = new Set<string>();
+
+    return parsed.filter((project): project is RecentProject => {
+      if (!isValidProjectId(project.id) || seen.has(project.id)) {
+        return false;
+      }
+      seen.add(project.id);
+      return true;
+    });
   } catch {
     return [];
   }
@@ -31,10 +40,16 @@ export function useRecentProjects() {
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
 
   useEffect(() => {
-    setRecentProjects(readRecentProjects());
+    const projects = readRecentProjects();
+    writeRecentProjects(projects);
+    setRecentProjects(projects);
   }, []);
 
   const rememberProject = useCallback((project: Pick<Project, 'id' | 'title' | 'genre'>) => {
+    if (!isValidProjectId(project.id)) {
+      return;
+    }
+
     setRecentProjects((current) => {
       const next = [
         {
@@ -52,4 +67,12 @@ export function useRecentProjects() {
   }, []);
 
   return { recentProjects, rememberProject };
+}
+
+function isValidProjectId(id: unknown): id is string {
+  if (typeof id !== 'string') {
+    return false;
+  }
+  const normalized = id.trim();
+  return normalized !== '' && normalized !== 'undefined' && normalized !== 'null';
 }

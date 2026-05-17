@@ -385,6 +385,16 @@ export type StoryDraftDeltaEvent = {
   [key: string]: unknown;
 };
 
+export type RunEvent = {
+  id: string;
+  run_kind?: string;
+  run_id?: string;
+  event_name: string;
+  sequence?: number;
+  payload?: Record<string, unknown>;
+  created_at?: string;
+};
+
 export type Chapter = {
   id: string;
   project_id?: string;

@@ -229,6 +229,38 @@ func TestSetupApplyRunPersistsFormalState(t *testing.T) {
 	}
 }
 
+func TestRunEventHistoryOrdersBySequence(t *testing.T) {
+	_, repos, _, _, clock := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "History"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	if err != nil {
+		t.Fatalf("create story run: %v", err)
+	}
+	for _, event := range []model.RunEvent{
+		{ID: "event_2", RunKind: "story", RunID: run.RunID, EventName: "second", Sequence: 2, Payload: map[string]any{"step": "second"}, CreatedAt: clock.Now()},
+		{ID: "event_1", RunKind: "story", RunID: run.RunID, EventName: "first", Sequence: 1, Payload: map[string]any{"step": "first"}, CreatedAt: clock.Now()},
+	} {
+		if _, err := repos.Audit.AppendRunEvent(context.Background(), event); err != nil {
+			t.Fatalf("append run event: %v", err)
+		}
+	}
+
+	events, err := repos.Audit.ListRunEvents(context.Background(), "story", run.RunID)
+	if err != nil {
+		t.Fatalf("list run events: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	if events[0].Sequence != 1 || events[1].Sequence != 2 {
+		t.Fatalf("events not ordered by sequence: %+v", events)
+	}
+}
+
 func TestStoryCommitRunPersistsChapterMemoryRelationshipAndWorldState(t *testing.T) {
 	_, repos, txm, ids, clock := testRepos(t)
 	project := createProject(t, repos)
@@ -329,6 +361,13 @@ func TestStoryCommitRunPersistsChapterMemoryRelationshipAndWorldState(t *testing
 	}
 	if len(world) != 1 || world[0].Key != "station_weather" {
 		t.Fatalf("unexpected world state: %+v", world)
+	}
+	if _, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
+		DraftID:       "draft_1",
+		MemoryPatchID: "patch_1",
+		AuthorNote:    "重复提交",
+	}); err == nil {
+		t.Fatalf("expected duplicate commit to be rejected")
 	}
 }
 

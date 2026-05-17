@@ -26,7 +26,7 @@ func (h AuthorBibleHandler) Get(c *gin.Context) {
 		return
 	}
 
-	presenter.Data(c, http.StatusOK, result)
+	presenter.Data(c, http.StatusOK, dto.AuthorBibleFromModel(result))
 }
 
 func (h AuthorBibleHandler) Update(c *gin.Context) {
@@ -59,5 +59,5 @@ func (h AuthorBibleHandler) Update(c *gin.Context) {
 		return
 	}
 
-	presenter.Data(c, http.StatusOK, result)
+	presenter.Data(c, http.StatusOK, dto.AuthorBibleFromModel(result))
 }

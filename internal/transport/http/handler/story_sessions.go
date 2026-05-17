@@ -15,6 +15,7 @@ import (
 
 type StorySessionsHandler struct {
 	sessions  port.StorySessionRepository
+	audit     port.AuditRepository
 	events    port.GenerationEventStream
 	advancer  *service.StorySessionAdvancer
 	committer *service.StoryRunCommitter
@@ -22,12 +23,14 @@ type StorySessionsHandler struct {
 
 func NewStorySessionsHandler(
 	sessions port.StorySessionRepository,
+	audit port.AuditRepository,
 	events port.GenerationEventStream,
 	advancer *service.StorySessionAdvancer,
 	committer *service.StoryRunCommitter,
 ) StorySessionsHandler {
 	return StorySessionsHandler{
 		sessions:  sessions,
+		audit:     audit,
 		events:    events,
 		advancer:  advancer,
 		committer: committer,
@@ -108,6 +111,17 @@ func (h StorySessionsHandler) GetRun(c *gin.Context) {
 
 func (h StorySessionsHandler) GetRunResult(c *gin.Context) {
 	result, err := h.sessions.GetRunResultByID(c.Request.Context(), c.Param("run_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h StorySessionsHandler) GetRunEventHistory(c *gin.Context) {
+	// 历史事件读取持久化 RunEvent；实时流仍由 Subscribe 负责，避免把 SSE 当成正史来源。
+	result, err := h.audit.ListRunEvents(c.Request.Context(), "story", c.Param("run_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return

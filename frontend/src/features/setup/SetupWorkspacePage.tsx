@@ -4,11 +4,12 @@ import { Check, Send } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
-import { getSetupRun, getSetupRunResult } from '../../api/setupRuns';
+import { getSetupRun, getSetupRunResult, listSetupRunEventHistory } from '../../api/setupRuns';
 import { advanceSetupSession, applySetupRun, createSetupSession, listSetupSessions } from '../../api/setupSessions';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
+import type { RunEvent } from '../../types/api';
 
 const defaultAcceptSections = {
   authorBible: true,
@@ -53,6 +54,12 @@ export function SetupWorkspacePage() {
     enabled: Boolean(activeRunId) && runQuery.data?.status !== 'queued' && runQuery.data?.status !== 'running',
   });
 
+  const eventHistoryQuery = useQuery({
+    queryKey: ['setupRunEventHistory', activeRunId],
+    queryFn: ({ signal }) => listSetupRunEventHistory(activeRunId, signal),
+    enabled: Boolean(activeRunId),
+  });
+
   const createSessionMutation = useMutation({
     mutationFn: () => createSetupSession(projectId, { seed_idea: seedIdea.trim() }),
     onSuccess: (session) => {
@@ -88,6 +95,7 @@ export function SetupWorkspacePage() {
       queryClient.invalidateQueries({ queryKey: ['characters', projectId] });
       queryClient.invalidateQueries({ queryKey: ['relationships', projectId] });
       queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['setupRunEventHistory', activeRunId] });
     },
   });
 
@@ -104,16 +112,16 @@ export function SetupWorkspacePage() {
   return (
     <div className="workspace workspace--three">
       <aside className="workspace-panel">
-        <h2>Setup Sessions</h2>
+        <h2>设定会话</h2>
         <form className="stack-list" onSubmit={startSession}>
           <textarea
             value={seedIdea}
             onChange={(event) => setSeedIdea(event.target.value)}
-            placeholder="Seed idea"
+            placeholder="种子想法"
             rows={5}
           />
           <button className="button" disabled={!seedIdea.trim() || createSessionMutation.isPending} type="submit">
-            Create Session
+            创建会话
           </button>
         </form>
         {sessionsQuery.isLoading ? <LoadingState /> : null}
@@ -135,8 +143,8 @@ export function SetupWorkspacePage() {
       <section className="workspace-main">
         <div className="page__header">
           <div>
-            <h1>Setup Workspace</h1>
-            <p>Collect and review structured canon drafts before applying them to the project.</p>
+            <h1>设定建模工作台</h1>
+            <p>整理并审阅结构化设定草稿，再选择写入项目正式状态。</p>
           </div>
         </div>
 
@@ -145,14 +153,14 @@ export function SetupWorkspacePage() {
         {resultQuery.isError ? <ErrorState message={(resultQuery.error as Error).message} /> : null}
 
         {!selectedSessionId ? (
-          <EmptyState title="Create a setup session first" description="Start from one seed idea." />
+          <EmptyState title="请先创建设定会话" description="从一个种子想法开始建模。" />
         ) : (
           <>
             <form className="composer" onSubmit={sendMessage}>
               <textarea
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
-                placeholder="Add details or answer assistant questions"
+                placeholder="补充细节，或回答助手提出的问题"
                 rows={4}
               />
               <button
@@ -161,20 +169,20 @@ export function SetupWorkspacePage() {
                 type="submit"
               >
                 <Send size={17} />
-                Send
+                发送
               </button>
             </form>
 
             <div className="result-preview">
               <div className="result-preview__header">
-                <h2>Structured Draft</h2>
+                <h2>结构化草稿</h2>
                 {runQuery.data?.status ? <span className="status-pill">{runQuery.data.status}</span> : null}
               </div>
-              {runQuery.isLoading ? <LoadingState label="Loading run status" /> : null}
+              {runQuery.isLoading ? <LoadingState label="正在加载运行状态" /> : null}
               {resultQuery.data ? (
                 <pre>{JSON.stringify(resultQuery.data.setup_draft ?? resultQuery.data, null, 2)}</pre>
               ) : (
-                <p className="muted">Setup run results will appear here.</p>
+                <p className="muted">设定运行结果会显示在这里。</p>
               )}
             </div>
           </>
@@ -182,7 +190,7 @@ export function SetupWorkspacePage() {
       </section>
 
       <aside className="workspace-panel">
-        <h2>Apply Canon</h2>
+        <h2>应用到正史</h2>
         <div className="stack-list">
           <label className="inline-row">
             <input
@@ -220,7 +228,7 @@ export function SetupWorkspacePage() {
         <textarea
           value={authorNote}
           onChange={(event) => setAuthorNote(event.target.value)}
-          placeholder="Author note"
+          placeholder="作者备注"
           rows={5}
         />
         <button
@@ -230,9 +238,14 @@ export function SetupWorkspacePage() {
           type="button"
         >
           <Check size={17} />
-          Apply Selected
+          应用所选内容
         </button>
         {applyMutation.isError ? <ErrorState message={(applyMutation.error as Error).message} /> : null}
+        <SetupRunEventHistoryPanel
+          events={eventHistoryQuery.data ?? []}
+          isLoading={eventHistoryQuery.isLoading}
+          error={eventHistoryQuery.error as Error | null}
+        />
       </aside>
     </div>
   );
@@ -240,4 +253,38 @@ export function SetupWorkspacePage() {
 
 function hasAcceptedSection(sections: typeof defaultAcceptSections) {
   return sections.authorBible || sections.characters || sections.relationships || sections.worldState;
+}
+
+function SetupRunEventHistoryPanel({
+  events,
+  isLoading,
+  error,
+}: {
+  events: RunEvent[];
+  isLoading: boolean;
+  error: Error | null;
+}) {
+  return (
+    <div className="event-section">
+      <h3>运行历史</h3>
+      <small className="muted">已持久化的设定事件只用于审计；只有应用动作会写入正式设定。</small>
+      {isLoading ? <LoadingState label="正在加载历史事件" /> : null}
+      {error ? <ErrorState message={error.message} /> : null}
+      {!isLoading && !error && events.length === 0 ? <p className="muted">暂无已持久化事件。</p> : null}
+      {events.map((event) => (
+        <pre key={event.id}>
+          {JSON.stringify(
+            {
+              sequence: event.sequence,
+              event_name: event.event_name,
+              payload: event.payload,
+              created_at: event.created_at,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      ))}
+    </div>
+  );
 }

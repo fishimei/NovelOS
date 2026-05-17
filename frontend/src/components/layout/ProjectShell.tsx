@@ -1,6 +1,6 @@
 // 项目级外壳。这里统一加载当前项目，渲染项目侧边栏，并通过 outlet context 把项目数据传给子页面。
 import { useQuery } from '@tanstack/react-query';
-import { Outlet, useParams } from 'react-router-dom';
+import { Navigate, Outlet, useParams } from 'react-router-dom';
 
 import { getProject } from '../../api/projects';
 import { ErrorState } from '../feedback/ErrorState';
@@ -9,11 +9,16 @@ import { ProjectNav } from './ProjectNav';
 
 export function ProjectShell() {
   const { projectId = '' } = useParams();
+  const hasValidProjectId = isValidProjectId(projectId);
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: ({ signal }) => getProject(projectId, signal),
-    enabled: Boolean(projectId),
+    enabled: hasValidProjectId,
   });
+
+  if (!hasValidProjectId) {
+    return <Navigate replace to="/" />;
+  }
 
   return (
     <div className="project-shell">
@@ -30,4 +35,9 @@ export function ProjectShell() {
       </main>
     </div>
   );
+}
+
+function isValidProjectId(projectId: string) {
+  const normalized = projectId.trim();
+  return normalized !== '' && normalized !== 'undefined' && normalized !== 'null';
 }
