@@ -16,8 +16,11 @@ export function WorldStateTable({ value, onChange }: WorldStateTableProps) {
   return (
     <div className="table-field">
       <div className="table-field__header">
-        <span>世界状态</span>
-        <button className="button button--secondary" type="button" onClick={() => onChange([...value, { key: '' }])}>
+        <div>
+          <span>世界状态</span>
+          <small>用键、值、备注记录故事开始前已经成立的局势和变量。</small>
+        </div>
+        <button className="button button--ghost" type="button" onClick={() => onChange([...value, { key: '' }])}>
           <Plus size={16} />
           添加变量
         </button>

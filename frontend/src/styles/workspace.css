@@ -4,49 +4,67 @@
 
 .workspace {
   display: grid;
-  gap: 16px;
+  gap: 24px;
 }
 
 .workspace--three {
   align-items: start;
-  grid-template-columns: 270px minmax(0, 1fr) 340px;
+  grid-template-columns: var(--workspace-sidebar) minmax(var(--workspace-main-min), 1fr) var(--workspace-aside);
+}
+
+.workspace--setup-layout {
+  margin: 0 auto;
+  grid-template-columns: var(--workspace-sidebar) minmax(0, 1fr) var(--workspace-aside);
+  max-width: none;
+  width: 100%;
 }
 
 .workspace-main {
+  display: grid;
+  gap: 24px;
   min-width: 0;
 }
 
+.workspace-main--story {
+  max-width: none;
+  width: 100%;
+}
+
+.workspace-main--setup {
+  max-width: none;
+}
+
 .workspace-panel {
-  position: sticky;
-  top: 88px;
-  max-height: calc(100vh - 118px);
+  max-height: calc(100vh - var(--topbar-height) - 40px);
   overflow: auto;
+  position: sticky;
+  top: calc(var(--topbar-height) + 24px);
 }
 
 .workspace-panel > h2,
 .context-panel > h2 {
   border-bottom: 1px solid var(--border);
-  margin-bottom: 14px;
-  padding-bottom: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
 }
 
 .session-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   margin-top: 16px;
 }
 
 .session-item {
   background: var(--surface-muted);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  color: #1d2822;
+  border-radius: var(--radius-md);
+  color: var(--text);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 11px 12px;
+  gap: 5px;
+  padding: 14px 14px 13px;
   text-align: left;
   transition:
     border-color var(--duration-fast) var(--ease-out),
@@ -55,7 +73,7 @@
 }
 
 .session-item strong {
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -64,4 +82,72 @@
   background: #ffffff;
   border-color: var(--accent);
   box-shadow: var(--shadow-glow);
+}
+
+.story-empty-state {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.story-empty-steps {
+  color: var(--text-muted);
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.story-status-card {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.story-status-card__header {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.story-status-card__header small,
+.story-progress-item small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.story-progress-list {
+  display: grid;
+  gap: 12px;
+}
+
+.story-progress-item {
+  align-items: flex-start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 12px minmax(0, 1fr);
+}
+
+.story-progress-item__dot {
+  border-radius: 999px;
+  height: 12px;
+  margin-top: 3px;
+  width: 12px;
+}
+
+.story-progress-item__dot--idle {
+  background: var(--border-strong);
+}
+
+.story-progress-item__dot--active {
+  background: var(--warning);
+}
+
+.story-progress-item__dot--done {
+  background: var(--accent);
+}
+
+.story-progress-item__dot--error {
+  background: var(--danger);
 }

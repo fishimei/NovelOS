@@ -10,6 +10,10 @@ export function AppShell() {
           <BookOpen size={20} />
           <span>NovelOS</span>
         </Link>
+        <div className="topbar__status">
+          <span className="topbar__status-dot" aria-hidden="true" />
+          <span>工作区已就绪</span>
+        </div>
       </header>
       <Outlet />
     </div>

@@ -8,11 +8,13 @@
 
 .topbar {
   align-items: center;
-  background: #111915;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: #f0f4ee;
+  backdrop-filter: blur(14px);
+  background: rgba(245, 241, 232, 0.88);
+  border-bottom: 1px solid rgba(90, 107, 78, 0.12);
+  color: var(--text);
   display: flex;
   height: 60px;
+  justify-content: space-between;
   padding: 0 32px;
   position: sticky;
   top: 0;
@@ -29,5 +31,21 @@
 }
 
 .brand svg {
-  opacity: 0.85;
+  color: var(--accent);
+}
+
+.topbar__status {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.topbar__status-dot {
+  background: var(--accent);
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(90, 107, 78, 0.12);
+  height: 8px;
+  width: 8px;
 }

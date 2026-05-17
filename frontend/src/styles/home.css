@@ -6,7 +6,7 @@
   margin: 0 auto;
   max-width: min(1760px, calc(100vw - 96px));
   min-height: calc(100vh - 56px);
-  padding: 36px 0 48px;
+  padding: 40px 0 56px;
 }
 
 .home__intro {
@@ -20,18 +20,18 @@
 .page__header h1,
 .center-page h1 {
   font-family: var(--font-display);
-  font-size: 38px;
+  font-size: clamp(1.85rem, 1.55rem + 1vw, 2.1rem);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.2;
-  margin: 0 0 10px;
+  margin: 0 0 6px;
 }
 
 .home__intro p,
 .page__header p {
   color: var(--text-muted);
-  margin: 0;
-  max-width: 760px;
+  font-size: 13px;
+  max-width: 68ch;
   line-height: 1.7;
 }
 

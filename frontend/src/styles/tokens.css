@@ -3,38 +3,48 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
 :root {
-  /* -- Color system -- */
-  --bg: #f6f7f4;
-  --surface: #ffffff;
-  --surface-muted: #f8f9f6;
-  --surface-strong: #edf1ea;
-  --text: #1a2118;
-  --text-muted: #5e6b60;
-  --text-subtle: #7a8579;
-  --border: #dce3d8;
-  --border-strong: #c2cfc0;
-  --accent: #25613d;
-  --accent-strong: #1a4a2e;
-  --accent-soft: #e0ebdf;
-  --accent-glow: rgba(37, 97, 61, 0.12);
-  --warning: #7a5000;
-  --warning-soft: #fef4d4;
-  --danger: #8a3125;
-  --danger-soft: #fef0ec;
+  --bg: #f5f1e8;
+  --surface: #fdfbf5;
+  --surface-muted: #f7f3ea;
+  --surface-strong: #ece4d4;
+  --surface-inset: #ffffff;
+  --text: #2c2a26;
+  --text-muted: #6b665c;
+  --text-subtle: #9a9489;
+  --border: #e5dfd0;
+  --border-strong: #d5ccba;
+  --accent: #5a6b4e;
+  --accent-strong: #4a5a3f;
+  --accent-soft: #e7ede3;
+  --accent-glow: rgba(90, 107, 78, 0.12);
+  --warning: #7a5d1c;
+  --warning-soft: #fbf2d8;
+  --danger: #a94c3d;
+  --danger-soft: #f8ece7;
 
-  /* -- Shadows (layered for depth) -- */
-  --shadow-xs: 0 1px 2px rgba(26, 33, 24, 0.04);
-  --shadow-soft: 0 1px 2px rgba(26, 33, 24, 0.05), 0 8px 24px rgba(26, 33, 24, 0.06);
-  --shadow-elevated: 0 2px 4px rgba(26, 33, 24, 0.06), 0 16px 40px rgba(26, 33, 24, 0.08);
+  --shadow-xs: 0 1px 2px rgba(60, 50, 30, 0.04);
+  --shadow-soft: 0 1px 2px rgba(60, 50, 30, 0.04), 0 4px 12px rgba(60, 50, 30, 0.04);
+  --shadow-elevated: 0 8px 24px rgba(60, 50, 30, 0.08);
   --shadow-glow: 0 0 0 3px var(--accent-glow);
 
-  /* -- Typography scale -- */
   --font-display: 'Playfair Display', 'Noto Serif SC', Georgia, 'Times New Roman', serif;
   --font-body: Inter, 'Noto Sans SC', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-reading: 'Noto Serif SC', 'Playfair Display', Georgia, 'Songti SC', 'SimSun', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', Menlo, monospace;
 
-  /* -- Timing -- */
+  --topbar-height: 60px;
+  --page-gutter: 48px;
+  --page-gutter-narrow: 24px;
+  --content-narrow: 960px;
+  --workspace-sidebar: 240px;
+  --workspace-aside: 320px;
+  --workspace-main-min: 720px;
+  --card-gap: 16px;
+  --field-gap: 20px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 150ms;
   --duration-normal: 200ms;
@@ -42,16 +52,15 @@
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-body);
-  font-size: 19px;
+  font-size: 15px;
   font-synthesis: none;
-  line-height: 1.6;
+  line-height: 1.65;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* -- Selection color -- */
 ::selection {
-  background: rgba(37, 97, 61, 0.16);
+  background: rgba(90, 107, 78, 0.16);
   color: var(--text);
 }

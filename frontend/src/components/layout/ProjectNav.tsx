@@ -1,22 +1,21 @@
-// 项目工作台内的侧边栏导航。
 import { BookMarked, FileText, GitBranch, Home, PenLine, ScrollText, Users } from 'lucide-react';
 import { NavLink, useParams } from 'react-router-dom';
 
 const items = [
-  { to: '', label: '总览', icon: Home, end: true },
-  { to: 'setup', label: '设定建模', icon: PenLine },
-  { to: 'bible', label: '作者圣经', icon: BookMarked },
-  { to: 'characters', label: '角色', icon: Users },
-  { to: 'relationships', label: '关系', icon: GitBranch },
-  { to: 'story', label: '故事推进', icon: FileText },
-  { to: 'chapters', label: '章节', icon: ScrollText },
+  { to: '', label: '\u6982\u89c8', icon: Home, end: true },
+  { to: 'setup', label: '\u8bbe\u5b9a\u5de5\u4f5c\u53f0', icon: PenLine },
+  { to: 'bible', label: '\u4f5c\u8005\u5723\u7ecf', icon: BookMarked },
+  { to: 'characters', label: '\u89d2\u8272', icon: Users },
+  { to: 'relationships', label: '\u5173\u7cfb', icon: GitBranch },
+  { to: 'story', label: '\u5199\u4f5c', icon: FileText },
+  { to: 'chapters', label: '\u7ae0\u8282', icon: ScrollText },
 ];
 
 export function ProjectNav() {
   const { projectId } = useParams();
 
   return (
-    <nav className="project-nav" aria-label="项目导航">
+    <nav className="project-nav" aria-label={'\u9879\u76ee\u5bfc\u822a'}>
       {items.map((item) => {
         const Icon = item.icon;
         const to = item.to ? `/projects/${projectId}/${item.to}` : `/projects/${projectId}`;

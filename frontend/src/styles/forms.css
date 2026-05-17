@@ -5,18 +5,20 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: var(--field-gap);
   min-width: 0;
 }
 
 .field span,
 .table-field__header,
+.array-editor__header span,
+.tag-field__header span,
 .recent-list h3,
 .event-section h3 {
-  color: #3a4a3f;
-  font-size: 13.5px;
-  font-weight: 700;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -24,11 +26,11 @@
 input,
 select,
 textarea {
-  background: #fbfcfa;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--text);
-  min-height: 46px;
+  min-height: 44px;
   outline: none;
   padding: 10px 14px;
   width: 100%;
@@ -45,7 +47,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #97a399;
+  color: var(--text-subtle);
 }
 
 input:focus,
@@ -61,4 +63,95 @@ input[type="checkbox"] {
   height: 16px;
   min-height: 16px;
   width: 16px;
+}
+
+.array-editor,
+.tag-field {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.array-editor__header,
+.tag-field__header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.table-field__header > div,
+.array-editor__header > div,
+.tag-field__header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.table-field__header small,
+.array-editor__header small,
+.tag-field__header small {
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.array-editor__header strong,
+.tag-field__header strong {
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.array-editor__list {
+  gap: 12px;
+}
+
+.array-editor__item {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 40px;
+}
+
+.array-editor__item textarea {
+  min-height: 44px;
+}
+
+.tag-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+  min-height: 40px;
+}
+
+.tag-field__empty {
+  color: var(--text-subtle);
+  font-size: 13px;
+}
+
+.tag-pill {
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  gap: 8px;
+  max-width: 100%;
+  padding: 8px 12px;
+}
+
+.tag-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-input-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
 }

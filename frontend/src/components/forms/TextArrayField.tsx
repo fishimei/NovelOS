@@ -6,9 +6,18 @@ type TextArrayFieldProps = {
   values: string[];
   onChange: (values: string[]) => void;
   placeholder?: string;
+  addLabel?: string;
+  helperText?: string;
 };
 
-export function TextArrayField({ label, values, onChange, placeholder }: TextArrayFieldProps) {
+export function TextArrayField({
+  label,
+  values,
+  onChange,
+  placeholder,
+  addLabel = '添加条目',
+  helperText,
+}: TextArrayFieldProps) {
   const setValue = (index: number, value: string) => {
     onChange(values.map((item, itemIndex) => (itemIndex === index ? value : item)));
   };
@@ -18,22 +27,33 @@ export function TextArrayField({ label, values, onChange, placeholder }: TextArr
   };
 
   return (
-    <label className="field field--stack">
-      <span>{label}</span>
-      <div className="stack-list">
+    <section className="array-editor">
+      <div className="array-editor__header">
+        <div>
+          <span>{label}</span>
+          {helperText ? <small>{helperText}</small> : null}
+        </div>
+        <strong>{values.length} 条</strong>
+      </div>
+      <div className="stack-list array-editor__list">
         {values.map((value, index) => (
-          <div className="inline-row" key={index}>
-            <input value={value} onChange={(event) => setValue(index, event.target.value)} placeholder={placeholder} />
+          <div className="array-editor__item" key={index}>
+            <textarea
+              onChange={(event) => setValue(index, event.target.value)}
+              placeholder={placeholder}
+              rows={2}
+              value={value}
+            />
             <button className="icon-button" type="button" onClick={() => removeValue(index)} aria-label="移除">
               <X size={16} />
             </button>
           </div>
         ))}
-        <button className="button button--secondary" type="button" onClick={() => onChange([...values, ''])}>
+        <button className="button button--ghost" type="button" onClick={() => onChange([...values, ''])}>
           <Plus size={16} />
-          添加
+          {addLabel}
         </button>
       </div>
-    </label>
+    </section>
   );
 }
