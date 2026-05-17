@@ -88,6 +88,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	state := &storyRunState{run: input.Run, session: input.Session, maxTurns: g.maxTurns}
+	g.publishStoryOrchestrationStarted(ctx, input)
 	snapshot, err := loadStoryContext(ctx, g.deps, state, LoadStoryContextInput{ProjectID: input.Run.ProjectID, SessionID: input.Session.ID})
 	if err != nil {
 		return model.StoryRunResult{}, err
@@ -149,6 +150,19 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	return result, nil
 }
 
+func (g *StoryRunGenerator) publishStoryOrchestrationStarted(ctx context.Context, input port.StoryRunGenerationInput) {
+	if g.deps.events == nil {
+		return
+	}
+	_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventStoryOrchestrationStarted, Data: map[string]any{
+		"story_run_id":      input.Run.RunID,
+		"session_id":        input.Session.ID,
+		"author_message":    input.Session.LastAuthorMessage,
+		"author_intent":     input.Session.AuthorIntent,
+		"opening_situation": input.Session.OpeningSituation,
+	}})
+}
+
 func (g *StoryRunGenerator) systemPrompt() string {
 	parts := []string{g.controller, g.toolPrompt, g.resultPrompt}
 	return strings.Join(parts, "\n\n")
@@ -167,7 +181,7 @@ func (g *StoryRunGenerator) userPrompt(input port.StoryRunGenerationInput, varia
 	})
 	return fmt.Sprintf(`%s
 
-请围绕 story_variable 进行回合裁决。先调用 load_story_context 核对当前状态，然后在最多 %d 个业务回合内循环判断：是否停止；如果不停，调用 choose_next_story_actor 记录下一行动者。停止时调用 decide_story_stop 与 finalize_story_plan。`, string(payload), g.maxTurns)
+你是角色回合阶段，不是最终正文作者，也不是关系分析展示器。先调用 load_story_context 核对当前状态，然后在最多 %d 个业务回合内循环判断：是否停止；如果不停，调用 choose_next_story_actor 记录本回合哪个角色说了什么、做了什么。不要生成完整章节正文，不要输出关系分析。停止时调用 decide_story_stop 与 finalize_story_plan。`, string(payload), g.maxTurns)
 }
 
 func (g *StoryRunGenerator) generateStoryVariable(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (StoryVariablePlan, error) {
@@ -197,18 +211,7 @@ func (g *StoryRunGenerator) generateStoryVariable(ctx context.Context, input por
 }
 
 func (g *StoryRunGenerator) generateNarrative(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) (StoryNarrativeResult, error) {
-	turns := make([]StoryTurnPlan, 0, len(plan.Turns))
-	for _, turn := range plan.Turns {
-		written, err := g.generateTurnContent(ctx, input, snapshot, plan, turns, turn, variable)
-		if err != nil {
-			return StoryNarrativeResult{}, err
-		}
-		turns = append(turns, written)
-		if g.deps.events != nil {
-			_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventDraftDelta, Data: map[string]any{"turn_index": written.TurnIndex, "actor_id": written.ActorID, "content": written.Content}})
-		}
-	}
-	return g.generateNarrativeSummary(ctx, input, snapshot, StoryPlanResult{Summary: plan.Summary, StopReason: plan.StopReason, Turns: turns}, variable), nil
+	return g.generateNarrativeSummary(ctx, input, snapshot, plan, variable), nil
 }
 
 func (g *StoryRunGenerator) generateTurnContent(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, previousTurns []StoryTurnPlan, turn StoryTurnPlan, variable StoryVariablePlan) (StoryTurnPlan, error) {
@@ -299,7 +302,7 @@ func (g *StoryRunGenerator) turnNarrativePrompt() string {
 func (g *StoryRunGenerator) summaryPrompt() string {
 	return firstText(g.resultPrompt, "整理故事演绎结果。") + `
 
-根据已生成的 turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、content、plot_variable、memory_patch、review、turns。最终正文可以汇总全局变量、所有角色已生成行动、心理张力和关系变化，content 要是连贯章节正文，不要只列提纲。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容。relationship_updates 只填 pair_id、summary、tension_delta。只输出 JSON。`
+根据已完成的角色回合记录 turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、content、plot_variable、memory_patch、review、turns。运行中的 turns 只是“谁说了什么、做了什么”的素材，不是章节正文；content 必须在本阶段统一写成连贯完整章节正文，不要只列提纲。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容。relationship_updates 只填 pair_id、summary、tension_delta。只输出 JSON。`
 }
 
 func (g *StoryRunGenerator) perspectiveForTurn(snapshot StoryContextSnapshot, turn StoryTurnPlan, variable StoryVariablePlan) *CharacterPerspective {

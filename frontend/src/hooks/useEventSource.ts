@@ -8,7 +8,7 @@ export type SseMessage = {
   data: unknown;
 };
 
-const STORY_EVENTS = ['generation_step', 'plot_variable', 'character_turn', 'draft_delta', 'review_required'];
+const STORY_EVENTS = ['generation_step', 'story_orchestration_started', 'plot_variable', 'character_turn', 'draft_delta', 'review_required'];
 
 export function useEventSource(options: {
   url?: string;

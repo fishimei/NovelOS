@@ -10,11 +10,14 @@ import (
 func TestChooseNextStoryActorRecordsTurn(t *testing.T) {
 	state := &storyRunState{run: model.StoryRun{RunID: "run_1"}, maxTurns: 25}
 	turn, err := chooseNextStoryActor(context.Background(), storyGeneratorDeps{}, state, ChooseNextStoryActorInput{
-		ActorID:    "character_1",
-		ActorName:  "林澈",
-		ActionType: "speak",
-		Intent:     "试探对方是否掌握密信",
-		Rationale:  "他刚刚受到秘密暴露的压力",
+		ActorID:        "character_1",
+		ActorName:      "林澈",
+		ActionType:     "speak",
+		Speech:         "密信不在我这里。",
+		ActionSummary:  "把袖口压住，避开对方视线。",
+		TargetActorIDs: []string{"character_2"},
+		Intent:         "试探对方是否掌握密信",
+		Rationale:      "他刚刚受到秘密暴露的压力",
 	})
 	if err != nil {
 		t.Fatalf("chooseNextStoryActor returned error: %v", err)
@@ -27,6 +30,29 @@ func TestChooseNextStoryActorRecordsTurn(t *testing.T) {
 	}
 	if state.turns[0].ActorID != "character_1" {
 		t.Fatalf("unexpected actor id %q", state.turns[0].ActorID)
+	}
+	if state.turns[0].Speech != "密信不在我这里。" || state.turns[0].ActionSummary == "" {
+		t.Fatalf("expected visible turn details, got %#v", state.turns[0])
+	}
+	if len(state.turns[0].TargetActorIDs) != 1 || state.turns[0].TargetActorIDs[0] != "character_2" {
+		t.Fatalf("unexpected target actor ids: %#v", state.turns[0].TargetActorIDs)
+	}
+}
+
+func TestStoryTurnDisplayPayloadHidesRationale(t *testing.T) {
+	payload := storyTurnDisplayPayload(StoryTurnPlan{
+		TurnIndex:      2,
+		ActorID:        "character_1",
+		ActorName:      "林澈",
+		ActionType:     "action",
+		Speech:         "跟我走。",
+		ActionSummary:  "推开暗门。",
+		TargetActorIDs: []string{"character_2"},
+		Intent:         "带对方离开",
+		Rationale:      "内部推理不应进入前端实时展示",
+	})
+	if payload.TurnIndex != 2 || payload.Speech != "跟我走。" || payload.ActionSummary != "推开暗门。" {
+		t.Fatalf("unexpected display payload: %#v", payload)
 	}
 }
 

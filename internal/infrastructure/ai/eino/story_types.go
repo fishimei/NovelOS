@@ -13,13 +13,26 @@ type StoryContextSnapshot struct {
 }
 
 type StoryTurnPlan struct {
-	TurnIndex  int    `json:"turn_index"`
-	ActorID    string `json:"actor_id,omitempty"`
-	ActorName  string `json:"actor_name,omitempty"`
-	ActionType string `json:"action_type"`
-	Intent     string `json:"intent"`
-	Rationale  string `json:"rationale,omitempty"`
-	Content    string `json:"content,omitempty"`
+	TurnIndex      int      `json:"turn_index"`
+	ActorID        string   `json:"actor_id,omitempty"`
+	ActorName      string   `json:"actor_name,omitempty"`
+	ActionType     string   `json:"action_type"`
+	Speech         string   `json:"speech,omitempty"`
+	ActionSummary  string   `json:"action_summary,omitempty"`
+	TargetActorIDs []string `json:"target_actor_ids,omitempty"`
+	Intent         string   `json:"intent"`
+	Rationale      string   `json:"rationale,omitempty"`
+	Content        string   `json:"content,omitempty"`
+}
+
+type StoryTurnDisplayEvent struct {
+	TurnIndex      int      `json:"turn_index"`
+	ActorID        string   `json:"actor_id,omitempty"`
+	ActorName      string   `json:"actor_name,omitempty"`
+	ActionType     string   `json:"action_type"`
+	Speech         string   `json:"speech,omitempty"`
+	ActionSummary  string   `json:"action_summary,omitempty"`
+	TargetActorIDs []string `json:"target_actor_ids,omitempty"`
 }
 
 type StoryStopDecision struct {
@@ -52,12 +65,15 @@ type LoadStoryContextInput struct {
 }
 
 type ChooseNextStoryActorInput struct {
-	TurnIndex  int    `json:"turn_index" jsonschema:"required"`
-	ActorID    string `json:"actor_id"`
-	ActorName  string `json:"actor_name"`
-	ActionType string `json:"action_type" jsonschema:"required"`
-	Intent     string `json:"intent" jsonschema:"required"`
-	Rationale  string `json:"rationale"`
+	TurnIndex      int      `json:"turn_index" jsonschema:"required"`
+	ActorID        string   `json:"actor_id"`
+	ActorName      string   `json:"actor_name"`
+	ActionType     string   `json:"action_type" jsonschema:"required"`
+	Speech         string   `json:"speech"`
+	ActionSummary  string   `json:"action_summary"`
+	TargetActorIDs []string `json:"target_actor_ids"`
+	Intent         string   `json:"intent" jsonschema:"required"`
+	Rationale      string   `json:"rationale"`
 }
 
 type DecideStoryStopInput struct {

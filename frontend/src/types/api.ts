@@ -430,6 +430,26 @@ export type StoryDraftDeltaEvent = {
   [key: string]: unknown;
 };
 
+export type StoryOrchestrationStartedEvent = {
+  story_run_id?: string;
+  session_id?: string;
+  author_message?: string;
+  author_intent?: string;
+  opening_situation?: string;
+  [key: string]: unknown;
+};
+
+export type StoryCharacterTurnEvent = {
+  turn_index?: number;
+  actor_id?: string;
+  actor_name?: string;
+  action_type?: string;
+  speech?: string;
+  action_summary?: string;
+  target_actor_ids?: string[];
+  [key: string]: unknown;
+};
+
 export type RunEvent = {
   id: string;
   run_kind?: string;

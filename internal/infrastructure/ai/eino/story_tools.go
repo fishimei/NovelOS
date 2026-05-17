@@ -44,7 +44,7 @@ func newStoryTools(deps storyGeneratorDeps, state *storyRunState) ([]tool.BaseTo
 	if err != nil {
 		return nil, err
 	}
-	chooseActor, err := utils.InferTool("choose_next_story_actor", "记录下一轮应该由谁发言或产生动作。不要生成完整对白，只给行动者、动作类型、意图和理由。", func(ctx context.Context, input ChooseNextStoryActorInput) (StoryTurnPlan, error) {
+	chooseActor, err := utils.InferTool("choose_next_story_actor", "记录后续剧情阶段产生的角色回合，并实时推送给前端。只提交哪个角色说了什么、做了什么，不要提交完整章节正文或关系分析。", func(ctx context.Context, input ChooseNextStoryActorInput) (StoryTurnPlan, error) {
 		return chooseNextStoryActor(ctx, deps, state, input)
 	})
 	if err != nil {
@@ -138,18 +138,33 @@ func chooseNextStoryActor(ctx context.Context, deps storyGeneratorDeps, state *s
 		turnIndex = len(state.turns) + 1
 	}
 	turn := StoryTurnPlan{
-		TurnIndex:  turnIndex,
-		ActorID:    input.ActorID,
-		ActorName:  input.ActorName,
-		ActionType: input.ActionType,
-		Intent:     input.Intent,
-		Rationale:  input.Rationale,
+		TurnIndex:      turnIndex,
+		ActorID:        input.ActorID,
+		ActorName:      input.ActorName,
+		ActionType:     input.ActionType,
+		Speech:         input.Speech,
+		ActionSummary:  input.ActionSummary,
+		TargetActorIDs: input.TargetActorIDs,
+		Intent:         input.Intent,
+		Rationale:      input.Rationale,
 	}
 	state.turns = append(state.turns, turn)
 	if deps.events != nil {
-		_ = deps.events.Publish(ctx, state.run.RunID, port.GenerationEvent{Name: domain.EventCharacterTurn, Data: turn})
+		_ = deps.events.Publish(ctx, state.run.RunID, port.GenerationEvent{Name: domain.EventCharacterTurn, Data: storyTurnDisplayPayload(turn)})
 	}
 	return turn, nil
+}
+
+func storyTurnDisplayPayload(turn StoryTurnPlan) StoryTurnDisplayEvent {
+	return StoryTurnDisplayEvent{
+		TurnIndex:      turn.TurnIndex,
+		ActorID:        turn.ActorID,
+		ActorName:      turn.ActorName,
+		ActionType:     turn.ActionType,
+		Speech:         turn.Speech,
+		ActionSummary:  turn.ActionSummary,
+		TargetActorIDs: turn.TargetActorIDs,
+	}
 }
 
 func decideStoryStop(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, input DecideStoryStopInput) (StoryStopDecision, error) {

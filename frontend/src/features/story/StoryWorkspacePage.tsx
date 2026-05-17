@@ -33,7 +33,7 @@ const copy = {
   chapterPrefix: '第',
   chapterSuffix: '章',
   wordSuffix: '字',
-  draftEmpty: '正文会在这里逐步出现，适合专注阅读和快速判断节奏。',
+  draftEmpty: '完整正文会在角色回合完成后统一生成，运行中先查看下方实时角色回合。',
   advancePlaceholder: '输入你想推进的情节方向、冲突目标、人物选择或文风要求',
   advanceButton: '推进剧情',
   reviewTitle: '运行与提交',
@@ -42,6 +42,13 @@ const copy = {
   missingIds: '请先等待完整的 draft 和 memory patch 结果。',
   committed: '这次运行已经提交，不需要重复 commit。',
   runHistory: '运行记录',
+  orchestrationStarted: '主控已接收 idea 并启动',
+  liveTurnsTitle: '实时角色回合',
+  liveTurnsEmpty: '启动后，这里会实时显示哪个角色说了什么、做了什么。',
+  turnPrefix: '回合',
+  speechLabel: '说：',
+  actionLabel: '做：',
+  targetLabel: '指向：',
   loadingHistory: '正在加载运行记录',
   noHistory: '暂无持久化运行事件。',
   plotTitle: '情节压力线',
@@ -172,8 +179,8 @@ export function StoryWorkspacePage() {
   });
 
   const visibleDraft = useMemo(() => {
-    return resultQuery.data?.content ?? resultQuery.data?.draft?.content ?? eventState.draftText;
-  }, [eventState.draftText, resultQuery.data]);
+    return resultQuery.data?.content ?? resultQuery.data?.draft?.content ?? '';
+  }, [resultQuery.data]);
 
   const storyProgress = [
     {
@@ -278,6 +285,8 @@ export function StoryWorkspacePage() {
               ) : null}
               {visibleDraft ? <pre>{visibleDraft}</pre> : <p className="muted">{copy.draftEmpty}</p>}
             </div>
+
+            <LiveCharacterTurnsPanel starts={eventState.orchestrationStarts} turns={eventState.characterTurns} />
 
             <form className="composer" onSubmit={sendAdvance}>
               <textarea
@@ -391,6 +400,55 @@ export function StoryWorkspacePage() {
         </details>
       </aside>
     </div>
+  );
+}
+
+function LiveCharacterTurnsPanel({
+  starts,
+  turns,
+}: {
+  starts: Array<{ author_message?: string; author_intent?: string; opening_situation?: string }>;
+  turns: Array<{
+    turn_index?: number;
+    actor_name?: string;
+    actor_id?: string;
+    action_type?: string;
+    speech?: string;
+    action_summary?: string;
+    target_actor_ids?: string[];
+  }>;
+}) {
+  const latestStart = starts.length > 0 ? starts[starts.length - 1] : undefined;
+
+  return (
+    <section className="result-section story-live-turns">
+      <div className="result-section__header">
+        <h2>{copy.liveTurnsTitle}</h2>
+        {latestStart ? <span className="status-pill">{copy.orchestrationStarted}</span> : null}
+      </div>
+      {latestStart ? <p className="muted">{latestStart.author_message || latestStart.author_intent || latestStart.opening_situation}</p> : null}
+      {turns.length > 0 ? (
+        <div className="setup-card-list">
+          {turns.map((turn, index) => (
+            <article className="setup-card" key={`${turn.turn_index ?? index}-${turn.actor_id ?? turn.actor_name ?? 'turn'}`}>
+              <div className="setup-card__header">
+                <strong>
+                  {copy.turnPrefix} {turn.turn_index ?? index + 1} · {turn.actor_name || turn.actor_id || copy.unknownCharacter}
+                </strong>
+                <span>{turn.action_type || '-'}</span>
+              </div>
+              {turn.speech ? <p className="setup-card__copy">{copy.speechLabel}{turn.speech}</p> : null}
+              {turn.action_summary ? <p className="setup-card__copy">{copy.actionLabel}{turn.action_summary}</p> : null}
+              {turn.target_actor_ids && turn.target_actor_ids.length > 0 ? (
+                <p className="setup-card__copy setup-card__copy--muted">{copy.targetLabel}{turn.target_actor_ids.join(' / ')}</p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">{copy.liveTurnsEmpty}</p>
+      )}
+    </section>
   );
 }
 

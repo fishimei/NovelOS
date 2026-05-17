@@ -3,19 +3,27 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { storyRunEventsUrl } from '../../api/storyRuns';
 import { useEventSource, type SseMessage } from '../../hooks/useEventSource';
-import type { StoryDraftDeltaEvent, StoryGenerationStepEvent, StoryPlotVariable } from '../../types/api';
+import type {
+  StoryCharacterTurnEvent,
+  StoryDraftDeltaEvent,
+  StoryGenerationStepEvent,
+  StoryOrchestrationStartedEvent,
+  StoryPlotVariable,
+} from '../../types/api';
 
 type StoryEventState = {
-  draftText: string;
+  legacyDraftText: string;
+  orchestrationStarts: StoryOrchestrationStartedEvent[];
   generationSteps: StoryGenerationStepEvent[];
   plotVariables: StoryPlotVariable[];
-  characterTurns: unknown[];
+  characterTurns: StoryCharacterTurnEvent[];
   reviewItems: unknown[];
   rawEvents: SseMessage[];
 };
 
 const initialState: StoryEventState = {
-  draftText: '',
+  legacyDraftText: '',
+  orchestrationStarts: [],
   generationSteps: [],
   plotVariables: [],
   characterTurns: [],
@@ -52,6 +60,14 @@ function asPlotVariable(data: unknown): StoryPlotVariable {
   return data && typeof data === 'object' ? (data as StoryPlotVariable) : {};
 }
 
+function asOrchestrationStart(data: unknown): StoryOrchestrationStartedEvent {
+  return data && typeof data === 'object' ? (data as StoryOrchestrationStartedEvent) : {};
+}
+
+function asCharacterTurn(data: unknown): StoryCharacterTurnEvent {
+  return data && typeof data === 'object' ? (data as StoryCharacterTurnEvent) : {};
+}
+
 export function useStoryRunEvents(runId: string) {
   const [state, setState] = useState<StoryEventState>(initialState);
   const url = useMemo(() => (runId ? storyRunEventsUrl(runId) : undefined), [runId]);
@@ -69,7 +85,11 @@ export function useStoryRunEvents(runId: string) {
         const next = { ...current, rawEvents: [...current.rawEvents, message] };
 
         if (message.event === 'draft_delta') {
-          next.draftText = current.draftText + stringifyDelta(message.data);
+          next.legacyDraftText = current.legacyDraftText + stringifyDelta(message.data);
+        }
+
+        if (message.event === 'story_orchestration_started') {
+          next.orchestrationStarts = [...current.orchestrationStarts, asOrchestrationStart(message.data)];
         }
 
         if (message.event === 'generation_step') {
@@ -81,7 +101,7 @@ export function useStoryRunEvents(runId: string) {
         }
 
         if (message.event === 'character_turn') {
-          next.characterTurns = [...current.characterTurns, message.data];
+          next.characterTurns = [...current.characterTurns, asCharacterTurn(message.data)];
         }
 
         if (message.event === 'review_required') {
