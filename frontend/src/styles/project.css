@@ -69,7 +69,9 @@
 }
 
 .page--characters,
-.page--author-bible {
+.page--author-bible,
+.page--chapters,
+.page--relationships {
   max-width: none;
 }
 

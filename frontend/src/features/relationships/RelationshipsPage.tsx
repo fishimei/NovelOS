@@ -60,7 +60,7 @@ export function RelationshipsPage() {
     !createMutation.isPending;
 
   return (
-    <div className="page">
+    <div className="page page--wide page--relationships">
       <div className="page__header">
         <div>
           <h1>关系网络</h1>

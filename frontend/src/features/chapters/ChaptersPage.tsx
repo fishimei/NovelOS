@@ -23,7 +23,7 @@ export function ChaptersPage() {
   const latestUpdate = chapters[0]?.updated_at ?? chapters[0]?.created_at;
 
   return (
-    <div className="page">
+    <div className="page page--wide page--chapters">
       <div className="page__header">
         <div>
           <h1>章节</h1>
