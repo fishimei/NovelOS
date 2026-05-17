@@ -297,15 +297,65 @@ type SetupRun struct {
 	UpdatedAt   time.Time `json:"updated_at"` // 最后更新时间
 }
 
+// SetupVisualWorldPressureCard 是 Setup 草案中用于展示世界压力的卡片。
+type SetupVisualWorldPressureCard struct {
+	Title                 string   `json:"title"`
+	Detail                string   `json:"detail"`
+	Stakes                string   `json:"stakes"`
+	RelatedWorldStateKeys []string `json:"related_world_state_keys"`
+}
+
+// SetupVisualCharacterCard 是 Setup 草案中用于展示角色功能位的卡片。
+type SetupVisualCharacterCard struct {
+	CharacterKey string `json:"character_key"`
+	Name         string `json:"name"`
+	Role         string `json:"role"`
+	Hook         string `json:"hook"`
+	Goal         string `json:"goal"`
+	Fear         string `json:"fear"`
+	Secret       string `json:"secret"`
+}
+
+// SetupVisualRelationshipEdge 是 Setup 草案中用于展示关系图的边。
+type SetupVisualRelationshipEdge struct {
+	FromCharacterKey string `json:"from_character_key"`
+	ToCharacterKey   string `json:"to_character_key"`
+	Summary          string `json:"summary"`
+	Tension          string `json:"tension"`
+	Misreading       string `json:"misreading"`
+}
+
+// SetupNextAgentSuggestion 是 Setup 完成后建议进入的下一步 agent。
+type SetupNextAgentSuggestion struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Reason string `json:"reason"`
+}
+
+// SetupVisualDraft 是面向用户确认的可视化 Setup 草案视图。
+type SetupVisualDraft struct {
+	Logline              string                         `json:"logline"`
+	StyleTags            []string                       `json:"style_tags"`
+	Tone                 string                         `json:"tone"`
+	BoldnessLevel        int                            `json:"boldness_level"`
+	WorldPressureCards   []SetupVisualWorldPressureCard `json:"world_pressure_cards"`
+	CharacterCards       []SetupVisualCharacterCard     `json:"character_cards"`
+	RelationshipEdges    []SetupVisualRelationshipEdge  `json:"relationship_edges"`
+	OpenQuestions        []SetupQuestion                `json:"open_questions"`
+	AgentSummary         string                         `json:"agent_summary"`
+	NextAgentSuggestions []SetupNextAgentSuggestion     `json:"next_agent_suggestions,omitempty"`
+}
+
 // SetupDraft 是设置生成的草稿。
 // 包含 AI 生成的完整项目设定。
 type SetupDraft struct {
-	AuthorBible      AuthorBible       `json:"author_bible"`      // 作者圣经
-	Characters       []Character       `json:"characters"`        // 角色列表
-	Relationships    []Relationship    `json:"relationships"`     // 关系列表
-	WorldState       []WorldStateEntry `json:"world_state"`       // 世界状态
-	OpenQuestions    []SetupQuestion   `json:"open_questions"`    // 待解答问题
-	AssistantSummary string            `json:"assistant_summary"` // AI 总结
+	AuthorBible      AuthorBible       `json:"author_bible"`           // 作者圣经
+	Characters       []Character       `json:"characters"`             // 角色列表
+	Relationships    []Relationship    `json:"relationships"`          // 关系列表
+	WorldState       []WorldStateEntry `json:"world_state"`            // 世界状态
+	OpenQuestions    []SetupQuestion   `json:"open_questions"`         // 待解答问题
+	AssistantSummary string            `json:"assistant_summary"`      // AI 总结
+	VisualDraft      *SetupVisualDraft `json:"visual_draft,omitempty"` // 可视化草案
 }
 
 // SetupRunResult 是设置运行结果的模型。

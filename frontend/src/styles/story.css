@@ -617,6 +617,66 @@
   width: 62%;
 }
 
+.setup-visual-board {
+  background: linear-gradient(135deg, #fbfaf6 0%, #f3f7ff 100%);
+  display: grid;
+  gap: 16px;
+}
+
+.setup-visual-board .result-section__header h2 {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.setup-visual-board__logline {
+  color: #1f2a33;
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.setup-visual-board__meta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.setup-visual-section {
+  border-top: 1px solid rgba(71, 92, 118, 0.16);
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.setup-visual-section__header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.setup-visual-section__header h3 {
+  color: #26323d;
+  font-family: var(--font-display);
+  font-size: 15px;
+  margin: 0;
+}
+
+.setup-visual-board__actions {
+  border-top: 1px solid rgba(71, 92, 118, 0.16);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.setup-card__copy--muted {
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
 .setup-module {
   overflow: hidden;
 }

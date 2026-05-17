@@ -212,6 +212,50 @@ export type SetupQuestion = {
   why_it_matters?: string;
 };
 
+export type SetupVisualWorldPressureCard = {
+  title?: string;
+  detail?: string;
+  stakes?: string;
+  related_world_state_keys?: string[];
+};
+
+export type SetupVisualCharacterCard = {
+  character_key?: string;
+  name?: string;
+  role?: string;
+  hook?: string;
+  goal?: string;
+  fear?: string;
+  secret?: string;
+};
+
+export type SetupVisualRelationshipEdge = {
+  from_character_key?: string;
+  to_character_key?: string;
+  summary?: string;
+  tension?: string;
+  misreading?: string;
+};
+
+export type SetupNextAgentSuggestion = {
+  key?: string;
+  label?: string;
+  reason?: string;
+};
+
+export type SetupVisualDraft = {
+  logline?: string;
+  style_tags?: string[];
+  tone?: string;
+  boldness_level?: number;
+  world_pressure_cards?: SetupVisualWorldPressureCard[];
+  character_cards?: SetupVisualCharacterCard[];
+  relationship_edges?: SetupVisualRelationshipEdge[];
+  open_questions?: SetupQuestion[];
+  agent_summary?: string;
+  next_agent_suggestions?: SetupNextAgentSuggestion[];
+};
+
 export type SetupDraft = {
   author_bible?: Partial<AuthorBible>;
   characters?: Partial<Character>[];
@@ -219,6 +263,7 @@ export type SetupDraft = {
   world_state?: WorldStateEntry[];
   open_questions?: SetupQuestion[];
   assistant_summary?: string;
+  visual_draft?: SetupVisualDraft;
 };
 
 export type SetupRunResult = {

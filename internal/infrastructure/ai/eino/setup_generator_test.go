@@ -35,6 +35,18 @@ func TestSetupBuildDraftMapsCharacterKeysToRelationshipIDs(t *testing.T) {
 			CharacterAView: setupRelationshipViewOutput{PrivateAttitude: "警惕"},
 			CharacterBView: setupRelationshipViewOutput{PrivateAttitude: "嫉妒"},
 		}},
+		VisualDraft: setupVisualDraftOutput{
+			Logline:       "长生宗门在大比前夜出现失控秘术。",
+			StyleTags:     []string{"权谋", "仙侠"},
+			Tone:          "冷峻",
+			BoldnessLevel: 7,
+			CharacterCards: []setupCharacterCardOutput{{
+				CharacterKey: "protagonist",
+				Name:         "林澈",
+				Role:         "protagonist",
+				Hook:         "保人还是夺权必须二选一。",
+			}},
+		},
 		AssistantSummary: "围绕宗门压力启动故事。",
 	})
 	if err != nil {
@@ -55,5 +67,8 @@ func TestSetupBuildDraftMapsCharacterKeysToRelationshipIDs(t *testing.T) {
 	}
 	if len(draft.WorldState) != 1 || draft.WorldState[0].Key != "sect_pressure" {
 		t.Fatalf("unexpected world state: %#v", draft.WorldState)
+	}
+	if draft.VisualDraft == nil || draft.VisualDraft.Logline == "" || len(draft.VisualDraft.CharacterCards) != 1 {
+		t.Fatalf("unexpected visual draft: %#v", draft.VisualDraft)
 	}
 }

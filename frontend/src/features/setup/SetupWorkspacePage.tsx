@@ -45,6 +45,18 @@ const copy = {
   resultReady: '\u5df2\u751f\u6210',
   resultOpenQuestions: '\u5f85\u786e\u8ba4\u95ee\u9898',
   resultOpenQuestionsEmpty: '\u6ca1\u6709\u989d\u5916\u5f85\u786e\u8ba4\u95ee\u9898\u3002',
+  visualDraftTitle: '\u4e3b\u63a7 Agent \u8349\u6848\u770b\u677f',
+  visualDraftSubtitle: '\u8fd9\u662f agent \u5185\u90e8\u6df1\u5316\u540e\u901a\u8fc7\u5de5\u5177\u5c55\u793a\u7684\u5b8c\u6574\u8be6\u7ec6\u8349\u6848\uff0c\u786e\u8ba4\u524d\u4e0d\u4f1a\u5199\u5165\u6b63\u5f0f\u8bbe\u5b9a\u3002',
+  visualStyle: '\u98ce\u683c',
+  visualTone: '\u6c14\u8d28',
+  visualBoldness: '\u5927\u80c6\u7a0b\u5ea6',
+  visualWorldPressure: '\u4e16\u754c\u538b\u529b',
+  visualCharacterCards: '\u4eba\u7269\u5361\u7247',
+  visualRelationshipGraph: '\u5173\u7cfb\u7f51\u7edc',
+  visualNextAgents: '\u5efa\u8bae\u4e0b\u4e00\u6b65',
+  visualNoBoard: '\u8fd9\u7248\u7ed3\u679c\u6ca1\u6709\u8fd4\u56de\u53ef\u89c6\u5316\u770b\u677f\uff0c\u4f46\u4e0b\u65b9\u7ed3\u6784\u5316\u8349\u6848\u4ecd\u53ef\u5ba1\u9605\u548c\u5e94\u7528\u3002',
+  regenerateDraft: '\u91cd\u8d77\u8349\u4e00\u7248',
+  cancelDraft: '\u53d6\u6d88\u8fd9\u7248\u8349\u6848',
   applyTitle: '\u5e94\u7528\u8349\u6848',
   applySubtitle: '\u9009\u62e9\u8981\u5199\u5165\u9879\u76ee\u7684\u6a21\u5757\uff0c\u5e76\u4e3a\u8fd9\u6b21\u63d0\u4ea4\u7559\u4e0b\u5907\u6ce8\u3002',
   applyScopeTitle: '\u5e94\u7528\u8303\u56f4',
@@ -219,7 +231,7 @@ export function SetupWorkspacePage() {
   });
 
   const advanceMutation = useMutation({
-    mutationFn: () => advanceSetupSession(selectedSessionId, { user_message: message.trim() }),
+    mutationFn: (overrideMessage?: string) => advanceSetupSession(selectedSessionId, { user_message: (overrideMessage ?? message).trim() }),
     onSuccess: (run) => {
       setActiveRunId(run.run_id ?? run.id ?? '');
       setMessage('');
@@ -279,7 +291,7 @@ export function SetupWorkspacePage() {
 
   const sendMessage = (event: FormEvent) => {
     event.preventDefault();
-    advanceMutation.mutate();
+    advanceMutation.mutate(message);
   };
 
   const toggleSection = (key: ModuleKey) => {
@@ -298,6 +310,19 @@ export function SetupWorkspacePage() {
     setMessage(
       '\u8bf7\u91cd\u65b0\u751f\u6210\u8fd9\u6b21\u8bbe\u5b9a\u8349\u6848\uff0c\u5e76\u5728\u4e0d\u6539\u53d8\u6838\u5fc3\u79cd\u5b50\u7684\u524d\u63d0\u4e0b\u7f29\u5c0f\u8303\u56f4\uff0c\u8865\u5145\u786c\u7ea6\u675f\u4e0e\u4e16\u754c\u89c4\u5219\u3002',
     );
+  };
+
+  const regenerateDraft = () => {
+    if (!selectedSessionId || advanceMutation.isPending || isRunActive) {
+      return;
+    }
+    advanceMutation.mutate('\u8bf7\u57fa\u4e8e\u5f53\u524d\u4f1a\u8bdd\u91cd\u65b0\u8d77\u8349\u4e00\u7248\uff0c\u4e0d\u8981\u76f4\u63a5\u6cbf\u7528\u4e0a\u4e00\u7248\uff1b\u65b9\u5411\u66f4\u5927\u80c6\u3001\u66f4\u5929\u9a6c\u884c\u7a7a\uff0c\u540c\u65f6\u4fdd\u7559\u53ef\u843d\u5730\u7684\u4eba\u7269\u52a8\u673a\u548c\u5173\u7cfb\u5f20\u529b\u3002');
+  };
+
+  const cancelDraft = () => {
+    setActiveRunId('');
+    setAuthorNote('');
+    setAcceptSections(defaultAcceptSections);
   };
 
   return (
@@ -474,7 +499,9 @@ export function SetupWorkspacePage() {
                   acceptSections={acceptSections}
                   draft={draft}
                   isLoading={runQuery.isLoading || isRunActive}
+                  onCancelDraft={cancelDraft}
                   onFillModulePrompt={fillModulePrompt}
+                  onRegenerateDraft={regenerateDraft}
                   onToggleSection={toggleSection}
                 />
               </section>
@@ -616,12 +643,16 @@ function SetupDraftPreview({
   acceptSections,
   onToggleSection,
   onFillModulePrompt,
+  onRegenerateDraft,
+  onCancelDraft,
 }: {
   draft?: SetupDraft;
   isLoading: boolean;
   acceptSections: AcceptSectionsState;
   onToggleSection: (key: ModuleKey) => void;
   onFillModulePrompt: (key: ModuleKey) => void;
+  onRegenerateDraft: () => void;
+  onCancelDraft: () => void;
 }) {
   const characterNames = useMemo(() => {
     const names = new Map<string, string>();
@@ -663,6 +694,8 @@ function SetupDraftPreview({
 
   return (
     <div className="structured-result structured-result--setup">
+      <VisualDraftBoard draft={draft} onCancelDraft={onCancelDraft} onRegenerateDraft={onRegenerateDraft} />
+
       {draft.assistant_summary ? (
         <section className="result-section">
           <div className="result-section__header">
@@ -799,6 +832,164 @@ function SetupDraftPreview({
           <p className="muted">{copy.resultOpenQuestionsEmpty}</p>
         )}
       </section>
+    </div>
+  );
+}
+
+function VisualDraftBoard({
+  draft,
+  onRegenerateDraft,
+  onCancelDraft,
+}: {
+  draft: SetupDraft;
+  onRegenerateDraft: () => void;
+  onCancelDraft: () => void;
+}) {
+  const visual = draft.visual_draft;
+  if (!visual) {
+    return (
+      <section className="result-section setup-visual-board">
+        <div className="result-section__header">
+          <h2>{copy.visualDraftTitle}</h2>
+          <span className="status-pill status-pill--neutral">{copy.scopePending}</span>
+        </div>
+        <p className="muted">{copy.visualNoBoard}</p>
+        <DraftActionBar onCancelDraft={onCancelDraft} onRegenerateDraft={onRegenerateDraft} />
+      </section>
+    );
+  }
+
+  return (
+    <section className="result-section setup-visual-board">
+      <div className="result-section__header">
+        <h2>
+          <Sparkles size={17} />
+          {copy.visualDraftTitle}
+        </h2>
+        <span className="status-pill status-pill--success">{copy.resultReady}</span>
+      </div>
+      <p className="muted">{copy.visualDraftSubtitle}</p>
+      {visual.logline ? <p className="setup-visual-board__logline">{visual.logline}</p> : null}
+      <div className="setup-visual-board__meta">
+        <KeyValue label={copy.visualStyle} value={visual.style_tags?.join(' / ')} />
+        <KeyValue label={copy.visualTone} value={visual.tone} />
+        <KeyValue label={copy.visualBoldness} value={visual.boldness_level ? `${visual.boldness_level}/10` : undefined} />
+      </div>
+
+      {visual.world_pressure_cards && visual.world_pressure_cards.length > 0 ? (
+        <VisualSection title={copy.visualWorldPressure} count={visual.world_pressure_cards.length}>
+          <div className="setup-card-list">
+            {visual.world_pressure_cards.map((card, index) => (
+              <article className="setup-card" key={`${card.title ?? 'world'}-${index}`}>
+                <div className="setup-card__header">
+                  <strong>{firstText(card.title, `${copy.statePrefix} ${index + 1}`)}</strong>
+                  <span>{card.related_world_state_keys?.join(' / ')}</span>
+                </div>
+                <p className="setup-card__copy">{firstText(card.detail, card.stakes, copy.defaultNote)}</p>
+                {card.stakes ? <p className="setup-card__copy setup-card__copy--muted">{card.stakes}</p> : null}
+              </article>
+            ))}
+          </div>
+        </VisualSection>
+      ) : null}
+
+      {visual.character_cards && visual.character_cards.length > 0 ? (
+        <VisualSection title={copy.visualCharacterCards} count={visual.character_cards.length}>
+          <div className="setup-card-list">
+            {visual.character_cards.map((card, index) => (
+              <article className="setup-card" key={card.character_key ?? `${card.name ?? 'character'}-${index}`}>
+                <div className="setup-card__header">
+                  <strong>{firstText(card.name, `${copy.rolePrefix} ${index + 1}`)}</strong>
+                  <span>{firstText(card.role, card.character_key, copy.defaultRole)}</span>
+                </div>
+                <p className="setup-card__copy">{firstText(card.hook, copy.defaultProfile)}</p>
+                <div className="key-value-grid">
+                  <KeyValue label={copy.goals} value={card.goal} />
+                  <KeyValue label={copy.fears} value={card.fear} />
+                  <KeyValue label={copy.secrets} value={card.secret} />
+                </div>
+              </article>
+            ))}
+          </div>
+        </VisualSection>
+      ) : null}
+
+      {visual.relationship_edges && visual.relationship_edges.length > 0 ? (
+        <VisualSection title={copy.visualRelationshipGraph} count={visual.relationship_edges.length}>
+          <div className="setup-card-list">
+            {visual.relationship_edges.map((edge, index) => (
+              <article className="setup-card" key={`${edge.from_character_key ?? 'from'}-${edge.to_character_key ?? 'to'}-${index}`}>
+                <div className="setup-card__header">
+                  <strong>
+                    {firstText(edge.from_character_key, copy.roleA)} / {firstText(edge.to_character_key, copy.roleB)}
+                  </strong>
+                  <span>{firstText(edge.tension, copy.relationshipDraft)}</span>
+                </div>
+                <p className="setup-card__copy">{firstText(edge.summary, copy.defaultRelationshipSummary)}</p>
+                {edge.misreading ? <p className="setup-card__copy setup-card__copy--muted">{copy.misunderstanding}{edge.misreading}</p> : null}
+              </article>
+            ))}
+          </div>
+        </VisualSection>
+      ) : null}
+
+      {visual.open_questions && visual.open_questions.length > 0 ? (
+        <VisualSection title={copy.resultOpenQuestions} count={visual.open_questions.length}>
+          <div className="setup-card-list">
+            {visual.open_questions.map((question, index) => (
+              <article className="setup-card" key={question.key ?? `visual-question-${index}`}>
+                <div className="setup-card__header">
+                  <strong>{firstText(question.question, `${copy.questionPrefix} ${index + 1}`)}</strong>
+                </div>
+                <p className="setup-card__copy">{firstText(question.why_it_matters, copy.defaultQuestionReason)}</p>
+              </article>
+            ))}
+          </div>
+        </VisualSection>
+      ) : null}
+
+      {visual.next_agent_suggestions && visual.next_agent_suggestions.length > 0 ? (
+        <VisualSection title={copy.visualNextAgents} count={visual.next_agent_suggestions.length}>
+          <div className="setup-card-list">
+            {visual.next_agent_suggestions.map((suggestion, index) => (
+              <article className="setup-card" key={suggestion.key ?? `${suggestion.label ?? 'agent'}-${index}`}>
+                <div className="setup-card__header">
+                  <strong>{firstText(suggestion.label, suggestion.key, `${copy.questionPrefix} ${index + 1}`)}</strong>
+                </div>
+                <p className="setup-card__copy">{firstText(suggestion.reason, copy.defaultQuestionReason)}</p>
+              </article>
+            ))}
+          </div>
+        </VisualSection>
+      ) : null}
+
+      {visual.agent_summary ? <p className="result-copy">{visual.agent_summary}</p> : null}
+      <DraftActionBar onCancelDraft={onCancelDraft} onRegenerateDraft={onRegenerateDraft} />
+    </section>
+  );
+}
+
+function VisualSection({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+  return (
+    <div className="setup-visual-section">
+      <div className="setup-visual-section__header">
+        <h3>{title}</h3>
+        <span className="setup-count-badge">{count}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function DraftActionBar({ onRegenerateDraft, onCancelDraft }: { onRegenerateDraft: () => void; onCancelDraft: () => void }) {
+  return (
+    <div className="setup-visual-board__actions">
+      <button className="button button--secondary" onClick={onRegenerateDraft} type="button">
+        {copy.regenerateDraft}
+      </button>
+      <button className="button button--ghost" onClick={onCancelDraft} type="button">
+        {copy.cancelDraft}
+      </button>
     </div>
   );
 }
