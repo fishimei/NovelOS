@@ -169,6 +169,7 @@ type SetupRun struct {
 	Status      string    `gorm:"not null;default:''"`
 	CurrentStep string    `gorm:"not null;default:''"`
 	Progress    int       `gorm:"not null;default:0"`
+	Error       string    `gorm:"not null;default:''"`
 	CreatedAt   time.Time `gorm:"not null"`
 	UpdatedAt   time.Time `gorm:"not null"`
 }
@@ -219,6 +220,7 @@ type StoryRun struct {
 	Status      string `gorm:"not null;default:''"`
 	CurrentStep string `gorm:"not null;default:''"`
 	Progress    int    `gorm:"not null;default:0"`
+	Error       string `gorm:"not null;default:''"`
 	CommittedAt *time.Time
 	CreatedAt   time.Time `gorm:"not null"`
 	UpdatedAt   time.Time `gorm:"not null"`

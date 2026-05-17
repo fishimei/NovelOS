@@ -59,7 +59,7 @@ func New(cfg config.Config) *App {
 	if err != nil {
 		log.Fatalf("bootstrap setup generator: %v", err)
 	}
-	setupAdvancer := service.NewSetupSessionAdvancer(repos.SetupSessions, setupGenerator, eventStream)
+	setupAdvancer := service.NewSetupSessionAdvancer(repos.SetupSessions, repos.Audit, setupGenerator, eventStream)
 	setupApplier := service.NewSetupRunApplier(
 		repos.SetupSessions,
 		repos.AuthorBibles,
@@ -87,7 +87,7 @@ func New(cfg config.Config) *App {
 	if err != nil {
 		log.Fatalf("bootstrap story generator: %v", err)
 	}
-	storyAdvancer := service.NewStorySessionAdvancer(repos.StorySessions, storyGenerator, eventStream)
+	storyAdvancer := service.NewStorySessionAdvancer(repos.StorySessions, repos.Audit, storyGenerator, eventStream)
 	storyCommitter := service.NewStoryRunCommitter(
 		repos.StorySessions,
 		repos.Chapters,

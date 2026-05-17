@@ -25,11 +25,12 @@ type SetupRunGeneratorDeps struct {
 }
 
 type SetupRunGenerator struct {
-	model  llmmodel.ToolCallingChatModel
-	prompt string
-	events port.GenerationEventStream
-	clock  port.Clock
-	ids    port.IDGenerator
+	model     llmmodel.ToolCallingChatModel
+	modelName string
+	prompt    string
+	events    port.GenerationEventStream
+	clock     port.Clock
+	ids       port.IDGenerator
 }
 
 func NewSetupRunGenerator(ctx context.Context, deps SetupRunGeneratorDeps) (*SetupRunGenerator, error) {
@@ -38,11 +39,12 @@ func NewSetupRunGenerator(ctx context.Context, deps SetupRunGeneratorDeps) (*Set
 		return nil, err
 	}
 	return &SetupRunGenerator{
-		model:  chatModel,
-		prompt: deps.Config.SetupAgent.Prompt,
-		events: deps.Events,
-		clock:  deps.Clock,
-		ids:    deps.IDs,
+		model:     chatModel,
+		modelName: deps.Config.Model,
+		prompt:    deps.Config.SetupAgent.Prompt,
+		events:    deps.Events,
+		clock:     deps.Clock,
+		ids:       deps.IDs,
 	}, nil
 }
 
@@ -55,7 +57,7 @@ func (g *SetupRunGenerator) Generate(ctx context.Context, input port.SetupRunGen
 	msg, err := g.model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.systemPrompt()),
 		schema.UserMessage(g.userPrompt(input)),
-	}, llmmodel.WithTemperature(0.7), llmmodel.WithMaxTokens(6000))
+	}, maxTokensOption(g.modelName, 6000))
 	if err != nil {
 		return model.SetupRunResult{}, err
 	}

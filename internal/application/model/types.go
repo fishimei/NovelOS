@@ -292,8 +292,9 @@ type SetupRun struct {
 	Status      string    `json:"status"`       // 运行状态
 	CurrentStep string    `json:"current_step"` // 当前步骤
 	Progress    int       `json:"progress"`     // 进度百分比
-	CreatedAt   time.Time `json:"created_at"`   // 创建时间
-	UpdatedAt   time.Time `json:"updated_at"`   // 最后更新时间
+	Error       string    `json:"error,omitempty"`
+	CreatedAt   time.Time `json:"created_at"` // 创建时间
+	UpdatedAt   time.Time `json:"updated_at"` // 最后更新时间
 }
 
 // SetupDraft 是设置生成的草稿。
@@ -367,6 +368,7 @@ type StoryRun struct {
 	Status      string     `json:"status"`       // 运行状态
 	CurrentStep string     `json:"current_step"` // 当前步骤
 	Progress    int        `json:"progress"`     // 进度百分比
+	Error       string     `json:"error,omitempty"`
 	CommittedAt *time.Time `json:"committed_at"` // 提交时间（如果有）
 	CreatedAt   time.Time  `json:"created_at"`   // 创建时间
 	UpdatedAt   time.Time  `json:"updated_at"`   // 最后更新时间

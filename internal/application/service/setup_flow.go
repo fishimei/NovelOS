@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
@@ -34,12 +35,18 @@ func (s *SetupSessionStarter) Start(ctx context.Context, projectID string, input
 // 管理从用户提示到设置运行的转换。
 type SetupSessionAdvancer struct {
 	sessions  port.SetupSessionRepository
+	audit     port.AuditRepository
 	generator port.SetupRunGenerator
 	events    port.GenerationEventStream
 }
 
-func NewSetupSessionAdvancer(sessions port.SetupSessionRepository, generator port.SetupRunGenerator, events port.GenerationEventStream) *SetupSessionAdvancer {
-	return &SetupSessionAdvancer{sessions: sessions, generator: generator, events: events}
+func NewSetupSessionAdvancer(
+	sessions port.SetupSessionRepository,
+	audit port.AuditRepository,
+	generator port.SetupRunGenerator,
+	events port.GenerationEventStream,
+) *SetupSessionAdvancer {
+	return &SetupSessionAdvancer{sessions: sessions, audit: audit, generator: generator, events: events}
 }
 
 // Advance 添加用户消息并创建新的设置运行。
@@ -69,6 +76,8 @@ func (s *SetupSessionAdvancer) Advance(ctx context.Context, sessionID string, in
 func (s *SetupSessionAdvancer) generate(ctx context.Context, runID string) {
 	run, err := s.sessions.GetRunByID(ctx, runID)
 	if err != nil {
+		log.Printf("setup run %s failed before load: %v", runID, err)
+		s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 		s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 		return
 	}
@@ -100,11 +109,13 @@ func (s *SetupSessionAdvancer) generate(ctx context.Context, runID string) {
 }
 
 func (s *SetupSessionAdvancer) failRun(ctx context.Context, runID string, session model.SetupSession, err error) {
-	_ = s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusFailed, domain.RunStatusFailed, 100)
+	_ = s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusFailed, domain.RunStatusFailed, 100, err.Error())
 	if session.ID != "" {
 		session.Status = domain.SessionStatusFailed
 		_, _ = s.sessions.UpdateSession(ctx, session)
 	}
+	log.Printf("setup run %s failed: %v", runID, err)
+	s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 }
 
@@ -113,4 +124,18 @@ func (s *SetupSessionAdvancer) publish(ctx context.Context, runID string, name s
 		return
 	}
 	_ = s.events.Publish(ctx, runID, port.GenerationEvent{Name: name, Data: data})
+}
+
+func (s *SetupSessionAdvancer) appendAuditEvent(ctx context.Context, runID string, name string, data map[string]any) {
+	if s.audit == nil {
+		return
+	}
+	if _, err := s.audit.AppendRunEvent(ctx, model.RunEvent{
+		RunKind:   "setup",
+		RunID:     runID,
+		EventName: name,
+		Payload:   data,
+	}); err != nil {
+		log.Printf("append setup run event %s failed: %v", runID, err)
+	}
 }

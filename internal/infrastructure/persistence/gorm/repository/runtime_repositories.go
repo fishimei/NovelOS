@@ -156,6 +156,7 @@ func (r *setupSessionRepository) CreateRun(ctx context.Context, sessionID string
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
+		Error:       row.Error,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}, nil
@@ -173,6 +174,7 @@ func (r *setupSessionRepository) GetRunByID(ctx context.Context, runID string) (
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
+		Error:       row.Error,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}, nil
@@ -214,6 +216,7 @@ func (r *setupSessionRepository) SaveRunResult(ctx context.Context, runID string
 		"status":       result.Status,
 		"current_step": "completed",
 		"progress":     100,
+		"error":        "",
 		"updated_at":   now,
 	}).Error; err != nil {
 		return mapDBError(err, "setup run not found")
@@ -224,13 +227,17 @@ func (r *setupSessionRepository) SaveRunResult(ctx context.Context, runID string
 	}).Create(&row).Error, "setup run result not found")
 }
 
-func (r *setupSessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int) error {
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(map[string]any{
+func (r *setupSessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error {
+	updates := map[string]any{
 		"status":       status,
 		"current_step": currentStep,
 		"progress":     progress,
 		"updated_at":   r.now(),
-	}).Error, "setup run not found")
+	}
+	if len(errorMessage) > 0 {
+		updates["error"] = errorMessage[0]
+	}
+	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(updates).Error, "setup run not found")
 }
 
 type storySessionRepository struct {
@@ -378,6 +385,7 @@ func (r *storySessionRepository) CreateRun(ctx context.Context, sessionID string
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
+		Error:       row.Error,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}, nil
@@ -395,6 +403,7 @@ func (r *storySessionRepository) GetRunByID(ctx context.Context, runID string) (
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
+		Error:       row.Error,
 		CommittedAt: row.CommittedAt,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
@@ -445,6 +454,7 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 		"status":       result.Status,
 		"current_step": "review_required",
 		"progress":     100,
+		"error":        "",
 		"updated_at":   now,
 	}).Error; err != nil {
 		return mapDBError(err, "story run not found")
@@ -455,13 +465,17 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 	}).Create(&row).Error, "story run result not found")
 }
 
-func (r *storySessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int) error {
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
+func (r *storySessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error {
+	updates := map[string]any{
 		"status":       status,
 		"current_step": currentStep,
 		"progress":     progress,
 		"updated_at":   r.now(),
-	}).Error, "story run not found")
+	}
+	if len(errorMessage) > 0 {
+		updates["error"] = errorMessage[0]
+	}
+	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(updates).Error, "story run not found")
 }
 
 func (r *storySessionRepository) MarkCommitted(ctx context.Context, runID string) error {
@@ -470,6 +484,7 @@ func (r *storySessionRepository) MarkCommitted(ctx context.Context, runID string
 		"status":       "committed",
 		"current_step": "committed",
 		"progress":     100,
+		"error":        "",
 		"committed_at": now,
 		"updated_at":   now,
 	}).Error, "story run not found")
@@ -485,6 +500,13 @@ func (r *auditRepository) AppendRunEvent(ctx context.Context, event model.RunEve
 	}
 	if event.CreatedAt.IsZero() {
 		event.CreatedAt = r.now()
+	}
+	if event.Sequence == 0 {
+		sequence, err := currentSequence(ctx, r.dbFor(ctx), event.RunKind, event.RunID)
+		if err != nil {
+			return model.RunEvent{}, mapDBError(err, "run event not found")
+		}
+		event.Sequence = sequence + 1
 	}
 	row, err := runEventRowFromModel(event, r.now(), event.ID)
 	if err != nil {

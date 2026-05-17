@@ -61,7 +61,7 @@ type SetupSessionRepository interface {
 	GetRunByID(ctx context.Context, runID string) (model.SetupRun, error)
 	GetRunResultByID(ctx context.Context, runID string) (model.SetupRunResult, error)
 	SaveRunResult(ctx context.Context, runID string, result model.SetupRunResult) error
-	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int) error
+	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
 }
 
 // StorySessionRepository 是故事会话仓库的接口。
@@ -76,7 +76,7 @@ type StorySessionRepository interface {
 	GetRunByID(ctx context.Context, runID string) (model.StoryRun, error)
 	GetRunResultByID(ctx context.Context, runID string) (model.StoryRunResult, error)
 	SaveRunResult(ctx context.Context, runID string, result model.StoryRunResult) error
-	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int) error
+	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
 	MarkCommitted(ctx context.Context, runID string) error
 }
 

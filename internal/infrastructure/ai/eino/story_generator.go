@@ -185,7 +185,7 @@ func (g *StoryRunGenerator) generateStoryVariable(ctx context.Context, input por
 	msg, err := g.model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.variableSystemPrompt()),
 		schema.UserMessage(string(payload)),
-	}, llmmodel.WithTemperature(0.7), llmmodel.WithMaxTokens(2500))
+	}, maxTokensOption(g.cfg.Model, 2500))
 	if err != nil {
 		return StoryVariablePlan{}, err
 	}
@@ -227,7 +227,7 @@ func (g *StoryRunGenerator) generateTurnContent(ctx context.Context, input port.
 	msg, err := g.model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.turnNarrativePrompt()),
 		schema.UserMessage(string(payload)),
-	}, llmmodel.WithTemperature(0.8), llmmodel.WithMaxTokens(1200))
+	}, maxTokensOption(g.cfg.Model, 1200))
 	if err != nil {
 		return StoryTurnPlan{}, err
 	}
@@ -256,7 +256,7 @@ func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input 
 	msg, err := g.model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.summaryPrompt()),
 		schema.UserMessage(string(payload)),
-	}, llmmodel.WithTemperature(0.5), llmmodel.WithMaxTokens(4000))
+	}, maxTokensOption(g.cfg.Model, 4000))
 	if err == nil {
 		var out StoryNarrativeResult
 		if decodeModelJSON(msg.Content, &out) == nil {

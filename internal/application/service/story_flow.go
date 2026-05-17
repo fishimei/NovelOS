@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
@@ -12,12 +13,18 @@ import (
 // 管理从作者提示到故事运行的转换。
 type StorySessionAdvancer struct {
 	sessions  port.StorySessionRepository
+	audit     port.AuditRepository
 	generator port.StoryRunGenerator
 	events    port.GenerationEventStream
 }
 
-func NewStorySessionAdvancer(sessions port.StorySessionRepository, generator port.StoryRunGenerator, events port.GenerationEventStream) *StorySessionAdvancer {
-	return &StorySessionAdvancer{sessions: sessions, generator: generator, events: events}
+func NewStorySessionAdvancer(
+	sessions port.StorySessionRepository,
+	audit port.AuditRepository,
+	generator port.StoryRunGenerator,
+	events port.GenerationEventStream,
+) *StorySessionAdvancer {
+	return &StorySessionAdvancer{sessions: sessions, audit: audit, generator: generator, events: events}
 }
 
 // Advance 添加作者消息并创建新的故事运行。
@@ -47,6 +54,8 @@ func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, in
 func (s *StorySessionAdvancer) generate(ctx context.Context, runID string) {
 	run, err := s.sessions.GetRunByID(ctx, runID)
 	if err != nil {
+		log.Printf("story run %s failed before load: %v", runID, err)
+		s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 		s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 		return
 	}
@@ -79,11 +88,13 @@ func (s *StorySessionAdvancer) generate(ctx context.Context, runID string) {
 }
 
 func (s *StorySessionAdvancer) failRun(ctx context.Context, runID string, session model.StorySession, err error) {
-	_ = s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusFailed, domain.RunStatusFailed, 100)
+	_ = s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusFailed, domain.RunStatusFailed, 100, err.Error())
 	if session.ID != "" {
 		session.Status = domain.SessionStatusFailed
 		_, _ = s.sessions.UpdateSession(ctx, session)
 	}
+	log.Printf("story run %s failed: %v", runID, err)
+	s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusFailed, "error": err.Error()})
 }
 
@@ -92,4 +103,18 @@ func (s *StorySessionAdvancer) publish(ctx context.Context, runID string, name s
 		return
 	}
 	_ = s.events.Publish(ctx, runID, port.GenerationEvent{Name: name, Data: data})
+}
+
+func (s *StorySessionAdvancer) appendAuditEvent(ctx context.Context, runID string, name string, data map[string]any) {
+	if s.audit == nil {
+		return
+	}
+	if _, err := s.audit.AppendRunEvent(ctx, model.RunEvent{
+		RunKind:   "story",
+		RunID:     runID,
+		EventName: name,
+		Payload:   data,
+	}); err != nil {
+		log.Printf("append story run event %s failed: %v", runID, err)
+	}
 }
