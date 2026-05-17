@@ -1,14 +1,14 @@
-// 关系详情页。编辑关系摘要、锚点、张力点和波动值，暂不展开长期关系视角。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
+import { listCharacters } from '../../api/characters';
 import { getRelationship, updateRelationship } from '../../api/relationships';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
 import { TextArrayField } from '../../components/forms/TextArrayField';
-import type { UpdateRelationshipRequest } from '../../types/api';
+import type { Character, UpdateRelationshipRequest } from '../../types/api';
 
 const emptyRelationshipForm: UpdateRelationshipRequest = {
   summary: '',
@@ -28,9 +28,18 @@ export function RelationshipDetailPage() {
     enabled: Boolean(relationshipId),
   });
 
+  const projectId = relationshipQuery.data?.pair.project_id ?? '';
+
+  const charactersQuery = useQuery({
+    queryKey: ['characters', projectId, 1, 100],
+    queryFn: ({ signal }) => listCharacters(projectId, 1, 100, signal),
+    enabled: Boolean(projectId),
+  });
+
+  const characterNameMap = useMemo(() => buildCharacterNameMap(charactersQuery.data?.data ?? []), [charactersQuery.data?.data]);
+
   useEffect(() => {
     if (relationshipQuery.data) {
-      // 详情页只编辑 OpenAPI 暴露的关系对字段，视角和事件保持只读。
       setForm({
         summary: relationshipQuery.data.pair.summary,
         anchors: relationshipQuery.data.pair.anchors ?? [],
@@ -51,6 +60,9 @@ export function RelationshipDetailPage() {
     },
   });
 
+  const leftName = getCharacterName(characterNameMap, relationshipQuery.data?.pair.left_character_id);
+  const rightName = getCharacterName(characterNameMap, relationshipQuery.data?.pair.right_character_id);
+
   return (
     <main className="detail-layout">
       <section className="page">
@@ -58,13 +70,12 @@ export function RelationshipDetailPage() {
           <div>
             <h1>关系详情</h1>
             <p>
-              {relationshipQuery.data?.pair.left_character_id ?? '角色 A'} {'->'}{' '}
-              {relationshipQuery.data?.pair.right_character_id ?? '角色 B'}
+              {leftName} {'->'} {rightName}
             </p>
           </div>
           <button className="button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()} type="button">
             <Save size={17} />
-            保存
+            保存修改
           </button>
         </div>
 
@@ -85,7 +96,7 @@ export function RelationshipDetailPage() {
               onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })}
             />
           </label>
-          <TextArrayField label="锚点" values={form.anchors ?? []} onChange={(anchors) => setForm({ ...form, anchors })} />
+          <TextArrayField label="关系锚点" values={form.anchors ?? []} onChange={(anchors) => setForm({ ...form, anchors })} />
           <TextArrayField
             label="张力点"
             values={form.tension_points ?? []}
@@ -95,15 +106,18 @@ export function RelationshipDetailPage() {
       </section>
 
       <aside className="context-panel">
-        <h2>关系视角</h2>
+        <h2>双方视角</h2>
         <div className="stack-list">
           {(relationshipQuery.data?.views ?? []).map((view) => (
             <article className="memory-item" key={view.id}>
               <strong>
-                {view.source_character_id} {'->'} {view.target_character_id}
+                {getCharacterName(characterNameMap, view.source_character_id)} {'->'}{' '}
+                {getCharacterName(characterNameMap, view.target_character_id)}
               </strong>
-              {view.public_attitude ? <p>公开态度：{view.public_attitude}</p> : null}
+              {view.public_attitude ? <p>表面态度：{view.public_attitude}</p> : null}
               {view.private_attitude ? <p>私下态度：{view.private_attitude}</p> : null}
+              {view.believed_target_attitude ? <p>误判：{view.believed_target_attitude}</p> : null}
+              {view.masking_strategy ? <p>伪装策略：{view.masking_strategy}</p> : null}
             </article>
           ))}
         </div>
@@ -112,8 +126,18 @@ export function RelationshipDetailPage() {
   );
 }
 
+function buildCharacterNameMap(characters: Character[]) {
+  return new Map(characters.map((character) => [character.id, character.name]));
+}
+
+function getCharacterName(characterMap: Map<string, string>, id?: string) {
+  if (!id) {
+    return '未知角色';
+  }
+  return characterMap.get(id) ?? id;
+}
+
 function normalizeRelationshipForm(form: UpdateRelationshipRequest): UpdateRelationshipRequest {
-  // PUT 发送完整可编辑关系字段，同时清理列表里的空项。
   return {
     summary: form.summary?.trim() ?? '',
     anchors: normalizeStringListForUpdate(form.anchors),

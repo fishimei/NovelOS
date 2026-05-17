@@ -1,20 +1,23 @@
-// 项目总览页。展示项目统计、提供轻量项目编辑，并连接到主要项目工作区。
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookMarked, FileText, GitBranch, PenLine, Save, Users, X } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowRight, BookMarked, FileText, GitBranch, PenLine, Save, ScrollText, Users, X } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 
+import { listChapters } from '../../api/chapters';
 import { updateProject } from '../../api/projects';
+import { listStorySessions } from '../../api/storySessions';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { useRecentProjects } from '../../hooks/useRecentProjects';
 import type { Project } from '../../types/api';
+import { formatDateLabel, formatRelativeTime } from '../../utils/format';
 
 const actions = [
-  { to: 'setup', label: '设定建模', icon: PenLine, description: '从一句想法生成结构化设定草稿。' },
-  { to: 'bible', label: '作者圣经', icon: BookMarked, description: '维护主题、风格、世界规则和约束。' },
-  { to: 'characters', label: '角色', icon: Users, description: '管理人物设定、目标和记忆。' },
-  { to: 'relationships', label: '关系', icon: GitBranch, description: '维护角色之间的锚点与张力。' },
-  { to: 'story', label: '故事推进', icon: FileText, description: '输入推进语，生成草稿并提交正史。' },
+  { to: 'setup', label: '设定工作台', icon: PenLine, description: '从一句灵感推进设定草稿，把可用内容写回项目。' },
+  { to: 'bible', label: '作者圣经', icon: BookMarked, description: '维护主题、文风、禁区与世界规则，统一创作边界。' },
+  { to: 'characters', label: '角色档案', icon: Users, description: '集中编辑角色画像、目标、恐惧、秘密与约束。' },
+  { to: 'relationships', label: '关系网络', icon: GitBranch, description: '整理人物之间的摘要、锚点和张力变化。' },
+  { to: 'story', label: '继续写作', icon: FileText, description: '推进会话、生成正文草稿、审校并提交为正式章节。' },
+  { to: 'chapters', label: '章节卷轴', icon: ScrollText, description: '按时间线查看已提交章节与最新创作进度。' },
 ];
 
 export function ProjectOverviewPage() {
@@ -27,6 +30,18 @@ export function ProjectOverviewPage() {
   const [genre, setGenre] = useState('');
   const [description, setDescription] = useState('');
 
+  const chaptersQuery = useQuery({
+    queryKey: ['chapters', projectId, 1, 6],
+    queryFn: ({ signal }) => listChapters(projectId ?? '', 1, 6, signal),
+    enabled: Boolean(projectId),
+  });
+
+  const storySessionsQuery = useQuery({
+    queryKey: ['storySessions', projectId, 1, 6],
+    queryFn: ({ signal }) => listStorySessions(projectId ?? '', 1, 6, signal),
+    enabled: Boolean(projectId),
+  });
+
   const updateProjectMutation = useMutation({
     mutationFn: () =>
       updateProject(projectId ?? '', {
@@ -35,7 +50,6 @@ export function ProjectOverviewPage() {
         description: description.trim() || undefined,
       }),
     onSuccess: (updatedProject) => {
-      // 项目编辑成功后，同步外壳标题和最近项目快捷入口。
       queryClient.setQueryData(['project', projectId], updatedProject);
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       rememberProject(updatedProject);
@@ -60,12 +74,35 @@ export function ProjectOverviewPage() {
     updateProjectMutation.mutate();
   };
 
+  const chapters = chaptersQuery.data?.data ?? [];
+  const latestChapter = chapters[0];
+  const storySessions = storySessionsQuery.data?.data ?? [];
+  const latestSession = storySessions[0];
+
+  const overviewStats = [
+    {
+      label: '角色',
+      value: project?.stats?.character_count ?? 0,
+      meta: project?.stats?.character_count ? '已建立人物档案' : '等待补充核心人物',
+    },
+    {
+      label: '章节',
+      value: project?.stats?.chapter_count ?? 0,
+      meta: latestChapter ? `最近一章 ${formatRelativeTime(latestChapter.updated_at ?? latestChapter.created_at)}` : '尚未提交正文',
+    },
+    {
+      label: '最新进度',
+      value: project?.stats?.last_committed_chapter_number ?? '-',
+      meta: latestChapter?.title ?? '从设定或写作工作台开始',
+    },
+  ];
+
   return (
-    <div className="page">
+    <div className="page page--wide page--overview">
       <div className="page__header">
         <div>
-          <h1>{project?.title ?? '项目总览'}</h1>
-          <p>{project?.description || '项目详情加载后会显示在这里。'}</p>
+          <h1>{project?.title ?? '项目概览'}</h1>
+          <p>{project?.description || '先写下这本书的方向、气质和核心冲突，概览页会围绕它组织你的工作流。'}</p>
         </div>
         <button className="button button--secondary" disabled={!project || isEditing} onClick={startEditing} type="button">
           <PenLine size={17} />
@@ -101,32 +138,108 @@ export function ProjectOverviewPage() {
         </form>
       ) : null}
 
-      <div className="stats-row">
-        <div className="stat">
-          <span>角色</span>
-          <strong>{project?.stats?.character_count ?? '-'}</strong>
+      <section className="overview-ribbon">
+        <div className="overview-ribbon__stats">
+          {overviewStats.map((item) => (
+            <div className="overview-ribbon__stat" key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <small>{item.meta}</small>
+            </div>
+          ))}
         </div>
-        <div className="stat">
-          <span>章节</span>
-          <strong>{project?.stats?.chapter_count ?? '-'}</strong>
+        <div className="overview-ribbon__status">
+          <span>项目状态</span>
+          <strong>{project?.genre || '长篇创作中'}</strong>
+          <small>最后更新 {formatDateLabel(project?.updated_at ?? project?.created_at)}</small>
         </div>
-        <div className="stat">
-          <span>最后章节</span>
-          <strong>{project?.stats?.last_committed_chapter_number ?? '-'}</strong>
-        </div>
-      </div>
+      </section>
 
-      <div className="action-grid">
+      <section className="continue-card">
+        <div className="continue-card__copy">
+          <small>今日继续写作</small>
+          <h2>{latestChapter?.title ?? latestSession?.title ?? '先开启第一段创作流程'}</h2>
+          <p>
+            {latestChapter?.summary ||
+              latestChapter?.content?.slice(0, 120) ||
+              latestSession?.current_plot_variable_summary ||
+              '从最新会话继续推进正文，或先补齐世界设定与角色资料。'}
+          </p>
+          <div className="continue-card__meta">
+            <span>最近章节：{latestChapter ? `第 ${latestChapter.chapter_number ?? '-'} 章` : '暂无正式章节'}</span>
+            <span>最近活动：{formatRelativeTime(latestChapter?.updated_at ?? latestSession?.updated_at ?? project?.updated_at)}</span>
+          </div>
+        </div>
+        <div className="continue-card__actions">
+          <Link className="button" to={`/projects/${projectId}/story`}>
+            <ArrowRight size={17} />
+            继续写作
+          </Link>
+          <Link className="button button--secondary" to={`/projects/${projectId}/chapters`}>
+            查看章节卷轴
+          </Link>
+        </div>
+      </section>
+
+      <div className="action-grid action-grid--overview">
         {actions.map((action) => {
           const Icon = action.icon;
+          const activity =
+            action.to === 'story'
+              ? latestSession?.updated_at
+              : action.to === 'chapters'
+                ? latestChapter?.updated_at
+                : project?.updated_at;
+
           return (
-            <Link className="action-tile" key={action.to} to={`/projects/${projectId}/${action.to}`}>
-              <Icon size={20} />
+            <Link className="action-tile action-tile--rich" key={action.to} to={`/projects/${projectId}/${action.to}`}>
+              <div className="action-tile__head">
+                <Icon size={20} />
+                <small>{activity ? `最近活动 ${formatRelativeTime(activity)}` : '等待开始'}</small>
+              </div>
               <strong>{action.label}</strong>
               <span>{action.description}</span>
             </Link>
           );
         })}
+      </div>
+
+      <div className="overview-secondary">
+        <section className="panel overview-panel">
+          <div className="panel__header">
+            <h2>最近章节</h2>
+          </div>
+          {chapters.length === 0 ? (
+            <p className="muted">还没有正式章节。完成一次写作提交后，这里会出现你的章节卷轴。</p>
+          ) : (
+            <div className="recent-story-list">
+              {chapters.slice(0, 3).map((chapter) => (
+                <Link className="recent-story-list__item" key={chapter.id} to={`/chapters/${chapter.id}`}>
+                  <strong>{chapter.title ?? `第 ${chapter.chapter_number ?? '-'} 章`}</strong>
+                  <span>{formatDateLabel(chapter.updated_at ?? chapter.created_at)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="panel overview-panel">
+          <div className="panel__header">
+            <h2>写作会话</h2>
+          </div>
+          {storySessions.length ? (
+            <div className="recent-story-list">
+              {storySessions.slice(0, 3).map((session) => (
+                <Link className="recent-story-list__item" key={session.id} to={`/projects/${projectId}/story`}>
+                  <strong>{session.title || '未命名会话'}</strong>
+                  <span>{session.current_plot_variable_summary || `最近更新 ${formatRelativeTime(session.updated_at)}`}</span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">还没有写作会话。可以先用设定工作台建立世界基础，再进入写作页面。</p>
+          )}
+        </section>
       </div>
     </div>
   );

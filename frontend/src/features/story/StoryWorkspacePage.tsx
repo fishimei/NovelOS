@@ -1,4 +1,3 @@
-// 故事推进工作台。这是 MVP 主创作闭环：创建/选择 story session、推进 run、查看流式输出并提交正史。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Send } from 'lucide-react';
 import { FormEvent, useMemo, useState, type ReactNode } from 'react';
@@ -13,14 +12,73 @@ import type {
   RunEvent,
   StoryCharacterMemoryUpdate,
   StoryMemoryPatch,
+  StoryPlotVariable,
   StoryRelationshipUpdate,
   StoryReviewReport,
   StoryRunResult,
   StoryWorldStateUpdate,
 } from '../../types/api';
+import { formatRelativeTime } from '../../utils/format';
 import { useStoryRunEvents } from './useStoryRunEvents';
 
-type PatchDecision = 'accept' | 'defer';
+const copy = {
+  sessionTitle: '写作会话',
+  createSessionPlaceholder: '为这一段剧情起一个工作标题',
+  createSessionButton: '创建写作会话',
+  workspaceTitle: '剧情工作台',
+  workspaceDesc: '正文在中间阅读，运行状态和补丁审校放右侧，整个流程更接近真实写作节奏。',
+  emptyTitle: '先创建一个写作会话',
+  emptyDesc: '建立会话后，正文生成、审校和提交都会围绕这个会话展开。',
+  untitledDraft: '未命名草稿',
+  chapterPrefix: '第',
+  chapterSuffix: '章',
+  wordSuffix: '字',
+  draftEmpty: '正文会在这里逐步出现，适合专注阅读和快速判断节奏。',
+  advancePlaceholder: '输入你想推进的情节方向、冲突目标、人物选择或文风要求',
+  advanceButton: '推进剧情',
+  reviewTitle: '运行与提交',
+  authorNotePlaceholder: '记录这章提交的作者批注',
+  commitButton: '提交为正式章节',
+  missingIds: '请先等待完整的 draft 和 memory patch 结果。',
+  committed: '这次运行已经提交，不需要重复 commit。',
+  runHistory: '运行记录',
+  loadingHistory: '正在加载运行记录',
+  noHistory: '暂无持久化运行事件。',
+  plotTitle: '情节压力线',
+  pressureSource: '压力来源',
+  coreChoice: '核心选择',
+  optionA: '选项 A',
+  optionB: '选项 B',
+  costA: '代价 A',
+  costB: '代价 B',
+  irreversible: '不可逆影响',
+  worldPressure: '世界压力',
+  reviewReport: '审校报告',
+  reviewPass: '通过',
+  reviewPending: '待处理',
+  hardViolations: '硬违规',
+  continuityIssues: '连贯性问题',
+  styleIssues: '风格问题',
+  suggestedFixes: '修正建议',
+  patchTitle: '记忆与状态补丁',
+  memoryPatch: '角色记忆',
+  relationshipPatch: '关系变化',
+  worldPatch: '世界状态',
+  noMemoryPatch: '没有角色记忆更新。',
+  noRelationshipPatch: '没有关系变化。',
+  noWorldPatch: '没有世界状态更新。',
+  unknownCharacter: '未指定角色',
+  importance: '重要度',
+  relationshipUpdate: '关系更新',
+  viewCount: '条视角',
+  eventCount: '个事件',
+  noExtraItems: '无附加事项',
+  worldUpdate: '世界状态更新',
+  statusIdle: '未开始',
+  statusConnecting: '连接中',
+  statusOpen: '已连接',
+  statusError: '异常',
+} as const;
 
 export function StoryWorkspacePage() {
   const { projectId = '' } = useParams();
@@ -30,7 +88,6 @@ export function StoryWorkspacePage() {
   const [authorMessage, setAuthorMessage] = useState('');
   const [activeRunId, setActiveRunId] = useState('');
   const [authorNote, setAuthorNote] = useState('');
-  const [patchDecisions, setPatchDecisions] = useState<Record<string, PatchDecision>>({});
 
   const sessionsQuery = useQuery({
     queryKey: ['storySessions', projectId, 1, 20],
@@ -46,7 +103,6 @@ export function StoryWorkspacePage() {
     queryFn: ({ signal }) => getStoryRun(activeRunId, signal),
     enabled: Boolean(activeRunId),
     refetchInterval: (query) => {
-      // run 状态用轮询；正文增量可通过 SSE 到达。
       const status = query.state.data?.status;
       return isActiveRunStatus(status) ? 1500 : false;
     },
@@ -85,20 +141,14 @@ export function StoryWorkspacePage() {
 
   const draftId = resultQuery.data?.draft?.id ?? resultQuery.data?.draft_id ?? '';
   const memoryPatchId = resultQuery.data?.memory_patch?.id ?? resultQuery.data?.memory_patch_id ?? '';
-  const hasDeferredPatchItems = Object.values(patchDecisions).includes('defer');
   const isRunCommitted = runQuery.data?.status === 'committed' || Boolean(runQuery.data?.committed_at);
   const committedCharacterIds = useMemo(() => {
     const updates = resultQuery.data?.memory_patch?.character_memory_updates ?? [];
     return Array.from(new Set(updates.map((update) => update.character_id).filter(Boolean)));
   }, [resultQuery.data?.memory_patch?.character_memory_updates]);
 
-  const setPatchDecision = (key: string, decision: PatchDecision) => {
-    setPatchDecisions((current) => ({ ...current, [key]: decision }));
-  };
-
   const commitMutation = useMutation({
     mutationFn: () =>
-      // commit 是前端唯一把候选故事结果写入正式章节/记忆数据的动作。
       commitStoryRun(activeRunId, {
         draft_id: draftId,
         memory_patch_id: memoryPatchId,
@@ -117,15 +167,38 @@ export function StoryWorkspacePage() {
       committedCharacterIds.forEach((characterId) => {
         queryClient.invalidateQueries({ queryKey: ['memories', characterId] });
       });
-      setPatchDecisions({});
       setAuthorNote('');
     },
   });
 
   const visibleDraft = useMemo(() => {
-    // 有最终 result 时优先展示最终正文，否则展示 SSE 流式增量。
     return resultQuery.data?.content ?? resultQuery.data?.draft?.content ?? eventState.draftText;
   }, [eventState.draftText, resultQuery.data]);
+
+  const storyProgress = [
+    {
+      label: '实时连接',
+      state:
+        eventState.connectionStatus === 'open'
+          ? 'done'
+          : eventState.connectionStatus === 'connecting'
+            ? 'active'
+            : eventState.connectionStatus === 'error'
+              ? 'error'
+              : 'idle',
+      detail: formatConnectionStatus(eventState.connectionStatus),
+    },
+    {
+      label: '草稿生成',
+      state: visibleDraft ? 'done' : activeRunId ? 'active' : 'idle',
+      detail: runQuery.data?.current_step || '等待会话推进',
+    },
+    {
+      label: '记忆补丁',
+      state: memoryPatchId ? 'done' : activeRunId ? 'active' : 'idle',
+      detail: memoryPatchId ? '已可审校' : '结果生成后出现',
+    },
+  ] as const;
 
   const startSession = (event: FormEvent) => {
     event.preventDefault();
@@ -140,15 +213,15 @@ export function StoryWorkspacePage() {
   return (
     <div className="workspace workspace--three">
       <aside className="workspace-panel">
-        <h2>故事会话</h2>
+        <h2>{copy.sessionTitle}</h2>
         <form className="stack-list" onSubmit={startSession}>
           <input
             value={sessionTitle}
             onChange={(event) => setSessionTitle(event.target.value)}
-            placeholder="会话标题，可选"
+            placeholder={copy.createSessionPlaceholder}
           />
           <button className="button" disabled={createSessionMutation.isPending} type="submit">
-            创建会话
+            {copy.createSessionButton}
           </button>
         </form>
         {sessionsQuery.isLoading ? <LoadingState /> : null}
@@ -167,11 +240,11 @@ export function StoryWorkspacePage() {
         </div>
       </aside>
 
-      <section className="workspace-main">
+      <section className="workspace-main workspace-main--story">
         <div className="page__header">
           <div>
-            <h1>故事推进工作台</h1>
-            <p>输入推进语，查看生成过程，审阅候选结果后再提交为正史。</p>
+            <h1>{copy.workspaceTitle}</h1>
+            <p>{copy.workspaceDesc}</p>
           </div>
           {runQuery.data?.status ? <span className="status-pill">{runQuery.data.status}</span> : null}
         </div>
@@ -181,31 +254,36 @@ export function StoryWorkspacePage() {
         {resultQuery.isError ? <ErrorState message={(resultQuery.error as Error).message} /> : null}
 
         {!selectedSessionId ? (
-          <EmptyState title="请先创建故事会话" description="创建后输入推进语，系统会生成候选章节草稿。" />
+          <div className="story-empty-state">
+            <EmptyState title={copy.emptyTitle} description={copy.emptyDesc} />
+            <ol className="story-empty-steps">
+              <li>创建写作会话，给这次推进一个标题。</li>
+              <li>输入推进语，说明你要推动的情节、冲突或人物决断。</li>
+              <li>审校草稿与记忆补丁，确认后再提交为正式章节。</li>
+            </ol>
+          </div>
         ) : (
           <>
             <div className="draft-surface">
               {resultQuery.data?.draft ? (
                 <div className="draft-meta">
-                  <strong>{resultQuery.data.draft.title ?? '未命名草稿'}</strong>
-                  <span>第 {resultQuery.data.draft.chapter_number ?? '-'} 章</span>
-                  <span>{resultQuery.data.draft.word_count ?? 0} 字</span>
+                  <strong>{resultQuery.data.draft.title ?? copy.untitledDraft}</strong>
+                  <span>
+                    {copy.chapterPrefix} {resultQuery.data.draft.chapter_number ?? '-'} {copy.chapterSuffix}
+                  </span>
+                  <span>
+                    {resultQuery.data.draft.word_count ?? 0} {copy.wordSuffix}
+                  </span>
                 </div>
               ) : null}
-              {visibleDraft ? <pre>{visibleDraft}</pre> : <p className="muted">生成的章节草稿会显示在这里。</p>}
+              {visibleDraft ? <pre>{visibleDraft}</pre> : <p className="muted">{copy.draftEmpty}</p>}
             </div>
-            {resultQuery.data ? (
-              <StoryResultPreview
-                result={resultQuery.data}
-                patchDecisions={patchDecisions}
-                onPatchDecisionChange={setPatchDecision}
-              />
-            ) : null}
+
             <form className="composer" onSubmit={sendAdvance}>
               <textarea
                 value={authorMessage}
                 onChange={(event) => setAuthorMessage(event.target.value)}
-                placeholder="例如：在雨夜对峙中揭露一个线索"
+                placeholder={copy.advancePlaceholder}
                 rows={4}
               />
               <button
@@ -214,7 +292,7 @@ export function StoryWorkspacePage() {
                 type="submit"
               >
                 <Send size={17} />
-                推进
+                {copy.advanceButton}
               </button>
             </form>
           </>
@@ -222,113 +300,133 @@ export function StoryWorkspacePage() {
       </section>
 
       <aside className="workspace-panel">
-        <h2>运行事件</h2>
-        <div className="status-line">实时流：{formatConnectionStatus(eventState.connectionStatus)}</div>
-        <div className="event-section">
-          <h3>生成步骤</h3>
-          {eventState.generationSteps.map((item, index) => (
-            <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
-          ))}
+        <h2>{copy.reviewTitle}</h2>
+        <div className="story-status-card">
+          <div className="story-status-card__header">
+            <strong>{runQuery.data?.status || '等待开始'}</strong>
+            <small>{activeRunId ? `最近一次运行 ${formatRelativeTime(runQuery.data?.updated_at ?? runQuery.data?.created_at)}` : '尚未运行'}</small>
+          </div>
+          <div className="story-progress-list">
+            {storyProgress.map((item) => (
+              <div className="story-progress-item" key={item.label}>
+                <span className={`story-progress-item__dot story-progress-item__dot--${item.state}`} aria-hidden="true" />
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="event-section">
-          <h3>剧情变量</h3>
-          {eventState.plotVariables.map((item, index) => (
-            <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
-          ))}
-        </div>
-        <div className="event-section">
-          <h3>角色回合</h3>
-          {eventState.characterTurns.map((item, index) => (
-            <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
-          ))}
-        </div>
-        <div className="event-section">
-          <h3>等待审阅</h3>
-          {eventState.reviewItems.map((item, index) => (
-            <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
-          ))}
-        </div>
-        <RunEventHistoryPanel
-          events={eventHistoryQuery.data ?? []}
-          isLoading={eventHistoryQuery.isLoading}
-          error={eventHistoryQuery.error as Error | null}
-        />
+
+        {resultQuery.data ? <StoryResultPreview result={resultQuery.data} /> : null}
+
         <div className="commit-box">
           <textarea
             value={authorNote}
             onChange={(event) => setAuthorNote(event.target.value)}
-            placeholder="提交备注"
+            placeholder={copy.authorNotePlaceholder}
             rows={4}
           />
           <button
             className="button"
-            disabled={
-              !activeRunId || !draftId || !memoryPatchId || hasDeferredPatchItems || isRunCommitted || commitMutation.isPending
-            }
+            disabled={!activeRunId || !draftId || !memoryPatchId || isRunCommitted || commitMutation.isPending}
             onClick={() => commitMutation.mutate()}
             type="button"
           >
             <Check size={17} />
-            提交正史
+            {copy.commitButton}
           </button>
-          {!draftId || !memoryPatchId ? (
-            <small className="muted">等待生成结果中的 draft_id 和 memory_patch_id。</small>
-          ) : null}
-          {hasDeferredPatchItems ? <small className="muted">提交前请先接受或移除暂缓的补丁项。</small> : null}
-          {isRunCommitted ? <small className="muted">这次运行已经提交过。</small> : null}
+          {!draftId || !memoryPatchId ? <small className="muted">{copy.missingIds}</small> : null}
+          {isRunCommitted ? <small className="muted">{copy.committed}</small> : null}
           {commitMutation.isError ? <ErrorState message={(commitMutation.error as Error).message} /> : null}
         </div>
+
+        <details className="event-disclosure">
+          <summary>查看运行记录</summary>
+          <div className="event-section">
+            {eventHistoryQuery.isLoading ? <LoadingState label={copy.loadingHistory} /> : null}
+            {!eventHistoryQuery.isLoading && (eventHistoryQuery.data ?? []).length === 0 ? <p className="muted">{copy.noHistory}</p> : null}
+            {(eventHistoryQuery.data ?? []).map((event) => (
+              <pre key={event.id}>
+                {JSON.stringify(
+                  {
+                    sequence: event.sequence,
+                    event_name: event.event_name,
+                    payload: event.payload,
+                    created_at: event.created_at,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            ))}
+          </div>
+        </details>
+
+        <details className="event-disclosure">
+          <summary>查看生成细节</summary>
+          <div className="structured-result">
+            <InspectorSection emptyText="暂无步骤数据。" title="生成步骤">
+              {eventState.generationSteps.map((item, index) => (
+                <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
+              ))}
+            </InspectorSection>
+            <InspectorSection emptyText="暂无剧情变量事件。" title="剧情变量">
+              {eventState.plotVariables.map((item, index) => (
+                <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
+              ))}
+            </InspectorSection>
+            <InspectorSection emptyText="暂无角色轮次事件。" title="角色轮次">
+              {eventState.characterTurns.map((item, index) => (
+                <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
+              ))}
+            </InspectorSection>
+            <InspectorSection emptyText="暂无审校事件。" title="审校触发">
+              {eventState.reviewItems.map((item, index) => (
+                <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
+              ))}
+            </InspectorSection>
+          </div>
+        </details>
       </aside>
     </div>
   );
 }
 
-function RunEventHistoryPanel({
-  events,
-  isLoading,
-  error,
+function InspectorSection({
+  title,
+  emptyText,
+  children,
 }: {
-  events: RunEvent[];
-  isLoading: boolean;
-  error: Error | null;
+  title: string;
+  emptyText: string;
+  children: ReactNode;
 }) {
+  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
+
   return (
-    <div className="event-section">
-      <h3>历史事件</h3>
-      <small className="muted">这里显示已持久化的运行事件；上方实时流仍然只属于运行态。</small>
-      {isLoading ? <LoadingState label="正在加载历史事件" /> : null}
-      {error ? <ErrorState message={error.message} /> : null}
-      {!isLoading && !error && events.length === 0 ? <p className="muted">暂无已持久化事件。</p> : null}
-      {events.map((event) => (
-        <pre key={event.id}>
-          {JSON.stringify(
-            {
-              sequence: event.sequence,
-              event_name: event.event_name,
-              payload: event.payload,
-              created_at: event.created_at,
-            },
-            null,
-            2,
-          )}
-        </pre>
-      ))}
-    </div>
+    <section className="result-section">
+      <div className="result-section__header">
+        <h2>{title}</h2>
+      </div>
+      {hasChildren ? children : <p className="muted">{emptyText}</p>}
+    </section>
   );
 }
 
 function formatConnectionStatus(status: string) {
   if (status === 'idle') {
-    return '空闲';
+    return copy.statusIdle;
   }
   if (status === 'connecting') {
-    return '连接中';
+    return copy.statusConnecting;
   }
   if (status === 'open') {
-    return '已连接';
+    return copy.statusOpen;
   }
   if (status === 'error') {
-    return '异常';
+    return copy.statusError;
   }
   return status;
 }
@@ -337,50 +435,38 @@ function isActiveRunStatus(status?: string) {
   return status === 'queued' || status === 'running' || status === 'loading_state';
 }
 
-function StoryResultPreview({
-  result,
-  patchDecisions,
-  onPatchDecisionChange,
-}: {
-  result: StoryRunResult;
-  patchDecisions: Record<string, PatchDecision>;
-  onPatchDecisionChange: (key: string, decision: PatchDecision) => void;
-}) {
+function StoryResultPreview({ result }: { result: StoryRunResult }) {
   const plot = result.plot_variable;
   const review = result.review;
   const patch = result.memory_patch;
 
   return (
     <div className="structured-result">
-      {plot ? (
-        <section className="result-section">
-          <div className="result-section__header">
-            <h2>剧情变量</h2>
-            {plot.focal_character_id ? <span className="status-pill">{plot.focal_character_id}</span> : null}
-          </div>
-          <div className="key-value-grid">
-            <KeyValue label="压力来源" value={plot.pressure_source} />
-            <KeyValue label="核心选择" value={plot.core_choice} />
-            <KeyValue label="选项 A" value={plot.option_a} />
-            <KeyValue label="代价 A" value={plot.cost_a} />
-            <KeyValue label="选项 B" value={plot.option_b} />
-            <KeyValue label="代价 B" value={plot.cost_b} />
-            <KeyValue label="不可逆影响" value={plot.irreversible_effect} />
-            <KeyValue label="世界压力" value={plot.world_state_pressure?.join(', ')} />
-          </div>
-        </section>
-      ) : null}
-
+      {plot ? <PlotVariablePreview plot={plot} /> : null}
       {review ? <ReviewPreview review={review} /> : null}
-
-      {patch ? (
-        <MemoryPatchPreview
-          patch={patch}
-          decisions={patchDecisions}
-          onDecisionChange={onPatchDecisionChange}
-        />
-      ) : null}
+      {patch ? <MemoryPatchPreview patch={patch} /> : null}
     </div>
+  );
+}
+
+function PlotVariablePreview({ plot }: { plot: StoryPlotVariable }) {
+  return (
+    <section className="result-section">
+      <div className="result-section__header">
+        <h2>{copy.plotTitle}</h2>
+        {plot.focal_character_id ? <span className="status-pill">{plot.focal_character_id}</span> : null}
+      </div>
+      <div className="key-value-grid">
+        <KeyValue label={copy.pressureSource} value={plot.pressure_source} />
+        <KeyValue label={copy.coreChoice} value={plot.core_choice} />
+        <KeyValue label={copy.optionA} value={plot.option_a} />
+        <KeyValue label={copy.costA} value={plot.cost_a} />
+        <KeyValue label={copy.optionB} value={plot.option_b} />
+        <KeyValue label={copy.costB} value={plot.cost_b} />
+        <KeyValue label={copy.irreversible} value={plot.irreversible_effect} />
+        <KeyValue label={copy.worldPressure} value={plot.world_state_pressure?.join(', ')} />
+      </div>
+    </section>
   );
 }
 
@@ -395,18 +481,18 @@ function KeyValue({ label, value }: { label: string; value?: string }) {
 
 function ReviewPreview({ review }: { review: StoryReviewReport }) {
   const groups = [
-    ['硬性违规', review.hard_violations],
-    ['连续性问题', review.continuity_issues],
-    ['风格问题', review.style_issues],
-    ['建议修复', review.suggested_fixes],
+    [copy.hardViolations, review.hard_violations],
+    [copy.continuityIssues, review.continuity_issues],
+    [copy.styleIssues, review.style_issues],
+    [copy.suggestedFixes, review.suggested_fixes],
   ] as const;
 
   return (
     <section className="result-section">
       <div className="result-section__header">
-        <h2>审校报告</h2>
+        <h2>{copy.reviewReport}</h2>
         <span className={review.pass ? 'status-pill' : 'status-pill status-pill--warning'}>
-          {review.pass ? '通过' : '需审阅'}
+          {review.pass ? copy.reviewPass : copy.reviewPending}
         </span>
       </div>
       <div className="review-grid">
@@ -420,7 +506,7 @@ function ReviewPreview({ review }: { review: StoryReviewReport }) {
                 ))}
               </ul>
             ) : (
-              <p className="muted">无</p>
+              <p className="muted">-</p>
             )}
           </div>
         ))}
@@ -429,15 +515,7 @@ function ReviewPreview({ review }: { review: StoryReviewReport }) {
   );
 }
 
-function MemoryPatchPreview({
-  patch,
-  decisions,
-  onDecisionChange,
-}: {
-  patch: StoryMemoryPatch;
-  decisions: Record<string, PatchDecision>;
-  onDecisionChange: (key: string, decision: PatchDecision) => void;
-}) {
+function MemoryPatchPreview({ patch }: { patch: StoryMemoryPatch }) {
   const memoryUpdates = patch.character_memory_updates ?? [];
   const relationshipUpdates = patch.relationship_updates ?? [];
   const worldUpdates = patch.world_state_updates ?? [];
@@ -445,56 +523,20 @@ function MemoryPatchPreview({
   return (
     <section className="result-section">
       <div className="result-section__header">
-        <h2>记忆补丁</h2>
+        <h2>{copy.patchTitle}</h2>
         {patch.status ? <span className="status-pill">{patch.status}</span> : null}
       </div>
 
-      <PatchGroup title="角色记忆">
-        {memoryUpdates.length > 0 ? (
-          memoryUpdates.map((item, index) => (
-            <CharacterMemoryPatchItem
-              item={item}
-              itemKey={patchItemKey('memory', index, item.character_id)}
-              key={patchItemKey('memory', index, item.character_id)}
-              decision={decisions[patchItemKey('memory', index, item.character_id)] ?? 'accept'}
-              onDecisionChange={onDecisionChange}
-            />
-          ))
-        ) : (
-          <p className="muted">暂无角色记忆更新。</p>
-        )}
+      <PatchGroup title={copy.memoryPatch}>
+        {memoryUpdates.length > 0 ? memoryUpdates.map((item, index) => <CharacterMemoryPatchItem item={item} key={`memory-${index}`} />) : <p className="muted">{copy.noMemoryPatch}</p>}
       </PatchGroup>
 
-      <PatchGroup title="关系更新">
-        {relationshipUpdates.length > 0 ? (
-          relationshipUpdates.map((item, index) => (
-            <RelationshipPatchItem
-              item={item}
-              itemKey={patchItemKey('relationship', index, item.pair_id ?? item.summary)}
-              key={patchItemKey('relationship', index, item.pair_id ?? item.summary)}
-              decision={decisions[patchItemKey('relationship', index, item.pair_id ?? item.summary)] ?? 'accept'}
-              onDecisionChange={onDecisionChange}
-            />
-          ))
-        ) : (
-          <p className="muted">暂无关系更新。</p>
-        )}
+      <PatchGroup title={copy.relationshipPatch}>
+        {relationshipUpdates.length > 0 ? relationshipUpdates.map((item, index) => <RelationshipPatchItem item={item} key={`relationship-${index}`} />) : <p className="muted">{copy.noRelationshipPatch}</p>}
       </PatchGroup>
 
-      <PatchGroup title="世界状态更新">
-        {worldUpdates.length > 0 ? (
-          worldUpdates.map((item, index) => (
-            <WorldStatePatchItem
-              item={item}
-              itemKey={patchItemKey('world', index, item.key)}
-              key={patchItemKey('world', index, item.key)}
-              decision={decisions[patchItemKey('world', index, item.key)] ?? 'accept'}
-              onDecisionChange={onDecisionChange}
-            />
-          ))
-        ) : (
-          <p className="muted">暂无世界状态更新。</p>
-        )}
+      <PatchGroup title={copy.worldPatch}>
+        {worldUpdates.length > 0 ? worldUpdates.map((item, index) => <WorldStatePatchItem item={item} key={`world-${index}`} />) : <p className="muted">{copy.noWorldPatch}</p>}
       </PatchGroup>
     </section>
   );
@@ -509,109 +551,47 @@ function PatchGroup({ title, children }: { title: string; children: ReactNode })
   );
 }
 
-function CharacterMemoryPatchItem({
-  item,
-  itemKey,
-  decision,
-  onDecisionChange,
-}: {
-  item: StoryCharacterMemoryUpdate;
-  itemKey: string;
-  decision: PatchDecision;
-  onDecisionChange: (key: string, decision: PatchDecision) => void;
-}) {
+function CharacterMemoryPatchItem({ item }: { item: StoryCharacterMemoryUpdate }) {
   return (
-    <PatchItemShell itemKey={itemKey} decision={decision} onDecisionChange={onDecisionChange}>
-      <strong>{item.character_id || '未知角色'}</strong>
-      <p>{item.content || '-'}</p>
-      <small>{[item.type, item.importance ? `重要度 ${item.importance}` : undefined].filter(Boolean).join(' · ')}</small>
-    </PatchItemShell>
-  );
-}
-
-function RelationshipPatchItem({
-  item,
-  itemKey,
-  decision,
-  onDecisionChange,
-}: {
-  item: StoryRelationshipUpdate;
-  itemKey: string;
-  decision: PatchDecision;
-  onDecisionChange: (key: string, decision: PatchDecision) => void;
-}) {
-  return (
-    <PatchItemShell itemKey={itemKey} decision={decision} onDecisionChange={onDecisionChange}>
-      <strong>{item.pair_id || item.pair?.id || '新的关系更新'}</strong>
-      <p>{item.summary || item.tension_delta || '-'}</p>
-      <small>
-        {[
-          item.views?.length ? `${item.views.length} 个视角` : undefined,
-          item.events?.length ? `${item.events.length} 个事件` : undefined,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </small>
-    </PatchItemShell>
-  );
-}
-
-function WorldStatePatchItem({
-  item,
-  itemKey,
-  decision,
-  onDecisionChange,
-}: {
-  item: StoryWorldStateUpdate;
-  itemKey: string;
-  decision: PatchDecision;
-  onDecisionChange: (key: string, decision: PatchDecision) => void;
-}) {
-  return (
-    <PatchItemShell itemKey={itemKey} decision={decision} onDecisionChange={onDecisionChange}>
-      <strong>{item.key || '世界状态'}</strong>
-      <p>{item.note || stringifyValue(item.value)}</p>
-      <small>{item.operation || '更新'}</small>
-    </PatchItemShell>
-  );
-}
-
-function PatchItemShell({
-  children,
-  itemKey,
-  decision,
-  onDecisionChange,
-}: {
-  children: ReactNode;
-  itemKey: string;
-  decision: PatchDecision;
-  onDecisionChange: (key: string, decision: PatchDecision) => void;
-}) {
-  return (
-    <div className={decision === 'defer' ? 'patch-item patch-item--deferred' : 'patch-item'}>
-      <div className="patch-item__body">{children}</div>
-      <div className="segmented-control" role="group">
-        <button
-          className={decision === 'accept' ? 'segmented-control__item segmented-control__item--active' : 'segmented-control__item'}
-          onClick={() => onDecisionChange(itemKey, 'accept')}
-          type="button"
-        >
-          接受
-        </button>
-        <button
-          className={decision === 'defer' ? 'segmented-control__item segmented-control__item--active' : 'segmented-control__item'}
-          onClick={() => onDecisionChange(itemKey, 'defer')}
-          type="button"
-        >
-          暂缓
-        </button>
+    <div className="patch-item">
+      <div className="patch-item__body">
+        <strong>{item.character_id || copy.unknownCharacter}</strong>
+        <p>{item.content || '-'}</p>
+        <small>{[item.type, item.importance ? `${copy.importance} ${item.importance}` : undefined].filter(Boolean).join(' / ')}</small>
       </div>
     </div>
   );
 }
 
-function patchItemKey(kind: string, index: number, id?: string) {
-  return `${kind}:${id || 'new'}:${index}`;
+function RelationshipPatchItem({ item }: { item: StoryRelationshipUpdate }) {
+  return (
+    <div className="patch-item">
+      <div className="patch-item__body">
+        <strong>{item.pair_id || item.pair?.id || copy.relationshipUpdate}</strong>
+        <p>{item.summary || item.tension_delta || '-'}</p>
+        <small>
+          {[
+            item.views?.length ? `${item.views.length} ${copy.viewCount}` : undefined,
+            item.events?.length ? `${item.events.length} ${copy.eventCount}` : undefined,
+          ]
+            .filter(Boolean)
+            .join(' / ') || copy.noExtraItems}
+        </small>
+      </div>
+    </div>
+  );
+}
+
+function WorldStatePatchItem({ item }: { item: StoryWorldStateUpdate }) {
+  return (
+    <div className="patch-item">
+      <div className="patch-item__body">
+        <strong>{item.key || copy.worldUpdate}</strong>
+        <p>{item.note || stringifyValue(item.value)}</p>
+        <small>{item.operation || 'set'}</small>
+      </div>
+    </div>
+  );
 }
 
 function stringifyValue(value: unknown) {

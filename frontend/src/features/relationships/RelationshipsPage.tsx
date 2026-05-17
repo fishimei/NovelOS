@@ -1,7 +1,6 @@
-// 关系页。创建和展示项目角色之间的关系，让故事生成能利用人物张力。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { listCharacters } from '../../api/characters';
@@ -11,7 +10,7 @@ import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
 import { CharacterSelect } from '../../components/forms/CharacterSelect';
 import { TextArrayField } from '../../components/forms/TextArrayField';
-import type { CreateRelationshipRequest } from '../../types/api';
+import type { Character, CreateRelationshipRequest } from '../../types/api';
 
 const emptyRelationshipForm: CreateRelationshipRequest = {
   character_a_id: '',
@@ -42,7 +41,6 @@ export function RelationshipsPage() {
   const createMutation = useMutation({
     mutationFn: () => createRelationship(projectId, normalizeCreateRelationshipForm(form)),
     onSuccess: () => {
-      // 创建关系后刷新关系列表和项目外壳统计，确保概览数据同步。
       setForm(emptyRelationshipForm);
       queryClient.invalidateQueries({ queryKey: ['relationships', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
@@ -56,6 +54,7 @@ export function RelationshipsPage() {
 
   const characters = charactersQuery.data?.data ?? [];
   const relationships = relationshipsQuery.data?.data ?? [];
+  const characterNameMap = useMemo(() => buildCharacterNameMap(characters), [characters]);
   const canCreate =
     Boolean(form.character_a_id && form.character_b_id && form.character_a_id !== form.character_b_id && form.summary.trim()) &&
     !createMutation.isPending;
@@ -64,8 +63,8 @@ export function RelationshipsPage() {
     <div className="page">
       <div className="page__header">
         <div>
-          <h1>关系</h1>
-          <p>管理角色关系、锚点、张力点和波动值。</p>
+          <h1>关系网络</h1>
+          <p>用角色姓名组织人物关系、锚点和张力变化，而不是直接暴露内部 ID。</p>
         </div>
       </div>
 
@@ -94,7 +93,7 @@ export function RelationshipsPage() {
             onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })}
           />
         </label>
-        <TextArrayField label="锚点" values={form.anchors ?? []} onChange={(anchors) => setForm({ ...form, anchors })} />
+        <TextArrayField label="关系锚点" values={form.anchors ?? []} onChange={(anchors) => setForm({ ...form, anchors })} />
         <TextArrayField
           label="张力点"
           values={form.tension_points ?? []}
@@ -112,27 +111,38 @@ export function RelationshipsPage() {
       {relationshipsQuery.isError ? <ErrorState message={(relationshipsQuery.error as Error).message} /> : null}
       {createMutation.isError ? <ErrorState message={(createMutation.error as Error).message} /> : null}
       {!relationshipsQuery.isLoading && relationships.length === 0 ? (
-        <EmptyState title="还没有关系" description="至少需要两个角色，才能建立角色关系。" />
+        <EmptyState title="还没有关系记录" description="先选择两个角色，再记录他们的关系摘要、锚点和张力点。" />
       ) : null}
 
       <div className="list-grid">
-        {relationships.map((relationship) => (
-          <Link className="list-card" key={relationship.pair.id} to={`/relationships/${relationship.pair.id}`}>
-            <strong>{relationship.pair.summary}</strong>
-            <span>
-              {relationship.pair.left_character_id} {'->'} {relationship.pair.right_character_id}
-            </span>
-            {relationship.pair.anchors?.length ? <p>锚点：{relationship.pair.anchors.join('、')}</p> : null}
-            {relationship.pair.tension_points?.length ? <p>张力点：{relationship.pair.tension_points.join('、')}</p> : null}
-          </Link>
-        ))}
+        {relationships.map((relationship) => {
+          const leftName = getCharacterName(characterNameMap, relationship.pair.left_character_id);
+          const rightName = getCharacterName(characterNameMap, relationship.pair.right_character_id);
+          return (
+            <Link className="list-card" key={relationship.pair.id} to={`/relationships/${relationship.pair.id}`}>
+              <strong>{relationship.pair.summary}</strong>
+              <span>
+                {leftName} {'->'} {rightName}
+              </span>
+              {relationship.pair.anchors?.length ? <p>锚点：{relationship.pair.anchors.join(' / ')}</p> : null}
+              {relationship.pair.tension_points?.length ? <p>张力：{relationship.pair.tension_points.join(' / ')}</p> : null}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
 }
 
+function buildCharacterNameMap(characters: Character[]) {
+  return new Map(characters.map((character) => [character.id, character.name]));
+}
+
+function getCharacterName(characterMap: Map<string, string>, id: string) {
+  return characterMap.get(id) ?? id;
+}
+
 function normalizeCreateRelationshipForm(form: CreateRelationshipRequest): CreateRelationshipRequest {
-  // 只提交 MVP 契约里的正式关系字段，避免把空数组项写入设定。
   return {
     character_a_id: form.character_a_id,
     character_b_id: form.character_b_id,

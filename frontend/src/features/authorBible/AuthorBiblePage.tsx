@@ -1,4 +1,3 @@
-// 作者圣经编辑页。维护项目级正式写作规则，并保存 OpenAPI 定义的 UpdateAuthorBibleRequest 结构。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -42,7 +41,6 @@ export function AuthorBiblePage() {
 
   useEffect(() => {
     if (bibleQuery.data) {
-      // 把后端可选字段转换为受控表单值。
       setForm({
         theme: bibleQuery.data.theme ?? '',
         style_guide: bibleQuery.data.style_guide ?? '',
@@ -59,7 +57,6 @@ export function AuthorBiblePage() {
   const saveMutation = useMutation({
     mutationFn: () => updateAuthorBible(projectId, form),
     onSuccess: (savedBible) => {
-      // 作者圣经可能影响项目上下文，因此同时刷新作者圣经和项目缓存。
       queryClient.setQueryData(['authorBible', projectId], savedBible);
       setForm(toAuthorBibleForm(savedBible));
       queryClient.invalidateQueries({ queryKey: ['authorBible', projectId] });
@@ -68,11 +65,11 @@ export function AuthorBiblePage() {
   });
 
   return (
-    <div className="page">
+    <div className="page page--wide page--author-bible">
       <div className="page__header">
         <div>
           <h1>作者圣经</h1>
-          <p>维护项目的主题、叙事风格、世界规则和创作约束。</p>
+          <p>把主题、文风、世界规则与禁区写清楚，后续所有生成都会围绕这里的边界运行。</p>
         </div>
         <button className="button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()} type="button">
           <Save size={17} />
@@ -84,49 +81,98 @@ export function AuthorBiblePage() {
       {bibleQuery.isError && !isMissingBible ? <ErrorState message={(bibleQuery.error as Error).message} /> : null}
       {saveMutation.isError ? <ErrorState message={(saveMutation.error as Error).message} /> : null}
 
-      <div className="form-grid">
+      <section className="form-grid form-grid--hero">
         <label className="field">
           <span>主题</span>
-          <input value={form.theme ?? ''} onChange={(event) => setForm({ ...form, theme: event.target.value })} />
+          <input
+            placeholder="一句话写清这本书最核心的问题意识"
+            value={form.theme ?? ''}
+            onChange={(event) => setForm({ ...form, theme: event.target.value })}
+          />
         </label>
-        <label className="field">
+        <label className="field field--stack field--wide">
           <span>风格指南</span>
           <textarea
+            placeholder="语体、叙事距离、句子节奏、禁用表达都写在这里"
             value={form.style_guide ?? ''}
             onChange={(event) => setForm({ ...form, style_guide: event.target.value })}
             rows={5}
           />
         </label>
-        <TextArrayField
-          label="世界规则"
-          values={form.world_rules ?? []}
-          onChange={(world_rules) => setForm({ ...form, world_rules })}
-        />
-        <TextArrayField
-          label="审美原则"
-          values={form.aesthetic_principles ?? []}
-          onChange={(aesthetic_principles) => setForm({ ...form, aesthetic_principles })}
-        />
-        <TextArrayField
-          label="硬约束"
-          values={form.hard_constraints ?? []}
-          onChange={(hard_constraints) => setForm({ ...form, hard_constraints })}
-        />
-        <TextArrayField
-          label="软偏好"
-          values={form.soft_preferences ?? []}
-          onChange={(soft_preferences) => setForm({ ...form, soft_preferences })}
-        />
-        <TextArrayField
-          label="禁用走法"
-          values={form.forbidden_moves ?? []}
-          onChange={(forbidden_moves) => setForm({ ...form, forbidden_moves })}
-        />
+      </section>
+
+      <section className="editor-section">
+        <div className="editor-section__header">
+          <div>
+            <h2>世界与审美</h2>
+            <p>先固定世界如何运转，再规定文本应该呈现出的气味与质感。</p>
+          </div>
+        </div>
+        <div className="editor-section__grid">
+          <TextArrayField
+            addLabel="添加规则"
+            helperText="每条规则都应该足够明确，能直接约束故事推进。"
+            label="世界规则"
+            onChange={(world_rules) => setForm({ ...form, world_rules })}
+            placeholder="例如：超凡力量不能逆转死亡"
+            values={form.world_rules ?? []}
+          />
+          <TextArrayField
+            addLabel="添加原则"
+            helperText="记录整体审美倾向，例如冷峻、克制、史诗感。"
+            label="审美原则"
+            onChange={(aesthetic_principles) => setForm({ ...form, aesthetic_principles })}
+            placeholder="例如：所有神秘都应保留余味，不做直白解释"
+            values={form.aesthetic_principles ?? []}
+          />
+        </div>
+      </section>
+
+      <section className="editor-section">
+        <div className="editor-section__header editor-section__header--dashed">
+          <div>
+            <h2>边界与偏好</h2>
+            <p>把必须遵守的底线和可偏向的选择分开写，后续生成会稳定很多。</p>
+          </div>
+        </div>
+        <div className="editor-section__grid">
+          <TextArrayField
+            addLabel="添加硬约束"
+            label="硬约束"
+            onChange={(hard_constraints) => setForm({ ...form, hard_constraints })}
+            placeholder="例如：第一卷不能出现现代科技解释"
+            values={form.hard_constraints ?? []}
+          />
+          <TextArrayField
+            addLabel="添加软偏好"
+            label="软偏好"
+            onChange={(soft_preferences) => setForm({ ...form, soft_preferences })}
+            placeholder="例如：优先采用人物驱动而不是设定讲解"
+            values={form.soft_preferences ?? []}
+          />
+          <TextArrayField
+            addLabel="添加禁区"
+            helperText="这些内容在风格或价值观上明确不应进入文本。"
+            label="禁止动作"
+            onChange={(forbidden_moves) => setForm({ ...form, forbidden_moves })}
+            placeholder="例如：不能用巧合直接解决主要冲突"
+            values={form.forbidden_moves ?? []}
+          />
+        </div>
+      </section>
+
+      <section className="editor-section">
+        <div className="editor-section__header editor-section__header--dashed">
+          <div>
+            <h2>初始世界状态</h2>
+            <p>记录故事正式开始前已成立的局势、变量与约束。</p>
+          </div>
+        </div>
         <WorldStateTable
           value={form.initial_world_state ?? []}
           onChange={(initial_world_state) => setForm({ ...form, initial_world_state })}
         />
-      </div>
+      </section>
     </div>
   );
 }
