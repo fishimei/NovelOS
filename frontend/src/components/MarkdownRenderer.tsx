@@ -11,7 +11,16 @@ export function MarkdownRenderer({ className = '', source = '', variant }: Markd
 
   return (
     <div className={classes}>
-      <ReactMarkdown>{source}</ReactMarkdown>
+      <ReactMarkdown>{normalizeMarkdownSource(source)}</ReactMarkdown>
     </div>
   );
+}
+
+function normalizeMarkdownSource(source: string) {
+  return source
+    .replace(/[ \t]+(#{1,6}\s+)/g, '\n\n$1')
+    .replace(/[ \t]+(>\s+)/g, '\n\n$1')
+    .replace(/[ \t]+(-\s+\*\*)/g, '\n\n$1')
+    .replace(/[ \t]+(\d+\.\s+\*\*)/g, '\n\n$1')
+    .trim();
 }

@@ -122,6 +122,10 @@
   margin-top: 0.8em;
 }
 
+.markdown-content--compact blockquote {
+  margin-bottom: 0.6em;
+}
+
 .markdown-content--reading {
   font-family: var(--font-reading);
   font-size: 17px;

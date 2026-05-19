@@ -39,6 +39,30 @@ export function ProjectShell() {
     return <Navigate replace to="/" />;
   }
 
+  if (projectQuery.isLoading) {
+    return (
+      <main className="project-main">
+        <LoadingState />
+      </main>
+    );
+  }
+
+  if (projectQuery.isError) {
+    return (
+      <main className="project-main">
+        <ErrorState message={(projectQuery.error as Error).message} />
+      </main>
+    );
+  }
+
+  if (!projectQuery.data) {
+    return (
+      <main className="project-main">
+        <ErrorState title="项目加载失败" message="未获取到项目数据" />
+      </main>
+    );
+  }
+
   const sidebarCollapsed = sidebarMode === 'collapsed';
   const sidebarClassName = [
     'project-sidebar',
@@ -77,12 +101,12 @@ export function ProjectShell() {
         <div className="project-sidebar__meta">
           <small>当前项目</small>
           <div className="project-sidebar__title">
-            {projectQuery.isLoading ? '加载项目中' : projectQuery.data?.title ?? '未命名项目'}
+            {projectQuery.data.title ?? '未命名项目'}
           </div>
           <p className="project-sidebar__subtitle">
-            {projectQuery.data?.genre || '小说工程'}
+            {projectQuery.data.genre || '小说工程'}
             {' · '}
-            最近编辑 {formatRelativeTime(projectQuery.data?.updated_at ?? projectQuery.data?.created_at)}
+            最近编辑 {formatRelativeTime(projectQuery.data.updated_at ?? projectQuery.data.created_at)}
           </p>
         </div>
         <ProjectNav collapsed={sidebarCollapsed} onNavigate={() => setMobileNavOpen(false)} />
@@ -94,8 +118,6 @@ export function ProjectShell() {
         {togglePointsRight ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
       </button>
       <main className="project-main">
-        {projectQuery.isLoading ? <LoadingState /> : null}
-        {projectQuery.isError ? <ErrorState message={(projectQuery.error as Error).message} /> : null}
         <Outlet context={{ project: projectQuery.data }} />
       </main>
     </div>
