@@ -1,14 +1,50 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, Clock3, FileText, Globe2, Link2, Send, Sparkles, Users } from 'lucide-react';
-import { FormEvent, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Bot,
+  Check,
+  CheckCircle2,
+  FileText,
+  Globe2,
+  Link2,
+  MessageCircle,
+  Send,
+  Sparkles,
+  Target,
+  Users,
+  XCircle,
+} from 'lucide-react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
+import {
+  advanceDialogueSession,
+  confirmDialogueActionOption,
+  createDialogueSession,
+  getDialogueRun,
+  getDialogueRunResult,
+  getDialogueSession,
+  listDialogueSessions,
+  rejectDialogueActionOption,
+} from '../../api/dialogueSessions';
 import { getSetupRun, getSetupRunResult, listSetupRunEventHistory } from '../../api/setupRuns';
 import { advanceSetupSession, applySetupRun, createSetupSession, listSetupSessions } from '../../api/setupSessions';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
-import type { Relationship, Run, RunEvent, SetupDraft, SetupSession, WorldStateEntry } from '../../types/api';
+import { MarkdownRenderer } from '../../components/MarkdownRenderer';
+import type {
+  DialogueActionOption,
+  DialogueMessage,
+  DialogueSession,
+  Relationship,
+  Run,
+  RunEvent,
+  SetupDraft,
+  SetupSession,
+  WorldStateEntry,
+} from '../../types/api';
+import { submitTextareaOnEnter } from '../../utils/keyboard';
 
 const copy = {
   sessionTitle: '\u8bbe\u5b9a\u4f1a\u8bdd',
@@ -27,19 +63,37 @@ const copy = {
   emptyDesc: '\u4ece\u79cd\u5b50\u60f3\u6cd5\u5f00\u59cb\uff0c\u9010\u6b65\u751f\u6210\u4f5c\u8005\u5723\u7ecf\u3001\u89d2\u8272\u3001\u5173\u7cfb\u4e0e\u4e16\u754c\u72b6\u6001\u8349\u6848\u3002',
   stepContext: '\u5f53\u524d\u4f1a\u8bdd\u4e0a\u4e0b\u6587',
   stepContextDesc: '\u5148\u786e\u8ba4\u8fd9\u6b21\u8bbe\u5b9a\u751f\u6210\u8981\u56f4\u7ed5\u54ea\u4e2a\u79cd\u5b50\u548c\u54ea\u4e9b\u8865\u5145\u3002',
-  stepCompose: '\u8865\u5145\u8bbe\u5b9a\u8981\u6c42',
-  stepComposeDesc: '\u6307\u51fa\u4f60\u60f3\u5f3a\u5316\u7684\u4e3b\u9898\u3001\u98ce\u683c\u3001\u4eba\u7269\u51b2\u7a81\u6216\u4e16\u754c\u89c4\u5219\u3002',
+  stepCompose: '\u8bbe\u5b9a\u8ba8\u8bba\u533a',
+  stepComposeDesc: '\u5148\u548c AI \u8f7b\u91cf\u8ba8\u8bba\u3001\u6f84\u6e05\u65b9\u5411\uff0c\u518d\u663e\u5f0f\u751f\u6210\u6216\u66f4\u65b0\u8349\u6848\u3002',
   stepDraft: '\u8bbe\u5b9a\u8349\u6848',
   stepDraftDesc: '\u5148\u770b\u6a21\u5757\u9aa8\u67b6\uff0c\u751f\u6210\u540e\u518d\u9010\u4e2a\u5ba1\u9605\u5e76\u51b3\u5b9a\u662f\u5426\u5e94\u7528\u3002',
   sessionSeedTitle: '\u79cd\u5b50\u6784\u60f3',
   lastSupplementTitle: '\u6700\u8fd1\u8865\u5145',
   noSupplement: '\u8fd8\u6ca1\u6709\u989d\u5916\u8865\u5145\u3002',
   emptySeed: '\u8be5\u4f1a\u8bdd\u8fd8\u6ca1\u6709\u5199\u5165\u79cd\u5b50\u5185\u5bb9\u3002',
-  advancePlaceholder:
-    '\u8865\u5145\u4f60\u7684\u8bbe\u5b9a\u8981\u6c42\uff0c\u4f8b\u5982\u4e3b\u9898\u3001\u6587\u98ce\u3001\u89d2\u8272\u52a8\u673a\u3001\u5173\u7cfb\u5f20\u529b\u6216\u4e16\u754c\u89c4\u5219',
-  advanceButton: '\u751f\u6210\u8349\u6848',
+  advanceButton: '\u751f\u6210 / \u66f4\u65b0\u8349\u6848',
   advanceRunning: '\u751f\u6210\u4e2d...',
-  advanceHint: '\u57fa\u4e8e\u5f53\u524d\u4f1a\u8bdd\u7ee7\u7eed\u751f\u6210\uff0c\u901a\u5e38\u4f1a\u5728 20 - 40 \u79d2\u8fd4\u56de\u7ed3\u679c\u3002',
+  advanceTooltip: '\u5c06\u57fa\u4e8e\u5f53\u524d\u8ba8\u8bba\u4e0a\u4e0b\u6587\u751f\u6210\u8349\u6848\uff0c\u9884\u8ba1 20-40 \u79d2\u3002',
+  generatePanelTitle: '\u751f\u6210\u524d\u8865\u5145\u8bf4\u660e\uff08\u53ef\u9009\uff09',
+  generatePanelDesc: '\u4e0d\u9700\u8981\u91cd\u65b0\u603b\u7ed3\u8ba8\u8bba\u3002\u53ea\u586b\u8fd9\u6b21\u751f\u6210\u9700\u8981\u989d\u5916\u9075\u5faa\u7684\u4e00\u53e5\u8bdd\u3002',
+  generateNotePlaceholder: '\u4f8b\u5982\uff1a\u8fd9\u6b21\u53ea\u66f4\u65b0\u4e16\u754c\u72b6\u6001\uff0c\u4e0d\u6539\u89d2\u8272\u5173\u7cfb',
+  generateConfirm: '\u751f\u6210\u8349\u6848',
+  generateCancel: '\u53d6\u6d88',
+  discussionScopeTitle: '\u4f5c\u7528\u57df',
+  discussionScopeHelp: '\u4f5c\u7528\u57df\u53ea\u7ea6\u675f AI \u5199\u5165\u8349\u6848\u7684\u8303\u56f4\uff0c\u4e0d\u9650\u5236\u8ba8\u8bba\u8bdd\u9898\u3002',
+  discussionStarterIntro: 'AI \u5df2\u8bfb\u53d6\u4f60\u7684\u79cd\u5b50\u6784\u60f3\uff0c\u60f3\u5148\u548c\u4f60\u786e\u8ba4\u51e0\u4ef6\u4e8b\uff1a',
+  discussionPlaceholder: '\u548c AI \u8ba8\u8bba\u8bbe\u5b9a\u65b9\u5411\uff0c\u4f8b\u5982\u201c\u90ae\u5dee\u8eab\u4efd\u80fd\u4e0d\u80fd\u5e26\u70b9\u8bc5\u5492\u611f\uff1f\u201d',
+  discussionSend: '\u53d1\u9001',
+  discussionSending: '\u8ba8\u8bba\u4e2d...',
+  discussionReady: '\u666e\u901a\u8ba8\u8bba\u4e0d\u4f1a\u89e6\u53d1\u8349\u6848\u751f\u6210\u3002',
+  discussionCreateHint: '\u9996\u6b21\u53d1\u9001\u65f6\u4f1a\u4e3a\u5f53\u524d\u8bbe\u5b9a\u4f1a\u8bdd\u521b\u5efa\u4e00\u6761\u8ba8\u8bba\u7ebf\u3002',
+  discussionLoading: '\u6b63\u5728\u52a0\u8f7d\u8ba8\u8bba\u6d88\u606f',
+  discussionActionTitle: '\u5f85\u786e\u8ba4\u64cd\u4f5c',
+  discussionConfirmAction: '\u786e\u8ba4\u6267\u884c',
+  discussionRejectAction: '\u62d2\u7edd',
+  discussionConfirming: '\u6267\u884c\u4e2d...',
+  discussionRejecting: '\u62d2\u7edd\u4e2d...',
+  draftRequestTitle: '\u8349\u6848\u751f\u6210\u8f93\u5165',
   resultLoading: '\u6b63\u5728\u751f\u6210\u8bbe\u5b9a\u8349\u6848',
   resultEmpty: '\u8fd8\u6ca1\u6709\u53ef\u5ba1\u9605\u7684\u8349\u6848\uff0c\u4f46\u5de5\u4f5c\u53f0\u5df2\u7ecf\u4e3a\u4f60\u9884\u7559\u4e86\u6a21\u5757\u9aa8\u67b6\u3002',
   resultReady: '\u5df2\u751f\u6210',
@@ -64,11 +118,16 @@ const copy = {
   applyCharacters: '\u89d2\u8272\u8bbe\u5b9a',
   applyRelationships: '\u5173\u7cfb\u8bbe\u5b9a',
   applyWorld: '\u4e16\u754c\u72b6\u6001',
-  scopePending: '\u5f85\u751f\u6210',
+  scopePending: '\u6682\u65e0\u8349\u6848',
+  scopeDiscussing: '\u8ba8\u8bba\u4e2d \u00b7 \u6682\u65e0\u8349\u6848',
+  scopeGenerating: '\u751f\u6210\u4e2d',
+  scopeReady: '\u5f85\u5e94\u7528',
+  scopeApplied: '\u5df2\u5e94\u7528',
   noteTitle: '\u5e94\u7528\u5907\u6ce8\uff08\u53ef\u9009\uff09',
   authorNotePlaceholder: '\u8bb0\u5f55\u8fd9\u6b21\u5e94\u7528\u7684\u51b3\u7b56\u3001\u53d6\u820d\u6216\u540e\u7eed\u5f85\u8c03\u6574\u70b9',
   applyButton: '\u5e94\u7528\u5230\u9879\u76ee',
   applyDisabled: '\u8bf7\u5148\u751f\u6210\u8349\u6848',
+  applyDisabledHint: '\u751f\u6210\u8349\u6848\u540e\u53ef\u9010\u6a21\u5757\u5e94\u7528\u3002',
   applyPending: '\u5e94\u7528\u4e2d...',
   eventHistoryTitle: '\u8fd0\u884c\u8bb0\u5f55',
   eventHistoryHint: '\u4f1a\u8bdd\u521b\u5efa\u3001\u8349\u6848\u751f\u6210\u4e0e\u5e94\u7528\u8fc7\u7a0b\u90fd\u4f1a\u8bb0\u5f55\u5728\u8fd9\u91cc\u3002',
@@ -143,6 +202,23 @@ const defaultAcceptSections = {
 
 type AcceptSectionsState = typeof defaultAcceptSections;
 type ModuleKey = keyof AcceptSectionsState;
+type DiscussionScope = 'all' | 'author_bible' | 'characters' | 'relationships' | 'world';
+type ApplyPanelState = 'empty' | 'discussing' | 'generating' | 'ready' | 'applied';
+type FlowStepTone = 'idle' | 'active' | 'done';
+
+const discussionScopes: Array<{ key: DiscussionScope; label: string }> = [
+  { key: 'all', label: '\u5168\u90e8' },
+  { key: 'author_bible', label: '\u4f5c\u8005\u5723\u7ecf' },
+  { key: 'characters', label: '\u89d2\u8272' },
+  { key: 'relationships', label: '\u5173\u7cfb' },
+  { key: 'world', label: '\u4e16\u754c' },
+];
+
+const starterPrompts = [
+  '\u4e3b\u89d2\u6700\u60f3\u9003\u907f\u7684\u8fc7\u5f80\u6216\u5fc3\u7ed3\u5177\u4f53\u662f\u4ec0\u4e48\uff1f',
+  '\u8fd9\u4e2a\u4e16\u754c\u91cc\u6700\u91cd\u8981\u7684\u89c4\u5219\u6216\u4ee3\u4ef7\u662f\u4ec0\u4e48\uff1f',
+  '\u89d2\u8272\u5173\u7cfb\u60f3\u5148\u4ece\u4fe1\u4efb\u3001\u4e8f\u6b20\u8fd8\u662f\u51b2\u7a81\u5f00\u59cb\uff1f',
+];
 
 const moduleDefinitions: Array<{
   key: ModuleKey;
@@ -180,9 +256,14 @@ export function SetupWorkspacePage() {
   const { projectId = '' } = useParams();
   const queryClient = useQueryClient();
   const [seedIdea, setSeedIdea] = useState('');
-  const [message, setMessage] = useState('');
+  const [discussionMessage, setDiscussionMessage] = useState('');
+  const [activeDiscussionScope, setActiveDiscussionScope] = useState<DiscussionScope>('all');
+  const [activeDialogueSessionId, setActiveDialogueSessionId] = useState('');
+  const [activeDialogueRunId, setActiveDialogueRunId] = useState('');
   const [activeSessionId, setActiveSessionId] = useState('');
   const [activeRunId, setActiveRunId] = useState('');
+  const [generationNote, setGenerationNote] = useState('');
+  const [generatePanelOpen, setGeneratePanelOpen] = useState(false);
   const [authorNote, setAuthorNote] = useState('');
   const [acceptSections, setAcceptSections] = useState(defaultAcceptSections);
   const [noteExpanded, setNoteExpanded] = useState(false);
@@ -196,6 +277,42 @@ export function SetupWorkspacePage() {
   const sessions = sessionsQuery.data?.data ?? [];
   const selectedSessionId = activeSessionId || sessions[0]?.id || '';
   const currentSession = sessions.find((session) => session.id === selectedSessionId) ?? sessions[0] ?? null;
+
+  const dialogueSessionsQuery = useQuery({
+    queryKey: ['dialogueSessions', projectId, 1, 50],
+    queryFn: ({ signal }) => listDialogueSessions(projectId, 1, 50, signal),
+    enabled: Boolean(projectId),
+  });
+
+  const dialogueSessions = dialogueSessionsQuery.data?.data ?? [];
+  const setupDiscussionSession = useMemo(
+    () => findSetupDiscussionSession(dialogueSessions, selectedSessionId),
+    [dialogueSessions, selectedSessionId],
+  );
+  const selectedDialogueSessionId = activeDialogueSessionId || setupDiscussionSession?.id || '';
+  const selectedDialogueRunId = activeDialogueRunId || setupDiscussionSession?.latest_run_id || '';
+
+  const dialogueSessionQuery = useQuery({
+    queryKey: ['dialogueSession', selectedDialogueSessionId],
+    queryFn: ({ signal }) => getDialogueSession(selectedDialogueSessionId, signal),
+    enabled: Boolean(selectedDialogueSessionId),
+  });
+
+  const dialogueRunQuery = useQuery({
+    queryKey: ['dialogueRun', selectedDialogueRunId],
+    queryFn: ({ signal }) => getDialogueRun(selectedDialogueRunId, signal),
+    enabled: Boolean(selectedDialogueRunId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return isActiveDialogueRunStatus(status) ? 1500 : false;
+    },
+  });
+
+  const dialogueResultQuery = useQuery({
+    queryKey: ['dialogueRunResult', selectedDialogueRunId],
+    queryFn: ({ signal }) => getDialogueRunResult(selectedDialogueRunId, signal),
+    enabled: Boolean(selectedDialogueRunId) && hasDialogueRunResult(dialogueRunQuery.data?.status),
+  });
 
   const runQuery = useQuery({
     queryKey: ['setupRun', activeRunId],
@@ -219,6 +336,23 @@ export function SetupWorkspacePage() {
     enabled: Boolean(activeRunId),
   });
 
+  useEffect(() => {
+    setActiveDialogueSessionId('');
+    setActiveDialogueRunId('');
+    setActiveDiscussionScope('all');
+    setDiscussionMessage('');
+    setGenerationNote('');
+    setGeneratePanelOpen(false);
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    if (!selectedDialogueRunId || !hasDialogueRunResult(dialogueRunQuery.data?.status)) {
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['dialogueSession', selectedDialogueSessionId] });
+    queryClient.invalidateQueries({ queryKey: ['dialogueSessions', projectId] });
+  }, [dialogueRunQuery.data?.status, projectId, queryClient, selectedDialogueRunId, selectedDialogueSessionId]);
+
   const createSessionMutation = useMutation({
     mutationFn: () => createSetupSession(projectId, { seed_idea: seedIdea.trim() }),
     onSuccess: (session) => {
@@ -226,15 +360,78 @@ export function SetupWorkspacePage() {
       setActiveRunId(session.latest_run_id ?? '');
       setSeedIdea('');
       setAuthorNote('');
+      setGenerationNote('');
+      setGeneratePanelOpen(false);
       queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
     },
   });
 
   const advanceMutation = useMutation({
-    mutationFn: (overrideMessage?: string) => advanceSetupSession(selectedSessionId, { user_message: (overrideMessage ?? message).trim() }),
+    mutationFn: (userMessage: string) => advanceSetupSession(selectedSessionId, { user_message: userMessage.trim() }),
     onSuccess: (run) => {
       setActiveRunId(run.run_id ?? run.id ?? '');
-      setMessage('');
+      setGenerationNote('');
+      setGeneratePanelOpen(false);
+      setAcceptSections(defaultAcceptSections);
+      queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
+    },
+  });
+
+  const discussionMutation = useMutation({
+    mutationFn: async () => {
+      const rawMessage = discussionMessage.trim();
+      let dialogueSessionId = selectedDialogueSessionId;
+      if (!dialogueSessionId) {
+        const session = await createDialogueSession(projectId, { title: getSetupDiscussionTitle(selectedSessionId) });
+        dialogueSessionId = session.id;
+      }
+      const run = await advanceDialogueSession(dialogueSessionId, {
+        user_message: buildSetupDiscussionMessage({
+          activeRunId,
+          message: rawMessage,
+          scope: activeDiscussionScope,
+          session: currentSession,
+        }),
+      });
+      return { dialogueSessionId, run };
+    },
+    onSuccess: ({ dialogueSessionId, run }) => {
+      setActiveDialogueSessionId(dialogueSessionId);
+      setActiveDialogueRunId(run.run_id ?? run.id ?? '');
+      setDiscussionMessage('');
+      queryClient.invalidateQueries({ queryKey: ['dialogueSessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['dialogueSession', dialogueSessionId] });
+    },
+  });
+
+  const confirmActionMutation = useMutation({
+    mutationFn: (optionId: string) => confirmDialogueActionOption(optionId, { confirm: true }),
+    onSuccess: (option) => {
+      const setupRunID = stringFromRecord(option.result, 'setup_run_id');
+      const setupSessionID = stringFromRecord(option.result, 'setup_session_id');
+      if (setupSessionID) {
+        setActiveSessionId(setupSessionID);
+      }
+      if (setupRunID) {
+        setActiveRunId(setupRunID);
+      }
+      queryClient.invalidateQueries({ queryKey: ['dialogueSession', selectedDialogueSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['dialogueRunResult', selectedDialogueRunId] });
+      queryClient.invalidateQueries({ queryKey: ['dialogueSessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['authorBible', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['characters', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['relationships', projectId] });
+    },
+  });
+
+  const rejectActionMutation = useMutation({
+    mutationFn: (optionId: string) => rejectDialogueActionOption(optionId, { reason: '\u4f5c\u8005\u5728\u8bbe\u5b9a\u8ba8\u8bba\u533a\u62d2\u7edd\u4e86\u8fd9\u4e2a\u64cd\u4f5c\u3002' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dialogueSession', selectedDialogueSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['dialogueRunResult', selectedDialogueRunId] });
+      queryClient.invalidateQueries({ queryKey: ['dialogueSessions', projectId] });
     },
   });
 
@@ -270,11 +467,7 @@ export function SetupWorkspacePage() {
       !applyMutation.isPending &&
       !isRunActive,
   );
-  const applyButtonLabel = applyMutation.isPending
-    ? copy.applyPending
-    : hasDraft
-      ? copy.applyButton
-      : copy.applyDisabled;
+  const applyButtonLabel = applyMutation.isPending ? copy.applyPending : copy.applyButton;
   const workspaceStatus = getWorkspaceDisplayStatus(runQuery.data?.status, currentSession?.status);
   const runStatusLabel = formatRunStatus(workspaceStatus);
   const runStatusTone = getStatusTone(workspaceStatus);
@@ -283,15 +476,77 @@ export function SetupWorkspacePage() {
   const showFailureCard = Boolean(runErrorMessage || sessionNeedsRetry);
   const failureTitle = runErrorMessage ? copy.failureTitle : copy.failurePendingTitle;
   const failureMessage = runErrorMessage || copy.failurePendingMessage;
+  const dialogueMessages = dialogueSessionQuery.data?.messages ?? [];
+  const latestActionOptions = dialogueResultQuery.data?.action_options ?? [];
+  const isDialogueRunActive = isActiveDialogueRunStatus(dialogueRunQuery.data?.status);
+  const visibleDiscussionMessages = useMemo(
+    () => dialogueMessages.filter((message) => displayDiscussionContent(message.content)),
+    [dialogueMessages],
+  );
+  const hasDiscussionActivity = visibleDiscussionMessages.length > 0 || isDialogueRunActive || discussionMutation.isPending;
+  const applyPanelState = getApplyPanelState({
+    hasDiscussionActivity,
+    hasDraft,
+    isApplied: isSetupApplied(workspaceStatus),
+    isGenerating: isRunActive,
+  });
+  const discussionError = firstError(
+    dialogueSessionsQuery.error,
+    dialogueSessionQuery.error,
+    dialogueRunQuery.error,
+    dialogueResultQuery.error,
+    discussionMutation.error,
+    confirmActionMutation.error,
+    rejectActionMutation.error,
+  );
 
   const startSession = (event: FormEvent) => {
     event.preventDefault();
+    if (!seedIdea.trim() || createSessionMutation.isPending) {
+      return;
+    }
     createSessionMutation.mutate();
   };
 
-  const sendMessage = (event: FormEvent) => {
+  const openGeneratePanel = () => {
+    if (!selectedSessionId || advanceMutation.isPending || isRunActive) {
+      return;
+    }
+    setGeneratePanelOpen(true);
+  };
+
+  const startDraftGeneration = (optionalInstruction = generationNote) => {
+    if (!selectedSessionId || advanceMutation.isPending || isRunActive) {
+      return;
+    }
+
+    advanceMutation.mutate(
+      buildSetupDraftGenerationMessage({
+        activeRunId,
+        discussionMessages: dialogueMessages,
+        optionalInstruction,
+        scope: activeDiscussionScope,
+        session: currentSession,
+      }),
+    );
+  };
+
+  const confirmDraftGeneration = (event: FormEvent) => {
     event.preventDefault();
-    advanceMutation.mutate(message);
+    startDraftGeneration(generationNote);
+  };
+
+  const cancelDraftGeneration = () => {
+    setGeneratePanelOpen(false);
+    setGenerationNote('');
+  };
+
+  const sendDiscussionMessage = (event: FormEvent) => {
+    event.preventDefault();
+    if (!discussionMessage.trim() || !selectedSessionId || discussionMutation.isPending || isDialogueRunActive) {
+      return;
+    }
+    discussionMutation.mutate();
   };
 
   const toggleSection = (key: ModuleKey) => {
@@ -303,20 +558,22 @@ export function SetupWorkspacePage() {
     if (!definition) {
       return;
     }
-    setMessage(definition.prompt);
+    setGenerationNote(definition.prompt);
+    setGeneratePanelOpen(true);
   };
 
   const fillRetryPrompt = () => {
-    setMessage(
+    setGenerationNote(
       '\u8bf7\u91cd\u65b0\u751f\u6210\u8fd9\u6b21\u8bbe\u5b9a\u8349\u6848\uff0c\u5e76\u5728\u4e0d\u6539\u53d8\u6838\u5fc3\u79cd\u5b50\u7684\u524d\u63d0\u4e0b\u7f29\u5c0f\u8303\u56f4\uff0c\u8865\u5145\u786c\u7ea6\u675f\u4e0e\u4e16\u754c\u89c4\u5219\u3002',
     );
+    setGeneratePanelOpen(true);
   };
 
   const regenerateDraft = () => {
     if (!selectedSessionId || advanceMutation.isPending || isRunActive) {
       return;
     }
-    advanceMutation.mutate('\u8bf7\u57fa\u4e8e\u5f53\u524d\u4f1a\u8bdd\u91cd\u65b0\u8d77\u8349\u4e00\u7248\uff0c\u4e0d\u8981\u76f4\u63a5\u6cbf\u7528\u4e0a\u4e00\u7248\uff1b\u65b9\u5411\u66f4\u5927\u80c6\u3001\u66f4\u5929\u9a6c\u884c\u7a7a\uff0c\u540c\u65f6\u4fdd\u7559\u53ef\u843d\u5730\u7684\u4eba\u7269\u52a8\u673a\u548c\u5173\u7cfb\u5f20\u529b\u3002');
+    startDraftGeneration('\u8bf7\u57fa\u4e8e\u5f53\u524d\u4f1a\u8bdd\u91cd\u65b0\u8d77\u8349\u4e00\u7248\uff0c\u4e0d\u8981\u76f4\u63a5\u6cbf\u7528\u4e0a\u4e00\u7248\uff1b\u65b9\u5411\u66f4\u5927\u80c6\u3001\u66f4\u5929\u9a6c\u884c\u7a7a\uff0c\u540c\u65f6\u4fdd\u7559\u53ef\u843d\u5730\u7684\u4eba\u7269\u52a8\u673a\u548c\u5173\u7cfb\u5f20\u529b\u3002');
   };
 
   const cancelDraft = () => {
@@ -348,6 +605,7 @@ export function SetupWorkspacePage() {
               className="setup-grow-textarea"
               value={seedIdea}
               onChange={(event) => setSeedIdea(event.target.value)}
+              onKeyDown={submitTextareaOnEnter}
               placeholder={copy.seedPlaceholder}
               rows={4}
             />
@@ -365,29 +623,35 @@ export function SetupWorkspacePage() {
             {!sessionsQuery.isLoading && sessions.length === 0 ? <p className="muted">{copy.noSessions}</p> : null}
 
             <div className="session-list session-list--setup">
-              {sessions.map((session) => (
-                <button
-                  className={selectedSessionId === session.id ? 'session-item session-item--active' : 'session-item'}
-                  key={session.id}
-                  onClick={() => {
-                    setActiveSessionId(session.id);
-                    setActiveRunId(session.latest_run_id ?? '');
-                  }}
-                  type="button"
-                >
-                  <div className="session-item__headline">
-                    <strong>{getSessionTitle(session)}</strong>
-                    <span className={`session-state session-state--${getStatusTone(session.status)}`}>
-                      {formatRunStatus(session.status)}
-                    </span>
-                  </div>
-                  <p className="session-item__summary">{getSessionSummary(session)}</p>
-                  <div className="session-item__meta">
-                    <span>{formatRelativeTime(session.updated_at ?? session.created_at)}</span>
-                    <span>{session.last_user_message ? '\u5df2\u8865\u5145' : '\u4ec5\u542b\u79cd\u5b50'}</span>
-                  </div>
-                </button>
-              ))}
+              {sessions.map((session) => {
+                const discussionCount = getSessionDiscussionCount(session, dialogueSessions, selectedSessionId, visibleDiscussionMessages);
+                return (
+                  <button
+                    className={selectedSessionId === session.id ? 'session-item session-item--active' : 'session-item'}
+                    key={session.id}
+                    onClick={() => {
+                      setActiveSessionId(session.id);
+                      setActiveRunId(session.latest_run_id ?? '');
+                    }}
+                    type="button"
+                  >
+                    <div className="session-item__headline">
+                      <strong>{getSessionTitle(session)}</strong>
+                    </div>
+                    <p className="session-item__summary">{getSessionSummary(session)}</p>
+                    <div className="session-item__meta">
+                      <span>
+                        {formatSetupSessionMeta({
+                          applied: isSetupApplied(session.status),
+                          discussionCount,
+                          draftCount: session.latest_run_id ? 1 : 0,
+                          updatedAt: session.updated_at ?? session.created_at,
+                        })}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -434,7 +698,7 @@ export function SetupWorkspacePage() {
                 </div>
               </section>
 
-              <form className="setup-stage composer composer--setup" onSubmit={sendMessage}>
+              <section className="setup-stage composer composer--setup">
                 <div className="setup-stage__header">
                   <div className="step-badge">2</div>
                   <div>
@@ -442,30 +706,39 @@ export function SetupWorkspacePage() {
                     <p>{copy.stepComposeDesc}</p>
                   </div>
                 </div>
+                <SetupFlowProgress state={applyPanelState} />
 
-                <textarea
-                  className="setup-grow-textarea setup-grow-textarea--large"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder={copy.advancePlaceholder}
-                  rows={6}
+                <SetupDiscussionPanel
+                  actionOptions={latestActionOptions}
+                  canGenerate={Boolean(selectedSessionId)}
+                  confirmingOptionId={confirmActionMutation.isPending ? confirmActionMutation.variables : undefined}
+                  error={discussionError}
+                  isLoading={dialogueSessionQuery.isLoading}
+                  isGenerating={advanceMutation.isPending || isRunActive}
+                  isRunning={discussionMutation.isPending || isDialogueRunActive}
+                  messages={dialogueMessages}
+                  onConfirmAction={(optionId) => confirmActionMutation.mutate(optionId)}
+                  onGenerateDraft={openGeneratePanel}
+                  onRejectAction={(optionId) => rejectActionMutation.mutate(optionId)}
+                  onScopeChange={setActiveDiscussionScope}
+                  onStarterSelect={setDiscussionMessage}
+                  onSubmit={sendDiscussionMessage}
+                  onValueChange={setDiscussionMessage}
+                  rejectingOptionId={rejectActionMutation.isPending ? rejectActionMutation.variables : undefined}
+                  scope={activeDiscussionScope}
+                  scopes={discussionScopes}
+                  value={discussionMessage}
                 />
-
-                <div className="setup-composer__footer">
-                  <div className="setup-composer__hint">
-                    <Clock3 size={15} />
-                    <span>{copy.advanceHint}</span>
-                  </div>
-                  <button
-                    className="button"
-                    disabled={!message.trim() || !selectedSessionId || advanceMutation.isPending || isRunActive}
-                    type="submit"
-                  >
-                    <Send size={17} />
-                    {advanceMutation.isPending || isRunActive ? copy.advanceRunning : copy.advanceButton}
-                  </button>
-                </div>
-              </form>
+                {generatePanelOpen ? (
+                  <SetupGenerateConfirmPanel
+                    isRunning={advanceMutation.isPending || isRunActive}
+                    onCancel={cancelDraftGeneration}
+                    onSubmit={confirmDraftGeneration}
+                    onValueChange={setGenerationNote}
+                    value={generationNote}
+                  />
+                ) : null}
+              </section>
 
               {showFailureCard ? (
                 <section className="setup-alert-card setup-alert-card--inline">
@@ -536,7 +809,7 @@ export function SetupWorkspacePage() {
                       <Icon size={15} />
                       <span>{module.label}</span>
                     </span>
-                    <span className="setup-count-badge">{formatModuleCount(module.key, count)}</span>
+                    <span className="setup-count-badge">{formatApplyModuleStatus(module.key, count, applyPanelState)}</span>
                   </label>
                 );
               })}
@@ -558,6 +831,7 @@ export function SetupWorkspacePage() {
             />
           </section>
 
+          <p className="setup-apply-hint">{getApplyPanelHint(applyPanelState)}</p>
           <button className="button setup-full-button" disabled={!canApply} onClick={() => applyMutation.mutate()} type="button">
             <Check size={17} />
             {applyButtonLabel}
@@ -575,6 +849,206 @@ export function SetupWorkspacePage() {
       </div>
     </div>
   );
+}
+
+function getSetupDiscussionTitle(setupSessionId: string) {
+  return `setup-discussion:${setupSessionId}`;
+}
+
+function findSetupDiscussionSession(sessions: DialogueSession[], setupSessionId: string) {
+  if (!setupSessionId) {
+    return undefined;
+  }
+  return sessions.find((session) => session.title === getSetupDiscussionTitle(setupSessionId));
+}
+
+function buildSetupDiscussionMessage({
+  activeRunId,
+  message,
+  scope,
+  session,
+}: {
+  activeRunId: string;
+  message: string;
+  scope: DiscussionScope;
+  session: SetupSession | null;
+}) {
+  const setupRunId = firstText(activeRunId, session?.latest_run_id);
+  return [
+    '__setup_discussion_context__',
+    `scope=${scope}`,
+    `setup_session_id=${session?.id ?? ''}`,
+    `setup_run_id=${setupRunId}`,
+    `seed_idea=${session?.seed_idea ?? ''}`,
+    `last_setup_supplement=${session?.last_user_message ?? ''}`,
+    'instruction=这是设定工作台的轻量讨论消息。除非用户明确要求生成、更新或应用草案，否则只追问、总结或给建议，不要提出执行操作。',
+    '__user_message__',
+    message,
+  ].join('\n');
+}
+
+function buildSetupDraftGenerationMessage({
+  activeRunId,
+  discussionMessages,
+  optionalInstruction,
+  scope,
+  session,
+}: {
+  activeRunId: string;
+  discussionMessages: DialogueMessage[];
+  optionalInstruction: string;
+  scope: DiscussionScope;
+  session: SetupSession | null;
+}) {
+  const setupRunId = firstText(activeRunId, session?.latest_run_id);
+  const discussionContext = discussionMessages
+    .map((message) => {
+      const content = displayDiscussionContent(message.content);
+      if (!content) {
+        return '';
+      }
+      return `[${dialogueRoleLabel(message.role)}] ${content}`;
+    })
+    .filter(Boolean)
+    .slice(-20)
+    .join('\n');
+
+  return [
+    '__setup_draft_generation_context__',
+    `scope=${scope}`,
+    `setup_session_id=${session?.id ?? ''}`,
+    `setup_run_id=${setupRunId}`,
+    `seed_idea=${session?.seed_idea ?? ''}`,
+    `last_setup_supplement=${session?.last_user_message ?? ''}`,
+    'discussion_context:',
+    discussionContext || '\u6682\u65e0\u8ba8\u8bba\u6d88\u606f\uff0c\u8bf7\u57fa\u4e8e\u79cd\u5b50\u6784\u60f3\u8d77\u8349\u3002',
+    optionalInstruction.trim() ? `optional_instruction=${optionalInstruction.trim()}` : '',
+    'instruction=\u8bf7\u57fa\u4e8e\u79cd\u5b50\u6784\u60f3\u548c\u5f53\u524d\u8bbe\u5b9a\u8ba8\u8bba\u4e0a\u4e0b\u6587\u751f\u6210\u7ed3\u6784\u5316\u8bbe\u5b9a\u8349\u6848\uff1b\u4e0d\u8981\u8981\u6c42\u4f5c\u8005\u91cd\u590d\u8f93\u5165\u5df2\u7ecf\u8ba8\u8bba\u8fc7\u7684\u4fe1\u606f\u3002',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function displayDiscussionContent(content: string) {
+  const marker = '__user_message__';
+  const markerIndex = content.indexOf(marker);
+  if (markerIndex >= 0) {
+    return content.slice(markerIndex + marker.length).trim();
+  }
+  return content.trim();
+}
+
+function firstError(...values: unknown[]) {
+  for (const value of values) {
+    if (value instanceof Error) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function stringFromRecord(record: Record<string, unknown> | undefined, key: string) {
+  const value = record?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function isActiveDialogueRunStatus(status?: string) {
+  return status === 'queued' || status === 'loading_state' || status === 'planning_actions' || status === 'executing_action' || status === 'running';
+}
+
+function hasDialogueRunResult(status?: string) {
+  return status === 'completed' || status === 'review_required';
+}
+
+function isPendingDialogueAction(option: DialogueActionOption) {
+  return option.status === 'pending' || option.status === 'confirmed';
+}
+
+function getDialogueActionTone(status?: string) {
+  switch (status) {
+    case 'executed':
+      return 'success';
+    case 'failed':
+      return 'danger';
+    case 'rejected':
+      return 'neutral';
+    case 'executing':
+    case 'confirmed':
+    case 'pending':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+function formatDialogueActionStatus(status?: string) {
+  switch (status) {
+    case 'pending':
+      return '\u5f85\u786e\u8ba4';
+    case 'confirmed':
+      return '\u5df2\u786e\u8ba4';
+    case 'executing':
+      return '\u6267\u884c\u4e2d';
+    case 'executed':
+      return '\u5df2\u6267\u884c';
+    case 'rejected':
+      return '\u5df2\u62d2\u7edd';
+    case 'failed':
+      return '\u5931\u8d25';
+    default:
+      return '\u672a\u77e5';
+  }
+}
+
+function defaultDialogueActionLabel(actionType?: string) {
+  switch (actionType) {
+    case 'setup.start_and_advance':
+      return '\u751f\u6210\u9879\u76ee\u8bbe\u5b9a\u8349\u6848';
+    case 'setup.advance':
+      return '\u66f4\u65b0\u8bbe\u5b9a\u8349\u6848';
+    case 'setup.apply':
+      return '\u5e94\u7528\u8bbe\u5b9a\u8349\u6848';
+    case 'story.create_and_advance':
+      return '\u5f00\u59cb\u5267\u60c5\u7f16\u6392';
+    case 'story.advance':
+      return '\u7ee7\u7eed\u5267\u60c5\u7f16\u6392';
+    case 'story.commit':
+      return '\u63d0\u4ea4\u7ae0\u8282\u8349\u7a3f';
+    default:
+      return '\u6267\u884c\u4e0b\u4e00\u6b65';
+  }
+}
+
+function defaultDialogueActionDescription(actionType?: string) {
+  switch (actionType) {
+    case 'setup.start_and_advance':
+    case 'setup.advance':
+      return '\u786e\u8ba4\u540e\u4f1a\u89e6\u53d1 setup run\uff0c\u751f\u6210\u4e00\u7248\u65b0\u7684\u7ed3\u6784\u5316\u8349\u6848\u3002';
+    case 'setup.apply':
+      return '\u786e\u8ba4\u540e\u4f1a\u628a\u5df2\u5ba1\u6838\u7684\u8349\u6848\u5199\u5165\u9879\u76ee\u72b6\u6001\u3002';
+    default:
+      return '\u786e\u8ba4\u540e\u6267\u884c\u8fd9\u4e2a\u5f85\u786e\u8ba4\u64cd\u4f5c\u3002';
+  }
+}
+
+function dialogueRoleLabel(role: string) {
+  switch (role) {
+    case 'assistant':
+      return 'AI';
+    case 'tool':
+      return '\u7cfb\u7edf';
+    case 'system':
+      return '\u4e0a\u4e0b\u6587';
+    default:
+      return '\u6211';
+  }
+}
+
+function dialogueRoleClass(role: string) {
+  if (role === 'assistant' || role === 'tool' || role === 'system') {
+    return role;
+  }
+  return 'user';
 }
 
 function hasApplicableSection(sections: AcceptSectionsState, counts: Record<ModuleKey, number>) {
@@ -635,6 +1109,359 @@ function countAuthorBibleEntries(draft?: SetupDraft) {
     count += items?.filter((item) => item?.trim()).length ?? 0;
   });
   return count;
+}
+
+function getApplyPanelState({
+  hasDiscussionActivity,
+  hasDraft,
+  isApplied,
+  isGenerating,
+}: {
+  hasDiscussionActivity: boolean;
+  hasDraft: boolean;
+  isApplied: boolean;
+  isGenerating: boolean;
+}): ApplyPanelState {
+  if (isApplied) {
+    return 'applied';
+  }
+  if (isGenerating) {
+    return 'generating';
+  }
+  if (hasDraft) {
+    return 'ready';
+  }
+  if (hasDiscussionActivity) {
+    return 'discussing';
+  }
+  return 'empty';
+}
+
+function isSetupApplied(status?: string) {
+  return status === 'applied' || status === 'committed';
+}
+
+function formatApplyModuleStatus(key: ModuleKey, count: number, state: ApplyPanelState) {
+  if (count > 0) {
+    return formatModuleCount(key, count);
+  }
+
+  switch (state) {
+    case 'applied':
+      return copy.scopeApplied;
+    case 'generating':
+      return copy.scopeGenerating;
+    case 'discussing':
+      return copy.scopeDiscussing;
+    case 'ready':
+      return copy.scopeReady;
+    default:
+      return copy.scopePending;
+  }
+}
+
+function getApplyPanelHint(state: ApplyPanelState) {
+  switch (state) {
+    case 'generating':
+      return '\u6b63\u5728\u751f\u6210\u8349\u6848\uff0c\u5b8c\u6210\u540e\u53ef\u9010\u6a21\u5757\u5e94\u7528\u3002';
+    case 'ready':
+      return '\u9009\u62e9\u8981\u5199\u5165\u9879\u76ee\u7684\u6a21\u5757\u3002';
+    case 'applied':
+      return '\u8fd9\u7248\u8349\u6848\u5df2\u5e94\u7528\uff0c\u53ef\u7ee7\u7eed\u8ba8\u8bba\u540e\u66f4\u65b0\u8349\u6848\u3002';
+    default:
+      return copy.applyDisabledHint;
+  }
+}
+
+function getSessionDiscussionCount(
+  session: SetupSession,
+  dialogueSessions: DialogueSession[],
+  selectedSessionId: string,
+  selectedMessages: DialogueMessage[],
+) {
+  if (session.id === selectedSessionId) {
+    return selectedMessages.length;
+  }
+
+  const dialogueSession = findSetupDiscussionSession(dialogueSessions, session.id);
+  const messages = dialogueSession?.messages?.filter((message) => displayDiscussionContent(message.content));
+  if (messages) {
+    return messages.length;
+  }
+  return dialogueSession?.last_user_message ? 1 : 0;
+}
+
+function formatSetupSessionMeta({
+  applied,
+  discussionCount,
+  draftCount,
+  updatedAt,
+}: {
+  applied: boolean;
+  discussionCount: number;
+  draftCount: number;
+  updatedAt?: string;
+}) {
+  const draftLabel = `${draftCount} \u8349\u6848${applied && draftCount > 0 ? '\u5df2\u5e94\u7528' : ''}`;
+  return `${formatRelativeTime(updatedAt)} \u00b7 ${discussionCount} \u8ba8\u8bba \u00b7 ${draftLabel}`;
+}
+
+function SetupFlowProgress({ state }: { state: ApplyPanelState }) {
+  const steps = getFlowSteps(state);
+  return (
+    <div className="setup-flow-progress" aria-label="设定草案流程">
+      {steps.map((step) => (
+        <span className={`setup-flow-progress__item setup-flow-progress__item--${step.tone}`} key={step.label}>
+          <span className="setup-flow-progress__dot" />
+          <span>{step.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function getFlowSteps(state: ApplyPanelState): Array<{ label: string; tone: FlowStepTone }> {
+  switch (state) {
+    case 'applied':
+      return [
+        { label: '\u8ba8\u8bba\u5b8c\u6210', tone: 'done' },
+        { label: '\u8349\u6848\u5df2\u751f\u6210', tone: 'done' },
+        { label: '\u5df2\u5e94\u7528', tone: 'done' },
+      ];
+    case 'generating':
+      return [
+        { label: '\u8ba8\u8bba\u5b8c\u6210', tone: 'done' },
+        { label: '\u8349\u6848\u751f\u6210\u4e2d', tone: 'active' },
+        { label: '\u5f85\u5e94\u7528', tone: 'idle' },
+      ];
+    case 'ready':
+      return [
+        { label: '\u8ba8\u8bba\u5b8c\u6210', tone: 'done' },
+        { label: '\u8349\u6848\u5df2\u751f\u6210', tone: 'done' },
+        { label: '\u5f85\u5e94\u7528', tone: 'active' },
+      ];
+    default:
+      return [
+        { label: '\u8ba8\u8bba\u4e2d', tone: 'active' },
+        { label: '\u8349\u6848\u5f85\u751f\u6210', tone: 'idle' },
+        { label: '\u5f85\u5e94\u7528', tone: 'idle' },
+      ];
+  }
+}
+
+function SetupDiscussionPanel({
+  actionOptions,
+  canGenerate,
+  confirmingOptionId,
+  error,
+  isGenerating,
+  isLoading,
+  isRunning,
+  messages,
+  onConfirmAction,
+  onGenerateDraft,
+  onRejectAction,
+  onScopeChange,
+  onStarterSelect,
+  onSubmit,
+  onValueChange,
+  rejectingOptionId,
+  scope,
+  scopes,
+  value,
+}: {
+  actionOptions: DialogueActionOption[];
+  canGenerate: boolean;
+  confirmingOptionId?: string;
+  error?: Error | null;
+  isGenerating: boolean;
+  isLoading: boolean;
+  isRunning: boolean;
+  messages: DialogueMessage[];
+  onConfirmAction: (optionId: string) => void;
+  onGenerateDraft: () => void;
+  onRejectAction: (optionId: string) => void;
+  onScopeChange: (scope: DiscussionScope) => void;
+  onStarterSelect: (value: string) => void;
+  onSubmit: (event: FormEvent) => void;
+  onValueChange: (value: string) => void;
+  rejectingOptionId?: string;
+  scope: DiscussionScope;
+  scopes: Array<{ key: DiscussionScope; label: string }>;
+  value: string;
+}) {
+  const visibleMessages = messages.filter((message) => displayDiscussionContent(message.content));
+
+  return (
+    <section className="setup-discussion">
+      <div className="setup-discussion__messages">
+        {isLoading ? <LoadingState label={copy.discussionLoading} /> : null}
+        {!isLoading && visibleMessages.length === 0 ? (
+          <div className="setup-discussion__empty">
+            <Bot size={18} />
+            <div>
+              <p>{copy.discussionStarterIntro}</p>
+              <ul className="setup-discussion__starter-list">
+                {starterPrompts.map((prompt) => (
+                  <li key={prompt}>{prompt}</li>
+                ))}
+              </ul>
+              <div className="setup-discussion__starter-actions">
+                {starterPrompts.map((prompt, index) => (
+                  <button className="setup-discussion__starter-chip" key={prompt} onClick={() => onStarterSelect(prompt)} type="button">
+                    回答第 {index + 1} 个
+                  </button>
+                ))}
+                <button className="setup-discussion__starter-chip" onClick={() => onStarterSelect('')} type="button">
+                  我想先说点别的
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {!isLoading
+          ? visibleMessages.map((message) => (
+              <article className={`setup-discussion-message setup-discussion-message--${dialogueRoleClass(message.role)}`} key={message.id}>
+                <div className="setup-discussion-message__meta">
+                  {message.role === 'assistant' ? <Bot size={14} /> : null}
+                  <span>{dialogueRoleLabel(message.role)}</span>
+                  <small>{formatDateTime(message.created_at)}</small>
+                </div>
+                <MarkdownRenderer source={displayDiscussionContent(message.content)} variant="compact" />
+              </article>
+            ))
+          : null}
+      </div>
+
+      {actionOptions.length > 0 ? (
+        <div className="setup-discussion-actions">
+          <div className="setup-panel__section-header">
+            <h3>{copy.discussionActionTitle}</h3>
+          </div>
+          {actionOptions.map((option) => {
+            const pending = isPendingDialogueAction(option);
+            const confirming = confirmingOptionId === option.id;
+            const rejecting = rejectingOptionId === option.id;
+            return (
+              <article className="setup-discussion-action" key={option.id}>
+                <div className="setup-discussion-action__header">
+                  <strong>{firstText(option.label, defaultDialogueActionLabel(option.action_type))}</strong>
+                  <span className={`status-pill status-pill--${getDialogueActionTone(option.status)}`}>
+                    {formatDialogueActionStatus(option.status)}
+                  </span>
+                </div>
+                <p>{firstText(option.description, option.rationale, defaultDialogueActionDescription(option.action_type))}</p>
+                {option.error ? <p className="setup-discussion-action__error">{option.error}</p> : null}
+                {pending ? (
+                  <div className="setup-discussion-action__buttons">
+                    <button className="button button--secondary" disabled={confirming || rejecting} onClick={() => onConfirmAction(option.id)} type="button">
+                      <CheckCircle2 size={16} />
+                      {confirming ? copy.discussionConfirming : copy.discussionConfirmAction}
+                    </button>
+                    <button className="button button--ghost" disabled={confirming || rejecting} onClick={() => onRejectAction(option.id)} type="button">
+                      <XCircle size={16} />
+                      {rejecting ? copy.discussionRejecting : copy.discussionRejectAction}
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {error ? <ErrorState message={error.message} /> : null}
+
+      <form className="setup-discussion__form" onSubmit={onSubmit}>
+        <div className="setup-discussion__input-tools">
+          <span aria-label={copy.discussionScopeTitle} className="setup-discussion__scope-icon" title={copy.discussionScopeHelp}>
+            <Target size={15} />
+          </span>
+          <div className="setup-discussion__scopes">
+            {scopes.map((item) => (
+              <button
+                className={scope === item.key ? 'setup-discussion__scope setup-discussion__scope--active' : 'setup-discussion__scope'}
+                key={item.key}
+                onClick={() => onScopeChange(item.key)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <textarea
+          className="setup-grow-textarea setup-discussion__input"
+          onChange={(event) => onValueChange(event.target.value)}
+          onKeyDown={submitTextareaOnEnter}
+          placeholder={copy.discussionPlaceholder}
+          rows={3}
+          value={value}
+        />
+        <div className="setup-composer__footer">
+          <div className="setup-composer__hint">
+            <MessageCircle size={15} />
+            <span>{copy.discussionReady}</span>
+          </div>
+          <div className="setup-composer__actions">
+            <button className="button" disabled={!value.trim() || isRunning} type="submit">
+              <Send size={17} />
+              {isRunning ? copy.discussionSending : copy.discussionSend}
+            </button>
+            <button
+              className="button button--secondary"
+              disabled={!canGenerate || isGenerating}
+              onClick={onGenerateDraft}
+              title={copy.advanceTooltip}
+              type="button"
+            >
+              <Sparkles size={17} />
+              {isGenerating ? copy.advanceRunning : copy.advanceButton}
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function SetupGenerateConfirmPanel({
+  isRunning,
+  onCancel,
+  onSubmit,
+  onValueChange,
+  value,
+}: {
+  isRunning: boolean;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent) => void;
+  onValueChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <form className="setup-generate-confirm" onSubmit={onSubmit}>
+      <div className="setup-panel__section-header">
+        <h3>{copy.generatePanelTitle}</h3>
+      </div>
+      <p>{copy.generatePanelDesc}</p>
+      <textarea
+        className="setup-grow-textarea"
+        onChange={(event) => onValueChange(event.target.value)}
+        placeholder={copy.generateNotePlaceholder}
+        rows={3}
+        value={value}
+      />
+      <div className="setup-generate-confirm__actions">
+        <button className="button button--ghost" disabled={isRunning} onClick={onCancel} type="button">
+          {copy.generateCancel}
+        </button>
+        <button className="button button--secondary" disabled={isRunning} type="submit">
+          <Sparkles size={16} />
+          {isRunning ? copy.advanceRunning : copy.generateConfirm}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 function SetupDraftPreview({
@@ -702,7 +1529,7 @@ function SetupDraftPreview({
             <h2>{copy.summaryTitle}</h2>
             <span className="status-pill status-pill--success">{copy.resultReady}</span>
           </div>
-          <p className="result-copy">{draft.assistant_summary}</p>
+          <MarkdownRenderer className="result-copy" source={draft.assistant_summary} variant="compact" />
         </section>
       ) : null}
 
@@ -963,7 +1790,7 @@ function VisualDraftBoard({
         </VisualSection>
       ) : null}
 
-      {visual.agent_summary ? <p className="result-copy">{visual.agent_summary}</p> : null}
+      {visual.agent_summary ? <MarkdownRenderer className="result-copy" source={visual.agent_summary} variant="compact" /> : null}
       <DraftActionBar onCancelDraft={onCancelDraft} onRegenerateDraft={onRegenerateDraft} />
     </section>
   );

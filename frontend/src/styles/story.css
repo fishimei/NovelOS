@@ -41,6 +41,10 @@
   max-width: 72ch;
 }
 
+.draft-surface .markdown-content {
+  max-width: 72ch;
+}
+
 .structured-result {
   display: grid;
   gap: 16px;
@@ -303,9 +307,6 @@
   gap: 16px;
   justify-content: space-between;
   padding: 12px 18px;
-  position: sticky;
-  top: calc(var(--topbar-height) + 12px);
-  z-index: 5;
   backdrop-filter: blur(12px);
 }
 
@@ -504,6 +505,51 @@
   gap: 14px;
 }
 
+.setup-flow-progress {
+  align-items: center;
+  background: #fbfaf6;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  width: fit-content;
+}
+
+.setup-flow-progress__item {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 12.5px;
+  font-weight: 650;
+  gap: 6px;
+}
+
+.setup-flow-progress__dot {
+  background: var(--border-strong);
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.setup-flow-progress__item--active {
+  color: var(--accent-strong);
+}
+
+.setup-flow-progress__item--active .setup-flow-progress__dot {
+  background: var(--accent);
+}
+
+.setup-flow-progress__item--done {
+  color: #3d4635;
+}
+
+.setup-flow-progress__item--done .setup-flow-progress__dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .step-badge {
   align-items: center;
   background: var(--accent);
@@ -563,15 +609,264 @@
   padding: 24px;
 }
 
+.setup-discussion {
+  background: #fbfaf6;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.setup-discussion__toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.setup-discussion__toolbar > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.setup-discussion__scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-discussion__scope {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #4c463d;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 650;
+  padding: 6px 11px;
+}
+
+.setup-discussion__scope--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.setup-discussion__messages {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  min-height: 96px;
+  overflow: auto;
+}
+
+.setup-discussion__empty {
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 10px;
+  padding: 14px;
+}
+
+.setup-discussion__empty p {
+  color: #3b362f;
+  font-weight: 650;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.setup-discussion__starter-list {
+  color: #4e493f;
+  display: grid;
+  gap: 5px;
+  line-height: 1.55;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.setup-discussion__starter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.setup-discussion__starter-chip {
+  background: #fbfaf6;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #4b453c;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 650;
+  padding: 6px 10px;
+}
+
+.setup-discussion__starter-chip:hover {
+  background: var(--accent-soft);
+  border-color: rgba(90, 107, 78, 0.32);
+  color: var(--accent-strong);
+}
+
+.setup-discussion-message {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  max-width: min(88%, 680px);
+  padding: 12px 14px;
+}
+
+.setup-discussion-message--user {
+  background: #edf4ea;
+  border-color: #dbe8d5;
+  justify-self: end;
+}
+
+.setup-discussion-message--assistant,
+.setup-discussion-message--tool,
+.setup-discussion-message--system {
+  background: var(--surface);
+  justify-self: start;
+}
+
+.setup-discussion-message__meta {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.setup-discussion-message__meta span {
+  color: #3b362f;
+  font-weight: 700;
+}
+
+.setup-discussion-message p {
+  color: #332f2a;
+  line-height: 1.65;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.setup-discussion-actions,
+.setup-generate-confirm {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.setup-discussion-action {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.setup-discussion-action__header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.setup-discussion-action__header strong {
+  color: #2f2b25;
+  font-size: 14px;
+}
+
+.setup-discussion-action p {
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.setup-discussion-action__error {
+  color: var(--danger) !important;
+}
+
+.setup-discussion-action__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.setup-discussion__form {
+  display: grid;
+  gap: 12px;
+}
+
+.setup-discussion__input-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-discussion__scope-icon {
+  align-items: center;
+  background: #f4f0e7;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.setup-discussion__input {
+  min-height: 86px;
+}
+
 .setup-composer__footer {
   gap: 12px;
   justify-content: space-between;
+}
+
+.setup-composer__actions,
+.setup-generate-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .setup-composer__hint {
   color: var(--text-muted);
   font-size: 12.5px;
   gap: 8px;
+}
+
+.setup-generate-confirm {
+  background: #fbfaf6;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.setup-generate-confirm p,
+.setup-apply-hint {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.setup-apply-hint {
+  margin-top: 16px;
 }
 
 .result-preview--setup {
