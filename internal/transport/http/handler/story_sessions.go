@@ -3,6 +3,7 @@ package handler
 import (
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -80,6 +81,37 @@ func (h StorySessionsHandler) Get(c *gin.Context) {
 	}
 
 	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h StorySessionsHandler) Update(c *gin.Context) {
+	var req dto.UpdateStorySessionRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	session, err := h.sessions.GetSessionByID(c.Request.Context(), c.Param("session_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	session.Title = strings.TrimSpace(req.Title)
+	result, err := h.sessions.UpdateSession(c.Request.Context(), session)
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h StorySessionsHandler) Delete(c *gin.Context) {
+	if err := h.sessions.DeleteSession(c.Request.Context(), c.Param("session_id")); err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, gin.H{"deleted": true})
 }
 
 func (h StorySessionsHandler) Advance(c *gin.Context) {

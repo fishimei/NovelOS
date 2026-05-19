@@ -92,6 +92,7 @@ type StorySessionRepository interface {
 	ListSessionsByProjectID(ctx context.Context, projectID string, pageInput model.PageInput) (model.ListResult[model.StorySession], error)
 	GetSessionByID(ctx context.Context, sessionID string) (model.StorySession, error)
 	UpdateSession(ctx context.Context, session model.StorySession) (model.StorySession, error)
+	DeleteSession(ctx context.Context, sessionID string) error
 	AppendMessage(ctx context.Context, sessionID string, role string, content string) (model.ConversationMessage, error)
 	CreateRun(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error)
 	GetRunByID(ctx context.Context, runID string) (model.StoryRun, error)

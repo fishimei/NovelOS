@@ -785,6 +785,7 @@ func (r *storySessionRepository) GetSessionByID(ctx context.Context, sessionID s
 
 func (r *storySessionRepository) UpdateSession(ctx context.Context, session model.StorySession) (model.StorySession, error) {
 	if err := r.dbFor(ctx).Model(&persistencemodels.StorySession{}).Where("id = ?", session.ID).Updates(map[string]any{
+		"title":                         session.Title,
 		"last_author_message":           session.LastAuthorMessage,
 		"status":                        session.Status,
 		"current_plot_variable_summary": session.CurrentPlotVariableSummary,
@@ -793,6 +794,39 @@ func (r *storySessionRepository) UpdateSession(ctx context.Context, session mode
 		return model.StorySession{}, mapDBError(err, "story session not found")
 	}
 	return r.GetSessionByID(ctx, session.ID)
+}
+
+func (r *storySessionRepository) DeleteSession(ctx context.Context, sessionID string) error {
+	err := r.dbFor(ctx).Transaction(func(tx *gorm.DB) error {
+		var session persistencemodels.StorySession
+		if err := tx.First(&session, "id = ?", sessionID).Error; err != nil {
+			return err
+		}
+
+		var runIDs []string
+		if err := tx.Model(&persistencemodels.StoryRun{}).Where("session_id = ?", sessionID).Pluck("id", &runIDs).Error; err != nil {
+			return err
+		}
+		if len(runIDs) > 0 {
+			if err := tx.Where("run_kind = ? AND run_id IN ?", "story", runIDs).Delete(&persistencemodels.RunEvent{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("run_id IN ?", runIDs).Delete(&persistencemodels.StoryRunResult{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", runIDs).Delete(&persistencemodels.StoryRun{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("session_id = ?", sessionID).Delete(&persistencemodels.StoryMessage{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&session).Error
+	})
+	if err != nil {
+		return mapDBError(err, "story session not found")
+	}
+	return nil
 }
 
 func (r *storySessionRepository) AppendMessage(ctx context.Context, sessionID string, role string, content string) (model.ConversationMessage, error) {

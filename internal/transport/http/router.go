@@ -80,6 +80,8 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.POST("/projects/:project_id/story-sessions", handlers.StorySessions.Create)
 		api.GET("/projects/:project_id/story-sessions", handlers.StorySessions.List)
 		api.GET("/story-sessions/:session_id", handlers.StorySessions.Get)
+		api.PUT("/story-sessions/:session_id", handlers.StorySessions.Update)
+		api.DELETE("/story-sessions/:session_id", handlers.StorySessions.Delete)
 		api.POST("/story-sessions/:session_id/advance", handlers.StorySessions.Advance)
 		api.GET("/story-runs/:run_id", handlers.StorySessions.GetRun)
 		api.GET("/story-runs/:run_id/result", handlers.StorySessions.GetRunResult)

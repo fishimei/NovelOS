@@ -118,6 +118,10 @@ type CreateStorySessionRequest struct {
 	AuthorIntent     string `json:"author_intent"`
 }
 
+type UpdateStorySessionRequest struct {
+	Title string `json:"title"`
+}
+
 // AdvanceStorySessionRequest 是推进故事会话的请求参数。
 type AdvanceStorySessionRequest struct {
 	AuthorMessage string `json:"author_message" binding:"required"`

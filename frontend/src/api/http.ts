@@ -33,7 +33,25 @@ async function parseJson(response: Response) {
     return undefined;
   }
 
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    if (!response.ok) {
+      return {
+        error: {
+          message: text || response.statusText || `Request failed with status ${response.status}`,
+          details: { parse_error: (error as Error).message },
+        },
+      } satisfies ApiErrorPayload;
+    }
+
+    throw new ApiError('Invalid JSON response from server', response.status, {
+      error: {
+        message: text,
+        details: { parse_error: (error as Error).message },
+      },
+    });
+  }
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -86,6 +104,13 @@ export async function putData<TResponse, TBody>(path: string, body: TBody): Prom
   const response = await request<StandardResponse<TResponse>>(path, {
     method: 'PUT',
     body,
+  });
+  return response.data;
+}
+
+export async function deleteData<TResponse>(path: string): Promise<TResponse> {
+  const response = await request<StandardResponse<TResponse>>(path, {
+    method: 'DELETE',
   });
   return response.data;
 }

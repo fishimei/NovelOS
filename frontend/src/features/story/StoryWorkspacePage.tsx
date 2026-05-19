@@ -1,15 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Send } from 'lucide-react';
-import { FormEvent, useMemo, useState, type ReactNode } from 'react';
+import { Check, Pencil, Save, Send, Trash2, X } from 'lucide-react';
+import { type FormEvent, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 
-import { advanceStorySession, createStorySession, listStorySessions } from '../../api/storySessions';
+import {
+  advanceStorySession,
+  createStorySession,
+  deleteStorySession,
+  listStorySessions,
+  updateStorySession,
+} from '../../api/storySessions';
 import { commitStoryRun, getStoryRun, getStoryRunResult, listStoryRunEventHistory } from '../../api/storyRuns';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
+import { MarkdownRenderer } from '../../components/MarkdownRenderer';
 import type {
-  RunEvent,
+  StorySession,
   StoryCharacterMemoryUpdate,
   StoryMemoryPatch,
   StoryPlotVariable,
@@ -19,12 +26,18 @@ import type {
   StoryWorldStateUpdate,
 } from '../../types/api';
 import { formatRelativeTime } from '../../utils/format';
+import { submitTextareaOnEnter } from '../../utils/keyboard';
 import { useStoryRunEvents } from './useStoryRunEvents';
 
 const copy = {
   sessionTitle: '写作会话',
   createSessionPlaceholder: '为这一段剧情起一个工作标题',
   createSessionButton: '创建写作会话',
+  editSessionTitle: '编辑题目',
+  saveSessionTitle: '保存题目',
+  cancelSessionEdit: '取消编辑',
+  deleteSessionTitle: '删除会话',
+  deleteSessionConfirm: '删除这个写作会话？已提交章节不会删除。',
   workspaceTitle: '剧情工作台',
   workspaceDesc: '正文在中间阅读，运行状态和补丁审校放右侧，整个流程更接近真实写作节奏。',
   emptyTitle: '先创建一个写作会话',
@@ -95,6 +108,8 @@ export function StoryWorkspacePage() {
   const [authorMessage, setAuthorMessage] = useState('');
   const [activeRunId, setActiveRunId] = useState('');
   const [authorNote, setAuthorNote] = useState('');
+  const [editingSessionId, setEditingSessionId] = useState('');
+  const [editingSessionTitle, setEditingSessionTitle] = useState('');
 
   const sessionsQuery = useQuery({
     queryKey: ['storySessions', projectId, 1, 20],
@@ -135,6 +150,35 @@ export function StoryWorkspacePage() {
       setActiveSessionId(session.id);
       setSessionTitle('');
       queryClient.invalidateQueries({ queryKey: ['storySessions', projectId] });
+    },
+  });
+
+  const updateSessionMutation = useMutation({
+    mutationFn: ({ sessionId, title }: { sessionId: string; title: string }) =>
+      updateStorySession(sessionId, { title }),
+    onSuccess: (session) => {
+      setEditingSessionId('');
+      setEditingSessionTitle('');
+      queryClient.invalidateQueries({ queryKey: ['storySessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['storySession', session.id] });
+    },
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: deleteStorySession,
+    onSuccess: (_result, sessionId) => {
+      if (selectedSessionId === sessionId) {
+        setActiveSessionId('');
+        setActiveRunId('');
+        setAuthorMessage('');
+        setAuthorNote('');
+      }
+      if (editingSessionId === sessionId) {
+        setEditingSessionId('');
+        setEditingSessionTitle('');
+      }
+      queryClient.invalidateQueries({ queryKey: ['storySessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     },
   });
 
@@ -209,12 +253,45 @@ export function StoryWorkspacePage() {
 
   const startSession = (event: FormEvent) => {
     event.preventDefault();
+    if (createSessionMutation.isPending) {
+      return;
+    }
     createSessionMutation.mutate();
   };
 
   const sendAdvance = (event: FormEvent) => {
     event.preventDefault();
+    if (!authorMessage.trim() || !selectedSessionId || advanceMutation.isPending) {
+      return;
+    }
     advanceMutation.mutate();
+  };
+
+  const beginEditSession = (session: StorySession) => {
+    setEditingSessionId(session.id);
+    setEditingSessionTitle(session.title || '');
+  };
+
+  const cancelEditSession = () => {
+    setEditingSessionId('');
+    setEditingSessionTitle('');
+  };
+
+  const saveSessionTitle = () => {
+    const title = editingSessionTitle.trim();
+    if (!editingSessionId || !title || updateSessionMutation.isPending) {
+      return;
+    }
+    updateSessionMutation.mutate({ sessionId: editingSessionId, title });
+  };
+
+  const removeSession = (session: StorySession) => {
+    if (deleteSessionMutation.isPending) {
+      return;
+    }
+    if (window.confirm(`${copy.deleteSessionConfirm}\n\n${session.title || session.id}`)) {
+      deleteSessionMutation.mutate(session.id);
+    }
   };
 
   return (
@@ -232,18 +309,99 @@ export function StoryWorkspacePage() {
           </button>
         </form>
         {sessionsQuery.isLoading ? <LoadingState /> : null}
+        {updateSessionMutation.isError ? <ErrorState message={(updateSessionMutation.error as Error).message} /> : null}
+        {deleteSessionMutation.isError ? <ErrorState message={(deleteSessionMutation.error as Error).message} /> : null}
         <div className="session-list">
-          {sessions.map((session) => (
-            <button
-              className={selectedSessionId === session.id ? 'session-item session-item--active' : 'session-item'}
-              key={session.id}
-              onClick={() => setActiveSessionId(session.id)}
-              type="button"
-            >
-              <strong>{session.title || session.id}</strong>
-              <span>{session.status || 'ready'}</span>
-            </button>
-          ))}
+          {sessions.map((session) => {
+            const isEditing = editingSessionId === session.id;
+            return (
+              <article
+                className={
+                  selectedSessionId === session.id
+                    ? 'session-item session-item--story session-item--active'
+                    : 'session-item session-item--story'
+                }
+                key={session.id}
+              >
+                {isEditing ? (
+                  <form
+                    className="session-item__edit"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      saveSessionTitle();
+                    }}
+                  >
+                    <input
+                      aria-label={copy.editSessionTitle}
+                      autoFocus
+                      onChange={(event) => setEditingSessionTitle(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          cancelEditSession();
+                        }
+                      }}
+                      value={editingSessionTitle}
+                    />
+                    <div className="session-item__edit-actions">
+                      <button
+                        aria-label={copy.saveSessionTitle}
+                        className="icon-button session-item__action"
+                        disabled={!editingSessionTitle.trim() || updateSessionMutation.isPending}
+                        title={copy.saveSessionTitle}
+                        type="submit"
+                      >
+                        <Save size={15} />
+                      </button>
+                      <button
+                        aria-label={copy.cancelSessionEdit}
+                        className="icon-button session-item__action"
+                        disabled={updateSessionMutation.isPending}
+                        onClick={cancelEditSession}
+                        title={copy.cancelSessionEdit}
+                        type="button"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      aria-label={`选择写作会话 ${session.title || session.id}`}
+                      className="session-item__body"
+                      onClick={() => setActiveSessionId(session.id)}
+                      type="button"
+                    >
+                      <strong>{session.title || session.id}</strong>
+                      <span>{session.status || 'ready'}</span>
+                    </button>
+                    <div className="session-item__actions">
+                      <button
+                        aria-label={copy.editSessionTitle}
+                        className="icon-button session-item__action"
+                        onClick={() => beginEditSession(session)}
+                        title={copy.editSessionTitle}
+                        type="button"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        aria-label={copy.deleteSessionTitle}
+                        className="icon-button session-item__action session-item__action--danger"
+                        disabled={deleteSessionMutation.isPending}
+                        onClick={() => removeSession(session)}
+                        title={copy.deleteSessionTitle}
+                        type="button"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </article>
+            );
+          })}
         </div>
       </aside>
 
@@ -283,7 +441,7 @@ export function StoryWorkspacePage() {
                   </span>
                 </div>
               ) : null}
-              {visibleDraft ? <pre>{visibleDraft}</pre> : <p className="muted">{copy.draftEmpty}</p>}
+              {visibleDraft ? <MarkdownRenderer source={visibleDraft} variant="reading" /> : <p className="muted">{copy.draftEmpty}</p>}
             </div>
 
             <LiveCharacterTurnsPanel starts={eventState.orchestrationStarts} turns={eventState.characterTurns} />
@@ -292,6 +450,7 @@ export function StoryWorkspacePage() {
               <textarea
                 value={authorMessage}
                 onChange={(event) => setAuthorMessage(event.target.value)}
+                onKeyDown={submitTextareaOnEnter}
                 placeholder={copy.advancePlaceholder}
                 rows={4}
               />

@@ -182,7 +182,87 @@ export type ConversationMessage = {
   session_id?: string;
   role: string;
   content: string;
+  metadata?: Record<string, unknown>;
   created_at?: string;
+};
+
+export type DialogueMessage = ConversationMessage & {
+  metadata?: Record<string, unknown>;
+};
+
+export type DialogueSession = {
+  id: string;
+  project_id?: string;
+  title?: string;
+  last_user_message?: string;
+  status?: string;
+  latest_run_id?: string;
+  latest_run_status?: string;
+  latest_run_error?: string;
+  messages?: DialogueMessage[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type CreateDialogueSessionRequest = {
+  title?: string;
+};
+
+export type AdvanceDialogueSessionRequest = {
+  user_message: string;
+};
+
+export type DialogueQuestion = {
+  key?: string;
+  question?: string;
+  why_it_matters?: string;
+};
+
+export type DialogueToolTrace = {
+  tool_name?: string;
+  summary?: string;
+  ok?: boolean;
+  created_at?: string;
+};
+
+export type DialogueActionOption = {
+  id: string;
+  session_id?: string;
+  run_id?: string;
+  project_id?: string;
+  action_type?: string;
+  label?: string;
+  description?: string;
+  rationale?: string;
+  confirmation_required?: boolean;
+  payload?: Record<string, unknown>;
+  status?: string;
+  result?: Record<string, unknown>;
+  error?: string;
+  expires_at?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type DialogueRunResult = {
+  run_id?: string;
+  session_id?: string;
+  status?: string;
+  assistant_message?: string;
+  action_options?: DialogueActionOption[];
+  clarifying_questions?: DialogueQuestion[];
+  suggested_replies?: string[];
+  context_summary?: string;
+  tool_trace?: DialogueToolTrace[];
+};
+
+export type ConfirmDialogueActionOptionRequest = {
+  confirm: true;
+  author_note?: string;
+};
+
+export type RejectDialogueActionOptionRequest = {
+  reason?: string;
 };
 
 export type CreateSetupSessionRequest = {
@@ -310,6 +390,10 @@ export type CreateStorySessionRequest = {
   title?: string;
   opening_situation?: string;
   author_intent?: string;
+};
+
+export type UpdateStorySessionRequest = {
+  title?: string;
 };
 
 export type AdvanceStorySessionRequest = {
