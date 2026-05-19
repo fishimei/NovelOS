@@ -3,9 +3,14 @@
    ================================================================ */
 
 .project-shell {
+  --project-sidebar-width: 212px;
   display: grid;
-  grid-template-columns: var(--workspace-sidebar) minmax(0, 1fr);
+  grid-template-columns: var(--project-sidebar-width) minmax(0, 1fr);
   min-height: calc(100vh - var(--topbar-height));
+}
+
+.project-shell--sidebar-collapsed {
+  grid-template-columns: 76px minmax(0, 1fr);
 }
 
 .project-sidebar {
@@ -51,6 +56,52 @@
   line-height: 1.6;
 }
 
+.project-sidebar--collapsed {
+  overflow-x: hidden;
+  padding: 18px 8px;
+}
+
+.project-sidebar--collapsed .project-sidebar__meta {
+  display: none;
+}
+
+.project-sidebar-backdrop {
+  display: none;
+}
+
+.project-sidebar-edge-toggle {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+  box-shadow: var(--shadow-soft);
+  color: var(--accent-strong);
+  cursor: pointer;
+  display: inline-flex;
+  height: 46px;
+  justify-content: center;
+  left: calc(var(--project-sidebar-width) - 1px);
+  position: fixed;
+  top: calc(var(--topbar-height) + 50vh - 23px);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    left var(--duration-normal) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+  width: 28px;
+  z-index: 24;
+}
+
+.project-sidebar-edge-toggle:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.project-shell--sidebar-collapsed .project-sidebar-edge-toggle {
+  left: 75px;
+}
+
 .project-nav {
   display: flex;
   flex-direction: column;
@@ -74,6 +125,31 @@
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);
+}
+
+.project-nav__label {
+  min-width: 0;
+}
+
+.project-nav--collapsed {
+  align-items: center;
+}
+
+.project-nav--collapsed .project-nav__item {
+  gap: 0;
+  height: 44px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0;
+  width: 44px;
+}
+
+.project-nav--collapsed .project-nav__label {
+  display: none;
+}
+
+.project-nav--collapsed .project-nav__item.active {
+  box-shadow: inset 0 3px 0 var(--accent);
 }
 
 .project-nav__item:hover {

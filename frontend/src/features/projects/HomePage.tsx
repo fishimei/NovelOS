@@ -1,6 +1,6 @@
 // 首页。负责创建新项目、按已知项目 ID 打开项目，并展示本地记录的最近项目。
 import { useMutation } from '@tanstack/react-query';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight, Plus, Trash2 } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -10,7 +10,7 @@ import { useRecentProjects } from '../../hooks/useRecentProjects';
 
 export function HomePage() {
   const navigate = useNavigate();
-  const { recentProjects, rememberProject } = useRecentProjects();
+  const { recentProjects, rememberProject, removeProject } = useRecentProjects();
   const [title, setTitle] = useState('');
   const [genre, setGenre] = useState('');
   const [description, setDescription] = useState('');
@@ -94,10 +94,21 @@ export function HomePage() {
             <h3>最近项目</h3>
             {recentProjects.length === 0 ? <p className="muted">暂无最近项目。</p> : null}
             {recentProjects.filter((project) => isValidProjectId(project.id)).map((project) => (
-              <Link className="recent-list__item" key={project.id} to={`/projects/${project.id.trim()}`}>
-                <span>{project.title}</span>
-                <small>{project.genre || project.id}</small>
-              </Link>
+              <div className="recent-list__item" key={project.id}>
+                <Link className="recent-list__link" to={`/projects/${project.id.trim()}`}>
+                  <span>{project.title}</span>
+                  <small>{project.genre || project.id}</small>
+                </Link>
+                <button
+                  aria-label={`移除最近项目 ${project.title}`}
+                  className="icon-button recent-list__delete"
+                  onClick={() => removeProject(project.id)}
+                  title="从最近项目移除"
+                  type="button"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             ))}
           </div>
         </div>

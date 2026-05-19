@@ -11,19 +11,19 @@ const items = [
   { to: 'chapters', label: '\u7ae0\u8282', icon: ScrollText },
 ];
 
-export function ProjectNav() {
+export function ProjectNav({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const { projectId } = useParams();
 
   return (
-    <nav className="project-nav" aria-label={'\u9879\u76ee\u5bfc\u822a'}>
+    <nav className={collapsed ? 'project-nav project-nav--collapsed' : 'project-nav'} aria-label={'\u9879\u76ee\u5bfc\u822a'}>
       {items.map((item) => {
         const Icon = item.icon;
         const to = item.to ? `/projects/${projectId}/${item.to}` : `/projects/${projectId}`;
 
         return (
-          <NavLink className="project-nav__item" end={item.end} key={item.label} to={to}>
+          <NavLink aria-label={item.label} className="project-nav__item" end={item.end} key={item.label} onClick={onNavigate} title={item.label} to={to}>
             <Icon size={17} />
-            {item.label}
+            <span className="project-nav__label">{item.label}</span>
           </NavLink>
         );
       })}

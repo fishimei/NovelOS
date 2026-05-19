@@ -36,9 +36,9 @@
   --page-gutter: 48px;
   --page-gutter-narrow: 24px;
   --content-narrow: 960px;
-  --workspace-sidebar: 240px;
-  --workspace-aside: 320px;
-  --workspace-main-min: 720px;
+  --workspace-sidebar: 220px;
+  --workspace-aside: 300px;
+  --workspace-main-min: 0px;
   --card-gap: 16px;
   --field-gap: 20px;
   --radius-sm: 6px;

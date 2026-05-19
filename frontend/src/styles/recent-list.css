@@ -9,15 +9,15 @@
 }
 
 .recent-list__item {
+  align-items: center;
   background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
   margin-top: 8px;
-  padding: 12px 14px;
+  padding: 8px 8px 8px 14px;
   transition:
     border-color var(--duration-normal) var(--ease-out),
     box-shadow var(--duration-normal) var(--ease-out);
@@ -29,6 +29,23 @@
 .session-item:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-soft);
+}
+
+.recent-list__link {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recent-list__link span,
+.recent-list__link small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-list__delete {
+  color: var(--text-muted);
 }
 
 .recent-list__item small,

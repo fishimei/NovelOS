@@ -66,7 +66,15 @@ export function useRecentProjects() {
     });
   }, []);
 
-  return { recentProjects, rememberProject };
+  const removeProject = useCallback((projectId: string) => {
+    setRecentProjects((current) => {
+      const next = current.filter((item) => item.id !== projectId);
+      writeRecentProjects(next);
+      return next;
+    });
+  }, []);
+
+  return { recentProjects, rememberProject, removeProject };
 }
 
 function isValidProjectId(id: unknown): id is string {
