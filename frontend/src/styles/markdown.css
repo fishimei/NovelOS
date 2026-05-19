@@ -1,0 +1,135 @@
+/* Shared Markdown rendering for AI-generated text. */
+.markdown-content {
+  color: inherit;
+  line-height: inherit;
+  overflow-wrap: break-word;
+}
+
+.markdown-content > :first-child {
+  margin-top: 0;
+}
+
+.markdown-content > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content p,
+.markdown-content ul,
+.markdown-content ol,
+.markdown-content blockquote,
+.markdown-content pre,
+.markdown-content table {
+  margin: 0 0 0.85em;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+  margin: 1.15em 0 0.45em;
+}
+
+.markdown-content h1 {
+  font-size: 1.55em;
+}
+
+.markdown-content h2 {
+  font-size: 1.32em;
+}
+
+.markdown-content h3 {
+  font-size: 1.12em;
+}
+
+.markdown-content h4 {
+  font-size: 1em;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.35em;
+}
+
+.markdown-content li + li {
+  margin-top: 0.25em;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+  padding-left: 1em;
+}
+
+.markdown-content code {
+  background: var(--surface-strong);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.12em 0.32em;
+}
+
+.markdown-content pre {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.markdown-content pre code {
+  background: transparent;
+  border-radius: 0;
+  display: block;
+  padding: 0;
+  white-space: pre;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid var(--border);
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-content th {
+  background: var(--surface-muted);
+  font-weight: 700;
+}
+
+.markdown-content--compact {
+  font-size: inherit;
+  line-height: 1.65;
+}
+
+.markdown-content--compact h1,
+.markdown-content--compact h2,
+.markdown-content--compact h3,
+.markdown-content--compact h4 {
+  font-size: 1em;
+  margin-top: 0.8em;
+}
+
+.markdown-content--reading {
+  font-family: var(--font-reading);
+  font-size: 17px;
+  line-height: 2.05;
+}
+
+.markdown-content--reading h1,
+.markdown-content--reading h2,
+.markdown-content--reading h3 {
+  font-family: var(--font-reading);
+}

@@ -4,8 +4,16 @@
 
 .reader-page {
   margin: 0 auto;
-  max-width: min(76ch, calc(100vw - 48px));
+  max-width: min(96ch, calc(100vw - 48px));
   padding: 48px 24px 80px;
+}
+
+.reader-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
 .chapter-reader {
@@ -38,11 +46,15 @@
   line-height: 2.05;
   letter-spacing: 0.01em;
   margin: 0 auto;
-  max-width: 72ch;
+  max-width: 90ch;
   white-space: pre-wrap;
   word-break: normal;
   overflow-wrap: break-word;
   /* CJK-friendly line breaking */
   line-break: strict;
   word-break: keep-all;
+}
+
+.chapter-content.markdown-content {
+  white-space: normal;
 }
