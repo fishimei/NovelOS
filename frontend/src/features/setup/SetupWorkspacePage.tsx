@@ -223,7 +223,7 @@ export function SetupWorkspacePage() {
     mutationFn: () => createSetupSession(projectId, { seed_idea: seedIdea.trim() }),
     onSuccess: (session) => {
       setActiveSessionId(session.id);
-      setActiveRunId('');
+      setActiveRunId(session.latest_run_id ?? '');
       setSeedIdea('');
       setAuthorNote('');
       queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
@@ -278,7 +278,7 @@ export function SetupWorkspacePage() {
   const workspaceStatus = getWorkspaceDisplayStatus(runQuery.data?.status, currentSession?.status);
   const runStatusLabel = formatRunStatus(workspaceStatus);
   const runStatusTone = getStatusTone(workspaceStatus);
-  const runErrorMessage = firstText(getRunErrorMessage(runQuery.data), getRunEventErrorMessage(eventHistoryQuery.data));
+  const runErrorMessage = firstText(getRunErrorMessage(runQuery.data), currentSession?.latest_run_error, getRunEventErrorMessage(eventHistoryQuery.data));
   const sessionNeedsRetry = !activeRunId && currentSession?.status === 'failed';
   const showFailureCard = Boolean(runErrorMessage || sessionNeedsRetry);
   const failureTitle = runErrorMessage ? copy.failureTitle : copy.failurePendingTitle;
@@ -371,7 +371,7 @@ export function SetupWorkspacePage() {
                   key={session.id}
                   onClick={() => {
                     setActiveSessionId(session.id);
-                    setActiveRunId('');
+                    setActiveRunId(session.latest_run_id ?? '');
                   }}
                   type="button"
                 >
@@ -1238,6 +1238,8 @@ function formatRunStatus(status?: string) {
       return '\u5931\u8d25';
     case 'applied':
       return '\u5df2\u5e94\u7528';
+    case 'committed':
+      return '\u5df2\u5e94\u7528';
     case 'cancelled':
       return '\u5df2\u53d6\u6d88';
     default:
@@ -1250,6 +1252,7 @@ function getStatusTone(status?: string) {
     case 'review_required':
     case 'succeeded':
     case 'applied':
+    case 'committed':
       return 'success';
     case 'retryable':
       return 'warning';

@@ -5,7 +5,9 @@ import (
 	"errors"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
+	"github.com/fishimei/NovelOS/internal/domain"
 	persistencemodels "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm/models"
+	"github.com/fishimei/NovelOS/internal/pkgerr"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -19,6 +21,15 @@ type storyRunResultPayload struct {
 	Draft        model.Draft        `json:"draft"`
 	Review       model.ReviewReport `json:"review"`
 	MemoryPatch  model.MemoryPatch  `json:"memory_patch"`
+}
+
+type dialogueRunResultPayload struct {
+	AssistantMessage    string                       `json:"assistant_message"`
+	ActionOptions       []model.DialogueActionOption `json:"action_options"`
+	ClarifyingQuestions []model.DialogueQuestion     `json:"clarifying_questions"`
+	SuggestedReplies    []string                     `json:"suggested_replies"`
+	ContextSummary      string                       `json:"context_summary"`
+	ToolTrace           []model.DialogueToolTrace    `json:"tool_trace"`
 }
 
 type setupSessionRepository struct {
@@ -38,14 +49,7 @@ func (r *setupSessionRepository) CreateSession(ctx context.Context, projectID st
 	if err := r.dbFor(ctx).Create(&row).Error; err != nil {
 		return model.SetupSession{}, mapDBError(err, "setup session not found")
 	}
-	return model.SetupSession{
-		ID:        row.ID,
-		ProjectID: row.ProjectID,
-		SeedIdea:  row.SeedIdea,
-		Status:    row.Status,
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
-	}, nil
+	return r.setupSessionFromRow(ctx, row), nil
 }
 
 func (r *setupSessionRepository) ListSessionsByProjectID(ctx context.Context, projectID string, pageInput model.PageInput) (model.ListResult[model.SetupSession], error) {
@@ -66,15 +70,7 @@ func (r *setupSessionRepository) ListSessionsByProjectID(ctx context.Context, pr
 	}
 	items := make([]model.SetupSession, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, model.SetupSession{
-			ID:              row.ID,
-			ProjectID:       row.ProjectID,
-			SeedIdea:        row.SeedIdea,
-			LastUserMessage: row.LastUserMessage,
-			Status:          row.Status,
-			CreatedAt:       row.CreatedAt,
-			UpdatedAt:       row.UpdatedAt,
-		})
+		items = append(items, r.setupSessionFromRow(ctx, row))
 	}
 	return model.ListResult[model.SetupSession]{Items: items, Total: int(total)}, nil
 }
@@ -89,16 +85,8 @@ func (r *setupSessionRepository) GetSessionByID(ctx context.Context, sessionID s
 	if err := db.Where("session_id = ?", sessionID).Order("created_at asc").Find(&messages).Error; err != nil {
 		return model.SetupSession{}, mapDBError(err, "setup session not found")
 	}
-	out := model.SetupSession{
-		ID:              row.ID,
-		ProjectID:       row.ProjectID,
-		SeedIdea:        row.SeedIdea,
-		LastUserMessage: row.LastUserMessage,
-		Status:          row.Status,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
-		Messages:        make([]model.ConversationMessage, 0, len(messages)),
-	}
+	out := r.setupSessionFromRow(ctx, row)
+	out.Messages = make([]model.ConversationMessage, 0, len(messages))
 	for _, msg := range messages {
 		out.Messages = append(out.Messages, toMessage(msg.ID, msg.SessionID, msg.Role, msg.Content, msg.CreatedAt))
 	}
@@ -115,6 +103,25 @@ func (r *setupSessionRepository) UpdateSession(ctx context.Context, session mode
 		return model.SetupSession{}, mapDBError(err, "setup session not found")
 	}
 	return r.GetSessionByID(ctx, session.ID)
+}
+
+func (r *setupSessionRepository) setupSessionFromRow(ctx context.Context, row persistencemodels.SetupSession) model.SetupSession {
+	session := model.SetupSession{
+		ID:              row.ID,
+		ProjectID:       row.ProjectID,
+		SeedIdea:        row.SeedIdea,
+		LastUserMessage: row.LastUserMessage,
+		Status:          row.Status,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+	}
+	var latestRun persistencemodels.SetupRun
+	if err := r.dbFor(ctx).Where("session_id = ?", row.ID).Order("created_at desc").Take(&latestRun).Error; err == nil {
+		session.LatestRunID = latestRun.ID
+		session.LatestRunStatus = latestRun.Status
+		session.LatestRunError = latestRun.Error
+	}
+	return session
 }
 
 func (r *setupSessionRepository) AppendMessage(ctx context.Context, sessionID string, role string, content string) (model.ConversationMessage, error) {
@@ -238,6 +245,448 @@ func (r *setupSessionRepository) UpdateRunStatus(ctx context.Context, runID stri
 		updates["error"] = errorMessage[0]
 	}
 	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(updates).Error, "setup run not found")
+}
+
+func (r *setupSessionRepository) MarkApplied(ctx context.Context, sessionID string, runID string) error {
+	now := r.now()
+	db := r.dbFor(ctx)
+	if err := db.Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(map[string]any{
+		"status":       "applied",
+		"current_step": "applied",
+		"progress":     100,
+		"error":        "",
+		"updated_at":   now,
+	}).Error; err != nil {
+		return mapDBError(err, "setup run not found")
+	}
+	return mapDBError(db.Model(&persistencemodels.SetupSession{}).Where("id = ?", sessionID).Updates(map[string]any{
+		"status":     "committed",
+		"updated_at": now,
+	}).Error, "setup session not found")
+}
+
+type dialogueSessionRepository struct {
+	*container
+}
+
+func (r *dialogueSessionRepository) CreateSession(ctx context.Context, projectID string, input model.CreateDialogueSessionInput) (model.DialogueSession, error) {
+	now := r.now()
+	row := persistencemodels.DialogueSession{
+		ID:        r.nextID("dialogue"),
+		ProjectID: projectID,
+		Title:     input.Title,
+		Status:    domain.SessionStatusIdle,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := r.dbFor(ctx).Create(&row).Error; err != nil {
+		return model.DialogueSession{}, mapDBError(err, "dialogue session not found")
+	}
+	return r.dialogueSessionFromRow(ctx, row), nil
+}
+
+func (r *dialogueSessionRepository) ListSessionsByProjectID(ctx context.Context, projectID string, pageInput model.PageInput) (model.ListResult[model.DialogueSession], error) {
+	db := r.dbFor(ctx)
+	var total int64
+	if err := db.Model(&persistencemodels.DialogueSession{}).Where("project_id = ?", projectID).Count(&total).Error; err != nil {
+		return model.ListResult[model.DialogueSession]{}, mapDBError(err, "dialogue session not found")
+	}
+	if pageInput.Page <= 0 {
+		pageInput.Page = 1
+	}
+	if pageInput.PageSize <= 0 {
+		pageInput.PageSize = 20
+	}
+	var rows []persistencemodels.DialogueSession
+	if err := db.Where("project_id = ?", projectID).Order("created_at desc").Limit(pageInput.PageSize).Offset((pageInput.Page - 1) * pageInput.PageSize).Find(&rows).Error; err != nil {
+		return model.ListResult[model.DialogueSession]{}, mapDBError(err, "dialogue session not found")
+	}
+	items := make([]model.DialogueSession, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, r.dialogueSessionFromRow(ctx, row))
+	}
+	return model.ListResult[model.DialogueSession]{Items: items, Total: int(total)}, nil
+}
+
+func (r *dialogueSessionRepository) GetSessionByID(ctx context.Context, sessionID string) (model.DialogueSession, error) {
+	var row persistencemodels.DialogueSession
+	if err := r.dbFor(ctx).First(&row, "id = ?", sessionID).Error; err != nil {
+		return model.DialogueSession{}, mapDBError(err, "dialogue session not found")
+	}
+	out := r.dialogueSessionFromRow(ctx, row)
+	messages, err := r.ListMessagesBySessionID(ctx, sessionID)
+	if err != nil {
+		return model.DialogueSession{}, err
+	}
+	out.Messages = messages
+	return out, nil
+}
+
+func (r *dialogueSessionRepository) UpdateSession(ctx context.Context, session model.DialogueSession) (model.DialogueSession, error) {
+	if err := r.dbFor(ctx).Model(&persistencemodels.DialogueSession{}).Where("id = ?", session.ID).Updates(map[string]any{
+		"title":             session.Title,
+		"last_user_message": session.LastUserMessage,
+		"status":            session.Status,
+		"updated_at":        r.now(),
+	}).Error; err != nil {
+		return model.DialogueSession{}, mapDBError(err, "dialogue session not found")
+	}
+	return r.GetSessionByID(ctx, session.ID)
+}
+
+func (r *dialogueSessionRepository) AppendMessage(ctx context.Context, sessionID string, role string, content string, metadata map[string]any) (model.DialogueMessage, error) {
+	metadataJSON, err := encodeJSON(metadata)
+	if err != nil {
+		return model.DialogueMessage{}, payloadError("dialogue message", err)
+	}
+	row := persistencemodels.DialogueMessage{
+		ID:           r.nextID("dmsg"),
+		SessionID:    sessionID,
+		Role:         role,
+		Content:      content,
+		MetadataJSON: metadataJSON,
+		CreatedAt:    r.now(),
+	}
+	if err := r.dbFor(ctx).Create(&row).Error; err != nil {
+		return model.DialogueMessage{}, mapDBError(err, "dialogue session not found")
+	}
+	return toDialogueMessage(row)
+}
+
+func (r *dialogueSessionRepository) ListMessagesBySessionID(ctx context.Context, sessionID string) ([]model.DialogueMessage, error) {
+	var rows []persistencemodels.DialogueMessage
+	if err := r.dbFor(ctx).Where("session_id = ?", sessionID).Order("created_at asc").Find(&rows).Error; err != nil {
+		return nil, mapDBError(err, "dialogue session not found")
+	}
+	items := make([]model.DialogueMessage, 0, len(rows))
+	for _, row := range rows {
+		msg, err := toDialogueMessage(row)
+		if err != nil {
+			return nil, payloadError("dialogue message", err)
+		}
+		items = append(items, msg)
+	}
+	return items, nil
+}
+
+func (r *dialogueSessionRepository) CreateRun(ctx context.Context, sessionID string, input model.AdvanceDialogueSessionInput) (model.DialogueRun, error) {
+	session, err := r.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return model.DialogueRun{}, err
+	}
+	now := r.now()
+	row := persistencemodels.DialogueRun{
+		ID:          r.nextID("drun"),
+		SessionID:   sessionID,
+		ProjectID:   session.ProjectID,
+		Status:      domain.RunStatusQueued,
+		CurrentStep: domain.RunStatusLoadingState,
+		Progress:    0,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := r.dbFor(ctx).Create(&row).Error; err != nil {
+		return model.DialogueRun{}, mapDBError(err, "dialogue run not found")
+	}
+	return toDialogueRun(row), nil
+}
+
+func (r *dialogueSessionRepository) GetRunByID(ctx context.Context, runID string) (model.DialogueRun, error) {
+	var row persistencemodels.DialogueRun
+	if err := r.dbFor(ctx).First(&row, "id = ?", runID).Error; err != nil {
+		return model.DialogueRun{}, mapDBError(err, "dialogue run not found")
+	}
+	return toDialogueRun(row), nil
+}
+
+func (r *dialogueSessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error {
+	updates := map[string]any{
+		"status":       status,
+		"current_step": currentStep,
+		"progress":     progress,
+		"updated_at":   r.now(),
+	}
+	if len(errorMessage) > 0 {
+		updates["error"] = errorMessage[0]
+	}
+	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.DialogueRun{}).Where("id = ?", runID).Updates(updates).Error, "dialogue run not found")
+}
+
+func (r *dialogueSessionRepository) SaveRunResult(ctx context.Context, runID string, result model.DialogueRunResult) error {
+	payloadJSON, err := encodeJSON(dialogueRunResultPayload{
+		AssistantMessage:    result.AssistantMessage,
+		ActionOptions:       result.ActionOptions,
+		ClarifyingQuestions: result.ClarifyingQuestions,
+		SuggestedReplies:    result.SuggestedReplies,
+		ContextSummary:      result.ContextSummary,
+		ToolTrace:           result.ToolTrace,
+	})
+	if err != nil {
+		return payloadError("dialogue run result", err)
+	}
+	now := r.now()
+	row := persistencemodels.DialogueRunResult{
+		ID:          r.nextID("dresult"),
+		RunID:       runID,
+		SessionID:   result.SessionID,
+		Status:      result.Status,
+		PayloadJSON: payloadJSON,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := r.dbFor(ctx).Model(&persistencemodels.DialogueRun{}).Where("id = ?", runID).Updates(map[string]any{
+		"status":       result.Status,
+		"current_step": "completed",
+		"progress":     100,
+		"error":        "",
+		"updated_at":   now,
+	}).Error; err != nil {
+		return mapDBError(err, "dialogue run not found")
+	}
+	return mapDBError(r.dbFor(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "run_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"session_id", "status", "payload_json", "updated_at"}),
+	}).Create(&row).Error, "dialogue run result not found")
+}
+
+func (r *dialogueSessionRepository) GetRunResultByID(ctx context.Context, runID string) (model.DialogueRunResult, error) {
+	var row persistencemodels.DialogueRunResult
+	if err := r.dbFor(ctx).First(&row, "run_id = ?", runID).Error; err != nil {
+		return model.DialogueRunResult{}, mapDBError(err, "dialogue run result not found")
+	}
+	payload, err := decodeJSON[dialogueRunResultPayload](row.PayloadJSON)
+	if err != nil {
+		return model.DialogueRunResult{}, payloadError("dialogue run result", err)
+	}
+	options, err := r.ListActionOptionsByRunID(ctx, runID)
+	if err != nil {
+		return model.DialogueRunResult{}, err
+	}
+	if len(options) == 0 {
+		options = payload.ActionOptions
+	}
+	return model.DialogueRunResult{
+		RunID:               row.RunID,
+		SessionID:           row.SessionID,
+		Status:              row.Status,
+		AssistantMessage:    payload.AssistantMessage,
+		ActionOptions:       options,
+		ClarifyingQuestions: payload.ClarifyingQuestions,
+		SuggestedReplies:    payload.SuggestedReplies,
+		ContextSummary:      payload.ContextSummary,
+		ToolTrace:           payload.ToolTrace,
+	}, nil
+}
+
+func (r *dialogueSessionRepository) SaveActionOptions(ctx context.Context, options []model.DialogueActionOption) error {
+	for _, option := range options {
+		row, err := r.dialogueActionOptionRow(option)
+		if err != nil {
+			return err
+		}
+		if err := r.dbFor(ctx).Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoNothing: true,
+		}).Create(&row).Error; err != nil {
+			return mapDBError(err, "dialogue action option not found")
+		}
+	}
+	return nil
+}
+
+func (r *dialogueSessionRepository) ListActionOptionsByRunID(ctx context.Context, runID string) ([]model.DialogueActionOption, error) {
+	var rows []persistencemodels.DialogueActionOption
+	if err := r.dbFor(ctx).Where("run_id = ?", runID).Order("created_at asc").Find(&rows).Error; err != nil {
+		return nil, mapDBError(err, "dialogue action option not found")
+	}
+	return r.dialogueActionOptionsFromRows(rows)
+}
+
+func (r *dialogueSessionRepository) ListPendingActionOptionsBySessionID(ctx context.Context, sessionID string) ([]model.DialogueActionOption, error) {
+	var rows []persistencemodels.DialogueActionOption
+	if err := r.dbFor(ctx).Where("session_id = ? AND status IN ?", sessionID, []string{domain.DialogueActionStatusPending, domain.DialogueActionStatusConfirmed}).Order("created_at asc").Find(&rows).Error; err != nil {
+		return nil, mapDBError(err, "dialogue action option not found")
+	}
+	return r.dialogueActionOptionsFromRows(rows)
+}
+
+func (r *dialogueSessionRepository) GetActionOptionByID(ctx context.Context, optionID string) (model.DialogueActionOption, error) {
+	var row persistencemodels.DialogueActionOption
+	if err := r.dbFor(ctx).First(&row, "id = ?", optionID).Error; err != nil {
+		return model.DialogueActionOption{}, mapDBError(err, "dialogue action option not found")
+	}
+	return toDialogueActionOption(row)
+}
+
+func (r *dialogueSessionRepository) UpdateActionOption(ctx context.Context, option model.DialogueActionOption) (model.DialogueActionOption, error) {
+	payloadJSON, err := encodeJSON(option.Payload)
+	if err != nil {
+		return model.DialogueActionOption{}, payloadError("dialogue action option", err)
+	}
+	resultJSON, err := encodeJSON(option.Result)
+	if err != nil {
+		return model.DialogueActionOption{}, payloadError("dialogue action option", err)
+	}
+	updates := map[string]any{
+		"label":                 option.Label,
+		"description":           option.Description,
+		"rationale":             option.Rationale,
+		"confirmation_required": option.ConfirmationRequired,
+		"payload_json":          payloadJSON,
+		"status":                option.Status,
+		"result_json":           resultJSON,
+		"error":                 option.Error,
+		"expires_at":            option.ExpiresAt,
+		"updated_at":            r.now(),
+	}
+	if err := r.dbFor(ctx).Model(&persistencemodels.DialogueActionOption{}).Where("id = ?", option.ID).Updates(updates).Error; err != nil {
+		return model.DialogueActionOption{}, mapDBError(err, "dialogue action option not found")
+	}
+	return r.GetActionOptionByID(ctx, option.ID)
+}
+
+func (r *dialogueSessionRepository) TryStartActionExecution(ctx context.Context, optionID string) (model.DialogueActionOption, error) {
+	now := r.now()
+	result := r.dbFor(ctx).Model(&persistencemodels.DialogueActionOption{}).Where("id = ? AND status IN ?", optionID, []string{domain.DialogueActionStatusPending, domain.DialogueActionStatusConfirmed}).Updates(map[string]any{
+		"status":     domain.DialogueActionStatusExecuting,
+		"updated_at": now,
+	})
+	if result.Error != nil {
+		return model.DialogueActionOption{}, mapDBError(result.Error, "dialogue action option not found")
+	}
+	if result.RowsAffected == 0 {
+		return model.DialogueActionOption{}, pkgerr.Conflict(pkgerr.CodeConflict, "dialogue action option is not executable")
+	}
+	return r.GetActionOptionByID(ctx, optionID)
+}
+
+func (r *dialogueSessionRepository) dialogueSessionFromRow(ctx context.Context, row persistencemodels.DialogueSession) model.DialogueSession {
+	session := model.DialogueSession{
+		ID:              row.ID,
+		ProjectID:       row.ProjectID,
+		Title:           row.Title,
+		LastUserMessage: row.LastUserMessage,
+		Status:          row.Status,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+	}
+	var latestRun persistencemodels.DialogueRun
+	if err := r.dbFor(ctx).Where("session_id = ?", row.ID).Order("created_at desc").Take(&latestRun).Error; err == nil {
+		session.LatestRunID = latestRun.ID
+		session.LatestRunStatus = latestRun.Status
+		session.LatestRunError = latestRun.Error
+	}
+	return session
+}
+
+func (r *dialogueSessionRepository) dialogueActionOptionRow(option model.DialogueActionOption) (persistencemodels.DialogueActionOption, error) {
+	now := r.now()
+	if option.ID == "" {
+		option.ID = r.nextID("dopt")
+	}
+	if option.Status == "" {
+		option.Status = domain.DialogueActionStatusPending
+	}
+	if option.CreatedAt.IsZero() {
+		option.CreatedAt = now
+	}
+	option.UpdatedAt = now
+	payloadJSON, err := encodeJSON(option.Payload)
+	if err != nil {
+		return persistencemodels.DialogueActionOption{}, payloadError("dialogue action option", err)
+	}
+	resultJSON, err := encodeJSON(option.Result)
+	if err != nil {
+		return persistencemodels.DialogueActionOption{}, payloadError("dialogue action option", err)
+	}
+	return persistencemodels.DialogueActionOption{
+		ID:                   option.ID,
+		SessionID:            option.SessionID,
+		RunID:                option.RunID,
+		ProjectID:            option.ProjectID,
+		ActionType:           option.ActionType,
+		Label:                option.Label,
+		Description:          option.Description,
+		Rationale:            option.Rationale,
+		ConfirmationRequired: option.ConfirmationRequired,
+		PayloadJSON:          payloadJSON,
+		Status:               option.Status,
+		ResultJSON:           resultJSON,
+		Error:                option.Error,
+		ExpiresAt:            option.ExpiresAt,
+		CreatedAt:            option.CreatedAt,
+		UpdatedAt:            option.UpdatedAt,
+	}, nil
+}
+
+func (r *dialogueSessionRepository) dialogueActionOptionsFromRows(rows []persistencemodels.DialogueActionOption) ([]model.DialogueActionOption, error) {
+	items := make([]model.DialogueActionOption, 0, len(rows))
+	for _, row := range rows {
+		option, err := toDialogueActionOption(row)
+		if err != nil {
+			return nil, payloadError("dialogue action option", err)
+		}
+		items = append(items, option)
+	}
+	return items, nil
+}
+
+func toDialogueMessage(row persistencemodels.DialogueMessage) (model.DialogueMessage, error) {
+	metadata, err := decodeJSON[map[string]any](row.MetadataJSON)
+	if err != nil {
+		return model.DialogueMessage{}, err
+	}
+	return model.DialogueMessage{
+		ID:        row.ID,
+		SessionID: row.SessionID,
+		Role:      row.Role,
+		Content:   row.Content,
+		Metadata:  metadata,
+		CreatedAt: row.CreatedAt,
+	}, nil
+}
+
+func toDialogueRun(row persistencemodels.DialogueRun) model.DialogueRun {
+	return model.DialogueRun{
+		RunID:       row.ID,
+		SessionID:   row.SessionID,
+		ProjectID:   row.ProjectID,
+		Status:      row.Status,
+		CurrentStep: row.CurrentStep,
+		Progress:    row.Progress,
+		Error:       row.Error,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+}
+
+func toDialogueActionOption(row persistencemodels.DialogueActionOption) (model.DialogueActionOption, error) {
+	payload, err := decodeJSON[map[string]any](row.PayloadJSON)
+	if err != nil {
+		return model.DialogueActionOption{}, err
+	}
+	result, err := decodeJSON[map[string]any](row.ResultJSON)
+	if err != nil {
+		return model.DialogueActionOption{}, err
+	}
+	return model.DialogueActionOption{
+		ID:                   row.ID,
+		SessionID:            row.SessionID,
+		RunID:                row.RunID,
+		ProjectID:            row.ProjectID,
+		ActionType:           row.ActionType,
+		Label:                row.Label,
+		Description:          row.Description,
+		Rationale:            row.Rationale,
+		ConfirmationRequired: row.ConfirmationRequired,
+		Payload:              payload,
+		Status:               row.Status,
+		Result:               result,
+		Error:                row.Error,
+		ExpiresAt:            row.ExpiresAt,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+	}, nil
 }
 
 type storySessionRepository struct {

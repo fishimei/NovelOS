@@ -8,8 +8,7 @@ import (
 	"time"
 
 	llmmodel "github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/flow/agent/react"
+	einotool "github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
@@ -27,12 +26,11 @@ type SetupRunGeneratorDeps struct {
 }
 
 type SetupRunGenerator struct {
-	model     llmmodel.ToolCallingChatModel
-	modelName string
-	prompt    string
-	events    port.GenerationEventStream
-	clock     port.Clock
-	ids       port.IDGenerator
+	model  llmmodel.ToolCallingChatModel
+	prompt string
+	events port.GenerationEventStream
+	clock  port.Clock
+	ids    port.IDGenerator
 }
 
 func NewSetupRunGenerator(ctx context.Context, deps SetupRunGeneratorDeps) (*SetupRunGenerator, error) {
@@ -41,27 +39,23 @@ func NewSetupRunGenerator(ctx context.Context, deps SetupRunGeneratorDeps) (*Set
 		return nil, err
 	}
 	return &SetupRunGenerator{
-		model:     chatModel,
-		modelName: deps.Config.Model,
-		prompt:    deps.Config.SetupAgent.Prompt,
-		events:    deps.Events,
-		clock:     deps.Clock,
-		ids:       deps.IDs,
+		model:  chatModel,
+		prompt: deps.Config.SetupAgent.Prompt,
+		events: deps.Events,
+		clock:  deps.Clock,
+		ids:    deps.IDs,
 	}, nil
 }
 
 func (g *SetupRunGenerator) Generate(ctx context.Context, input port.SetupRunGenerationInput) (model.SetupRunResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	if g.events != nil {
 		_ = g.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": "drafting_setup", "progress": 50}})
 	}
 	out, err := g.generateWithTools(ctx, input)
 	if err != nil {
-		out, err = g.generateLegacyJSON(ctx, input)
-		if err != nil {
-			return model.SetupRunResult{}, err
-		}
+		return model.SetupRunResult{}, err
 	}
 	draft, err := g.buildDraft(input, out)
 	if err != nil {
@@ -81,132 +75,112 @@ func (g *SetupRunGenerator) generateWithTools(ctx context.Context, input port.Se
 	if err != nil {
 		return setupAgentOutput{}, err
 	}
-	agent, err := react.NewAgent(ctx, &react.AgentConfig{
-		ToolCallingModel: g.model,
-		ToolsConfig:      compose.ToolsNodeConfig{Tools: tools},
-		MaxStep:          24,
-		ToolReturnDirectly: map[string]struct{}{
-			"show_setup_draft":   {},
-			"revise_setup_draft": {},
-		},
-	})
+	for _, step := range setupGenerationSteps() {
+		if err := g.runSetupToolStep(ctx, input, state, tools, step); err != nil {
+			return setupAgentOutput{}, err
+		}
+	}
+	out, err := finalizeSetupDraft(ctx, state, FinalizeSetupDraftInput{})
 	if err != nil {
 		return setupAgentOutput{}, err
 	}
-	_, err = agent.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.toolSystemPrompt()),
-		schema.UserMessage(g.toolUserPrompt(input)),
-	})
-	if err != nil {
-		return setupAgentOutput{}, err
-	}
-	out := state.agentOutput()
 	if len(out.Characters) == 0 {
 		return setupAgentOutput{}, pkgerr.Validation("setup agent returned no characters")
 	}
 	return out, nil
 }
 
-func (g *SetupRunGenerator) generateLegacyJSON(ctx context.Context, input port.SetupRunGenerationInput) (setupAgentOutput, error) {
-	msg, err := g.model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.systemPrompt()),
-		schema.UserMessage(g.userPrompt(input)),
-	}, maxTokensOption(g.modelName, 6000))
-	if err != nil {
-		return setupAgentOutput{}, err
-	}
-	var out setupAgentOutput
-	if err := decodeModelJSON(msg.Content, &out); err != nil {
-		return setupAgentOutput{}, err
-	}
-	return out, nil
+type setupGenerationStep struct {
+	toolName    string
+	instruction string
 }
 
-func (g *SetupRunGenerator) toolSystemPrompt() string {
+func setupGenerationSteps() []setupGenerationStep {
+	return []setupGenerationStep{
+		{toolName: "set_setup_author_bible", instruction: "只生成 author_bible。必须包含 theme 和 style_guide，并给出世界规则、审美原则、硬约束、软偏好和禁用套路。"},
+		{toolName: "set_setup_world_state", instruction: "只生成 world_state。至少 3 项，每项包含 key、value、note、importance、volatility。"},
+		{toolName: "set_setup_characters", instruction: "只生成 characters。至少 3 个角色，每个角色包含 key、name、role、profile、personality、voice_style、goals、fears、secrets、constraints。"},
+		{toolName: "set_setup_relationships", instruction: "只生成 relationships。至少 2 条关系，character_a_key 和 character_b_key 必须引用已生成 characters 的 key。"},
+		{toolName: "set_setup_visual_draft", instruction: "只生成 visual_draft、open_questions、assistant_summary、next_agent_suggestions。给用户看的摘要要短而完整。"},
+	}
+}
+
+func (g *SetupRunGenerator) runSetupToolStep(ctx context.Context, input port.SetupRunGenerationInput, state *setupRunState, tools []einotool.BaseTool, step setupGenerationStep) error {
+	selected, info, err := setupToolByName(ctx, tools, step.toolName)
+	if err != nil {
+		return err
+	}
+	invokable, ok := selected.(einotool.InvokableTool)
+	if !ok {
+		return fmt.Errorf("setup tool %s is not invokable", step.toolName)
+	}
+	msg, err := g.model.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(g.toolStepSystemPrompt(step)),
+		schema.UserMessage(g.toolStepUserPrompt(input, state.agentOutput(), step)),
+	}, llmmodel.WithTools([]*schema.ToolInfo{info}), llmmodel.WithToolChoice(schema.ToolChoiceForced, step.toolName))
+	if err != nil {
+		return err
+	}
+	call, err := setupToolCall(msg, step.toolName)
+	if err != nil {
+		return err
+	}
+	_, err = invokable.InvokableRun(ctx, call.Function.Arguments)
+	return err
+}
+
+func setupToolByName(ctx context.Context, tools []einotool.BaseTool, name string) (einotool.BaseTool, *schema.ToolInfo, error) {
+	for _, candidate := range tools {
+		info, err := candidate.Info(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if info.Name == name {
+			return candidate, info, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("setup tool %s not found", name)
+}
+
+func setupToolCall(msg *schema.Message, name string) (schema.ToolCall, error) {
+	if msg == nil || len(msg.ToolCalls) == 0 {
+		return schema.ToolCall{}, pkgerr.Validation("setup agent did not call " + name)
+	}
+	for _, call := range msg.ToolCalls {
+		if call.Function.Name == name {
+			return call, nil
+		}
+	}
+	return schema.ToolCall{}, pkgerr.Validation("setup agent called unexpected tool")
+}
+
+func (g *SetupRunGenerator) toolStepSystemPrompt(step setupGenerationStep) string {
 	base := firstText(g.prompt, `你是 NovelOS 的 Setup 主控 agent。用户只需要说想创作哪类小说或给出粗略灵感，你要主动推理类型约定、世界压力、人物功能位、关系张力和初始状态。`)
 	return base + `
 
-你要先在内部完成理解、起草和深化，不要把“拆解意图”“设计世界”“设计人物”“编排关系”当作工具调用。工具只用于把已经深化完成的完整候选草案交给后端展示，或记录下一步 agent 建议。
-
-当用户是首次给出种子、要求继续生成或没有明确要求沿用旧版时，调用 show_setup_draft。若用户要求微调、重起草或替换上一版，调用 revise_setup_draft。两者都必须一次性提交完整详细草案，包括：
-- author_bible：主题、文风、世界规则、审美原则、硬约束、软偏好、禁用套路。
-- world_state：关键世界变量，每项要有 key、value、note、importance、volatility。
-- characters：主要角色，每人要有 key、name、role、profile、personality、voice_style、goals、fears、secrets、constraints。
-- relationships：使用 characters 里的 key，写出摘要、锚点、张力、共同历史、波动值和双方视角。
-- visual_draft：给用户看的 logline、风格标签、气质、大胆程度、世界压力卡、人物卡、关系边、待确认问题、agent 摘要和下一步建议。
-- open_questions：只放真正无法合理推断且会改变主方向的问题。
-- assistant_summary：解释这版草案的核心取向和用户应该重点审阅的地方。
-- next_agent_suggestions：确认后可进入的 agent，例如角色深化、关系深化或第一章编排。
-
-如果需要单独补充下一步建议，可以调用 handoff_next_agent；它不替代 show_setup_draft 或 revise_setup_draft。所有工具都只生成候选草案，不写正式数据库。`
+当前请求只允许调用一个工具：` + step.toolName + `。
+` + step.instruction + `
+即使种子很短，也要合理推断，不要只返回澄清问题。输出要短而完整：每个字符串字段不超过 80 个汉字，每个数组优先 2-4 项。所有内容都是候选草案，不写正式数据库。`
 }
 
-func (g *SetupRunGenerator) toolUserPrompt(input port.SetupRunGenerationInput) string {
+func (g *SetupRunGenerator) toolStepUserPrompt(input port.SetupRunGenerationInput, current setupAgentOutput, step setupGenerationStep) string {
 	messages, _ := json.Marshal(input.Session.Messages)
+	currentDraft, _ := json.Marshal(current)
 	return fmt.Sprintf(`project_id: %s
 setup_session_id: %s
 seed_idea: %s
 last_user_message: %s
 conversation_messages_json: %s
+current_draft_json: %s
 
-请根据以上信息调用工具起草 NovelOS 初始项目状态和可视化草案。`,
+请调用 %s，完成本阶段 Setup 草案。`,
 		input.Run.ProjectID,
 		input.Session.ID,
 		input.Session.SeedIdea,
 		input.Session.LastUserMessage,
 		string(messages),
-	)
-}
-
-func (g *SetupRunGenerator) systemPrompt() string {
-	if strings.TrimSpace(g.prompt) != "" {
-		return g.prompt
-	}
-	return `你是 NovelOS 的 Setup 编剧 agent。用户会用自然语言说明想创作的小说类型或粗略灵感，你要主动推理并拆解，而不是处处追问。
-
-你的目标：生成可直接进入项目状态的作者圣经、世界状态、主要角色、角色关系与少量必要澄清问题。
-
-原则：
-- 从类型文学约定、用户语气、题材关键词中合理推断世界压力、核心矛盾、人物功能位和初始关系。
-- 不要等待用户提供所有细节；只有影响主设定方向且无法合理推断的信息才放进 open_questions。
-- 角色要有目标、恐惧、秘密、约束和明显 voice_style，方便后续受限视角演绎。
-- relationship 必须使用 characters 中的 key 引用角色，不要编数据库 ID。
-- 输出必须是 JSON 对象，不要 markdown，不要代码块，不要额外解释。
-
-JSON 结构：
-{
-  "author_bible": {
-    "theme": "",
-    "style_guide": "",
-    "world_rules": [],
-    "aesthetic_principles": [],
-    "hard_constraints": [],
-    "soft_preferences": [],
-    "forbidden_moves": []
-  },
-  "world_state": [{"key":"", "value":{}, "note":"", "importance": 1, "volatility": 1}],
-  "characters": [{"key":"", "name":"", "role":"", "profile":"", "personality":"", "voice_style":"", "goals":[], "fears":[], "secrets":[], "constraints":[]}],
-  "relationships": [{"character_a_key":"", "character_b_key":"", "summary":"", "anchors":[], "tension_points":[], "shared_history":[], "volatility": 1, "character_a_view":{"public_attitude":"", "private_attitude":"", "believed_target_attitude":"", "masking_strategy":""}, "character_b_view":{"public_attitude":"", "private_attitude":"", "believed_target_attitude":"", "masking_strategy":""}}],
-  "open_questions": [{"key":"", "question":"", "why_it_matters":""}],
-  "assistant_summary": "",
-  "visual_draft": {"logline":"", "style_tags":[], "tone":"", "boldness_level": 1, "world_pressure_cards":[], "character_cards":[], "relationship_edges":[], "open_questions":[], "agent_summary":"", "next_agent_suggestions":[]}
-}`
-}
-
-func (g *SetupRunGenerator) userPrompt(input port.SetupRunGenerationInput) string {
-	messages, _ := json.Marshal(input.Session.Messages)
-	return fmt.Sprintf(`project_id: %s
-setup_session_id: %s
-seed_idea: %s
-last_user_message: %s
-conversation_messages_json: %s
-
-请根据以上信息主动拆解成 NovelOS 初始项目状态。`,
-		input.Run.ProjectID,
-		input.Session.ID,
-		input.Session.SeedIdea,
-		input.Session.LastUserMessage,
-		string(messages),
+		string(currentDraft),
+		step.toolName,
 	)
 }
 

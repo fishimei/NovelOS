@@ -169,6 +169,9 @@ export type SetupSession = {
   seed_idea?: string;
   last_user_message?: string;
   status?: string;
+  latest_run_id?: string;
+  latest_run_status?: string;
+  latest_run_error?: string;
   messages?: ConversationMessage[];
   created_at?: string;
   updated_at?: string;

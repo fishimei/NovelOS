@@ -1,6 +1,11 @@
 package eino
 
-import "github.com/fishimei/NovelOS/internal/application/model"
+import (
+	"encoding/json"
+	"strings"
+
+	"github.com/fishimei/NovelOS/internal/application/model"
+)
 
 type StoryContextSnapshot struct {
 	Session        model.StorySession        `json:"session"`
@@ -97,6 +102,33 @@ type StoryNarrativeResult struct {
 	Turns        []StoryTurnPlan            `json:"turns"`
 }
 
+type flexibleStrings []string
+
+func (s *flexibleStrings) UnmarshalJSON(data []byte) error {
+	var values []string
+	if err := json.Unmarshal(data, &values); err == nil {
+		*s = cleanStrings(values)
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*s = cleanStrings([]string{value})
+	return nil
+}
+
+func cleanStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 type StoryNarrativePlotVariable struct {
 	PressureSource      string   `json:"pressure_source"`
 	FocalCharacterID    string   `json:"focal_character_id"`
@@ -108,6 +140,37 @@ type StoryNarrativePlotVariable struct {
 	IrreversibleEffect  string   `json:"irreversible_effect"`
 	RelatedCharacterIDs []string `json:"related_character_ids"`
 	WorldStatePressure  []string `json:"world_state_pressure"`
+}
+
+func (v *StoryNarrativePlotVariable) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		PressureSource      string          `json:"pressure_source"`
+		FocalCharacterID    string          `json:"focal_character_id"`
+		CoreChoice          string          `json:"core_choice"`
+		OptionA             string          `json:"option_a"`
+		OptionB             string          `json:"option_b"`
+		CostA               string          `json:"cost_a"`
+		CostB               string          `json:"cost_b"`
+		IrreversibleEffect  string          `json:"irreversible_effect"`
+		RelatedCharacterIDs flexibleStrings `json:"related_character_ids"`
+		WorldStatePressure  flexibleStrings `json:"world_state_pressure"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*v = StoryNarrativePlotVariable{
+		PressureSource:      raw.PressureSource,
+		FocalCharacterID:    raw.FocalCharacterID,
+		CoreChoice:          raw.CoreChoice,
+		OptionA:             raw.OptionA,
+		OptionB:             raw.OptionB,
+		CostA:               raw.CostA,
+		CostB:               raw.CostB,
+		IrreversibleEffect:  raw.IrreversibleEffect,
+		RelatedCharacterIDs: []string(raw.RelatedCharacterIDs),
+		WorldStatePressure:  []string(raw.WorldStatePressure),
+	}
+	return nil
 }
 
 type StoryNarrativeMemoryPatch struct {

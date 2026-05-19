@@ -16,16 +16,17 @@ func New(db *gorm.DB, ids port.IDGenerator, clock port.Clock) Repositories {
 
 	return Repositories{
 		Repositories: port.Repositories{
-			Projects:      &projectRepository{container: base},
-			AuthorBibles:  &authorBibleRepository{container: base},
-			WorldState:    &worldStateRepository{container: base},
-			Characters:    &characterRepository{container: base},
-			Relationships: &relationshipRepository{container: base},
-			SetupSessions: &setupSessionRepository{container: base},
-			StorySessions: &storySessionRepository{container: base},
-			Chapters:      &chapterRepository{container: base},
-			Memories:      &memoryRepository{container: base},
-			Audit:         &auditRepository{container: base},
+			Projects:         &projectRepository{container: base},
+			AuthorBibles:     &authorBibleRepository{container: base},
+			WorldState:       &worldStateRepository{container: base},
+			Characters:       &characterRepository{container: base},
+			Relationships:    &relationshipRepository{container: base},
+			SetupSessions:    &setupSessionRepository{container: base},
+			DialogueSessions: &dialogueSessionRepository{container: base},
+			StorySessions:    &storySessionRepository{container: base},
+			Chapters:         &chapterRepository{container: base},
+			Memories:         &memoryRepository{container: base},
+			Audit:            &auditRepository{container: base},
 		},
 	}
 }

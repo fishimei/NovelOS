@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"log"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
+	"github.com/fishimei/NovelOS/internal/domain"
 	"github.com/fishimei/NovelOS/internal/pkgerr"
 )
 
@@ -18,6 +20,7 @@ type StoryRunCommitter struct {
 	worldState    port.WorldStateRepository
 	relationships port.RelationshipRepository
 	audit         port.AuditRepository
+	memoryService port.CharacterMemoryService
 	tx            port.TxManager
 	clock         port.Clock
 	ids           port.IDGenerator
@@ -30,6 +33,7 @@ func NewStoryRunCommitter(
 	worldState port.WorldStateRepository,
 	relationships port.RelationshipRepository,
 	audit port.AuditRepository,
+	memoryService port.CharacterMemoryService,
 	tx port.TxManager,
 	clock port.Clock,
 	ids port.IDGenerator,
@@ -41,6 +45,7 @@ func NewStoryRunCommitter(
 		worldState:    worldState,
 		relationships: relationships,
 		audit:         audit,
+		memoryService: memoryService,
 		tx:            tx,
 		clock:         clock,
 		ids:           ids,
@@ -71,6 +76,7 @@ func (c *StoryRunCommitter) Commit(ctx context.Context, runID string, input mode
 	}
 
 	var chapter model.Chapter
+	var committedMemories []model.Memory
 	err = c.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
 		chapter, err = c.createCommittedChapter(txCtx, run, result, input)
 		if err != nil {
@@ -80,6 +86,7 @@ func (c *StoryRunCommitter) Commit(ctx context.Context, runID string, input mode
 		if err != nil {
 			return err
 		}
+		committedMemories = memories
 		worldEntries, err := c.upsertWorldState(txCtx, run.ProjectID, result.MemoryPatch.WorldStateUpdates)
 		if err != nil {
 			return err
@@ -98,6 +105,10 @@ func (c *StoryRunCommitter) Commit(ctx context.Context, runID string, input mode
 	if err != nil {
 		return model.CommitStoryRunResult{}, err
 	}
+	if err := c.commitExternalMemories(ctx, run, chapter, committedMemories); err != nil {
+		log.Printf("story run %s external memory commit failed: %v", runID, err)
+		c.appendExternalMemoryCommitFailedEvent(ctx, runID, err)
+	}
 
 	updatedRun, err := c.sessions.GetRunByID(ctx, runID)
 	if err != nil {
@@ -108,6 +119,35 @@ func (c *StoryRunCommitter) Commit(ctx context.Context, runID string, input mode
 		Patch:    result.MemoryPatch,
 		StoryRun: updatedRun,
 	}, nil
+}
+
+func (c *StoryRunCommitter) commitExternalMemories(ctx context.Context, run model.StoryRun, chapter model.Chapter, memories []model.Memory) error {
+	if c.memoryService == nil || len(memories) == 0 {
+		return nil
+	}
+	return c.memoryService.Commit(ctx, port.CharacterMemoryCommitInput{
+		ProjectID: run.ProjectID,
+		RunID:     run.RunID,
+		Chapter:   chapter,
+		Memories:  memories,
+	})
+}
+
+func (c *StoryRunCommitter) appendExternalMemoryCommitFailedEvent(ctx context.Context, runID string, err error) {
+	if c.audit == nil {
+		return
+	}
+	if _, appendErr := c.audit.AppendRunEvent(ctx, model.RunEvent{
+		RunKind:   "story",
+		RunID:     runID,
+		EventName: domain.EventGenerationStep,
+		Payload: map[string]any{
+			"step":  "external_memory_commit_failed",
+			"error": err.Error(),
+		},
+	}); appendErr != nil {
+		log.Printf("append story run %s external memory failure event failed: %v", runID, appendErr)
+	}
 }
 
 func (c *StoryRunCommitter) createCommittedChapter(ctx context.Context, run model.StoryRun, result model.StoryRunResult, input model.CommitStoryRunInput) (model.Chapter, error) {
@@ -143,17 +183,30 @@ func (c *StoryRunCommitter) createMemories(ctx context.Context, chapterID string
 }
 
 func (c *StoryRunCommitter) upsertWorldState(ctx context.Context, projectID string, updates []model.WorldStateUpdate) ([]model.WorldStateEntry, error) {
+	if len(updates) == 0 {
+		return nil, nil
+	}
+	currentEntries, err := c.worldState.ListByProjectID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	currentByKey := make(map[string]model.WorldStateEntry, len(currentEntries))
+	for _, entry := range currentEntries {
+		currentByKey[entry.Key] = entry
+	}
 	entries := make([]model.WorldStateEntry, 0, len(updates))
 	for _, update := range updates {
-		entries = append(entries, model.WorldStateEntry{
-			ID:        generatedID(c.ids, c.clock, "world"),
-			ProjectID: projectID,
-			Key:       update.Key,
-			Value:     update.Value,
-			Note:      update.Note,
-			Status:    "active",
-			UpdatedAt: currentTime(c.clock),
-		})
+		entry := currentByKey[update.Key]
+		if entry.ID == "" {
+			entry.ID = generatedID(c.ids, c.clock, "world")
+		}
+		entry.ProjectID = projectID
+		entry.Key = update.Key
+		entry.Value = update.Value
+		entry.Note = firstNonEmpty(update.Note, entry.Note)
+		entry.Status = "active"
+		entry.UpdatedAt = currentTime(c.clock)
+		entries = append(entries, entry)
 	}
 	return entries, c.worldState.UpsertEntries(ctx, projectID, entries)
 }

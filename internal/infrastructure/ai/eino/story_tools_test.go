@@ -39,6 +39,66 @@ func TestChooseNextStoryActorRecordsTurn(t *testing.T) {
 	}
 }
 
+func TestChooseNextStoryActorResolvesActorNameToID(t *testing.T) {
+	state := &storyRunState{
+		run:      model.StoryRun{RunID: "run_1"},
+		maxTurns: 25,
+		characters: []model.Character{
+			{ID: "character_1", Name: "林澈"},
+			{ID: "character_2", Name: "沈砚"},
+		},
+	}
+	turn, err := chooseNextStoryActor(context.Background(), storyGeneratorDeps{}, state, ChooseNextStoryActorInput{
+		ActorName:      "林澈",
+		ActionType:     "speak",
+		TargetActorIDs: []string{"沈砚"},
+		Intent:         "试探对方",
+	})
+	if err != nil {
+		t.Fatalf("chooseNextStoryActor returned error: %v", err)
+	}
+	if turn.ActorID != "character_1" || turn.ActorName != "林澈" {
+		t.Fatalf("expected actor name to resolve to id, got %#v", turn)
+	}
+	if len(turn.TargetActorIDs) != 1 || turn.TargetActorIDs[0] != "character_2" {
+		t.Fatalf("expected target name to resolve to id, got %#v", turn.TargetActorIDs)
+	}
+}
+
+func TestChooseNextStoryActorRejectsUnknownActor(t *testing.T) {
+	state := &storyRunState{
+		run:        model.StoryRun{RunID: "run_1"},
+		maxTurns:   25,
+		characters: []model.Character{{ID: "character_1", Name: "林澈"}},
+	}
+	_, err := chooseNextStoryActor(context.Background(), storyGeneratorDeps{}, state, ChooseNextStoryActorInput{
+		ActorName:  "不存在的人",
+		ActionType: "speak",
+		Intent:     "发言",
+	})
+	if err == nil {
+		t.Fatal("expected unknown actor error")
+	}
+}
+
+func TestChooseNextStoryActorAllowsNarrationWithoutActor(t *testing.T) {
+	state := &storyRunState{
+		run:        model.StoryRun{RunID: "run_1"},
+		maxTurns:   25,
+		characters: []model.Character{{ID: "character_1", Name: "林澈"}},
+	}
+	turn, err := chooseNextStoryActor(context.Background(), storyGeneratorDeps{}, state, ChooseNextStoryActorInput{
+		ActionType: "narration",
+		Intent:     "交代环境压力",
+	})
+	if err != nil {
+		t.Fatalf("chooseNextStoryActor returned error: %v", err)
+	}
+	if turn.ActorID != "" || turn.ActorName != "旁白" {
+		t.Fatalf("expected narration actor, got %#v", turn)
+	}
+}
+
 func TestStoryTurnDisplayPayloadHidesRationale(t *testing.T) {
 	payload := storyTurnDisplayPayload(StoryTurnPlan{
 		TurnIndex:      2,

@@ -28,6 +28,7 @@ type StoryRunGeneratorDeps struct {
 	Relationships port.RelationshipRepository
 	Chapters      port.ChapterRepository
 	Memories      port.MemoryRepository
+	MemoryService port.CharacterMemoryService
 	Events        port.GenerationEventStream
 	Clock         port.Clock
 	IDs           port.IDGenerator
@@ -70,6 +71,7 @@ func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*Sto
 			relationships: deps.Relationships,
 			chapters:      deps.Chapters,
 			memories:      deps.Memories,
+			memoryService: deps.MemoryService,
 			events:        deps.Events,
 		},
 		clock:           deps.Clock,
@@ -85,7 +87,7 @@ func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*Sto
 }
 
 func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGenerationInput) (model.StoryRunResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	state := &storyRunState{run: input.Run, session: input.Session, maxTurns: g.maxTurns}
 	g.publishStoryOrchestrationStarted(ctx, input)
@@ -98,7 +100,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	}
 	variable, err := g.generateStoryVariable(ctx, input, snapshot)
 	if err != nil {
-		return model.StoryRunResult{}, err
+		return model.StoryRunResult{}, fmt.Errorf("generate story variable: %w", err)
 	}
 	state.variable = variable
 	if g.deps.events != nil {
@@ -127,7 +129,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		schema.UserMessage(g.userPrompt(input, variable)),
 	})
 	if err != nil {
-		return model.StoryRunResult{}, err
+		return model.StoryRunResult{}, fmt.Errorf("drive story turns: %w", err)
 	}
 	plan := state.planResult()
 	if len(plan.Turns) == 0 {
@@ -138,7 +140,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	}
 	narrative, err := g.generateNarrative(ctx, input, snapshot, plan, variable)
 	if err != nil {
-		return model.StoryRunResult{}, err
+		return model.StoryRunResult{}, fmt.Errorf("generate narrative: %w", err)
 	}
 	if g.deps.events != nil {
 		_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": domain.RunStatusGeneratingMemoryPatch, "progress": 90}})
@@ -185,29 +187,265 @@ func (g *StoryRunGenerator) userPrompt(input port.StoryRunGenerationInput, varia
 }
 
 func (g *StoryRunGenerator) generateStoryVariable(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (StoryVariablePlan, error) {
-	promptInput := map[string]any{
-		"session":          input.Session,
-		"author_bible":     snapshot.AuthorBible,
-		"world_state":      snapshot.WorldState,
-		"characters":       snapshot.Characters,
-		"relationships":    relationshipPublicSummaries(snapshot.Relationships),
-		"recent_chapters":  snapshot.RecentChapters,
-		"recent_memories":  snapshot.RecentMemories,
-		"world_state_keys": worldStateKeys(snapshot.WorldState),
+	plot := StoryNarrativePlotVariable{
+		PressureSource:     firstText(input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.CurrentPlotVariableSummary, "当前故事压力"),
+		FocalCharacterID:   storyVariableFocalCharacterID(input, snapshot),
+		CoreChoice:         firstText(input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary, "推进当前故事变量"),
+		OptionA:            "暂时维持当前局面",
+		OptionB:            "主动打破当前局面",
+		CostA:              "压力继续累积",
+		CostB:              "暴露意图或承担代价",
+		IrreversibleEffect: firstText(input.Session.CurrentPlotVariableSummary, "本章状态将发生不可逆变化"),
+		WorldStatePressure: storyVariableWorldStatePressure(snapshot.WorldState),
 	}
-	payload, _ := json.Marshal(promptInput)
-	msg, err := g.model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.variableSystemPrompt()),
-		schema.UserMessage(string(payload)),
-	}, maxTokensOption(g.cfg.Model, 2500))
-	if err != nil {
-		return StoryVariablePlan{}, err
+	plot.RelatedCharacterIDs = storyVariableRelatedCharacterIDs(plot.FocalCharacterID, input, snapshot)
+	variable := StoryVariablePlan{
+		PlotVariable:   plot,
+		CharacterViews: storyVariableCharacterViews(plot, snapshot),
 	}
-	var out StoryVariablePlan
-	if err := decodeModelJSON(msg.Content, &out); err != nil {
-		return StoryVariablePlan{}, err
+	return normalizeStoryVariable(variable, input, snapshot), nil
+}
+
+func storyVariableFocalCharacterID(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) string {
+	text := strings.Join([]string{input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary}, "\n")
+	for _, character := range snapshot.Characters {
+		if character.Name != "" && strings.Contains(text, character.Name) {
+			return character.ID
+		}
 	}
-	return normalizeStoryVariable(out, input, snapshot), nil
+	if len(snapshot.Characters) > 0 {
+		return snapshot.Characters[0].ID
+	}
+	return ""
+}
+
+func storyVariableWorldStatePressure(worldState []model.WorldStateEntry) []string {
+	keys := make([]string, 0, 3)
+	for _, entry := range worldState {
+		if entry.Key == "" || (entry.Importance < 4 && entry.Volatility < 4) {
+			continue
+		}
+		keys = append(keys, entry.Key)
+		if len(keys) == 3 {
+			return keys
+		}
+	}
+	for _, entry := range worldState {
+		if entry.Key == "" || containsString(keys, entry.Key) {
+			continue
+		}
+		keys = append(keys, entry.Key)
+		if len(keys) == 3 {
+			break
+		}
+	}
+	return keys
+}
+
+func storyVariableRelatedCharacterIDs(focalCharacterID string, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) []string {
+	ids := make([]string, 0, 4)
+	if focalCharacterID != "" {
+		ids = append(ids, focalCharacterID)
+	}
+	text := strings.Join([]string{input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary}, "\n")
+	for _, character := range snapshot.Characters {
+		if character.ID == focalCharacterID || character.Name == "" || !strings.Contains(text, character.Name) {
+			continue
+		}
+		ids = append(ids, character.ID)
+	}
+	for _, relationship := range snapshot.Relationships {
+		if relationship.Pair.LeftCharacterID == focalCharacterID {
+			ids = appendUniqueString(ids, relationship.Pair.RightCharacterID)
+		}
+		if relationship.Pair.RightCharacterID == focalCharacterID {
+			ids = appendUniqueString(ids, relationship.Pair.LeftCharacterID)
+		}
+		if len(ids) >= 4 {
+			break
+		}
+	}
+	return ids
+}
+
+func storyVariableCharacterViews(plot StoryNarrativePlotVariable, snapshot StoryContextSnapshot) []CharacterVariableView {
+	views := make([]CharacterVariableView, 0, len(plot.RelatedCharacterIDs))
+	for _, characterID := range plot.RelatedCharacterIDs {
+		views = append(views, CharacterVariableView{
+			CharacterID:       characterID,
+			KnownFacts:        storyVariableKnownFacts(plot, snapshot, characterID),
+			Misreadings:       storyVariableMisreadings(snapshot, characterID),
+			EmotionalPressure: plot.CoreChoice,
+			ActionBias:        firstText(plot.OptionB, plot.OptionA),
+		})
+	}
+	return views
+}
+
+func storyVariableKnownFacts(plot StoryNarrativePlotVariable, snapshot StoryContextSnapshot, characterID string) []string {
+	facts := []string{plot.PressureSource}
+	for _, entry := range visibleWorldForCharacter(snapshot.WorldState, characterByID(snapshot.Characters, characterID)) {
+		facts = append(facts, firstText(entry.Note, entry.Key))
+		if len(facts) == 3 {
+			break
+		}
+	}
+	return cleanStrings(facts)
+}
+
+func storyVariableMisreadings(snapshot StoryContextSnapshot, characterID string) []string {
+	for _, relationship := range snapshot.Relationships {
+		for _, view := range relationship.Views {
+			if view.SourceCharacterID == characterID && view.BelievedTargetAttitude != "" {
+				return []string{view.BelievedTargetAttitude}
+			}
+		}
+	}
+	return nil
+}
+
+func characterByID(characters []model.Character, characterID string) model.Character {
+	for _, character := range characters {
+		if character.ID == characterID {
+			return character
+		}
+	}
+	return model.Character{}
+}
+
+func appendUniqueString(values []string, value string) []string {
+	if value == "" || containsString(values, value) {
+		return values
+	}
+	return append(values, value)
+}
+
+func containsString(values []string, value string) bool {
+	for _, existing := range values {
+		if existing == value {
+			return true
+		}
+	}
+	return false
+}
+
+func storyVariablePromptInput(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) map[string]any {
+	return map[string]any{
+		"session": map[string]any{
+			"title":                 input.Session.Title,
+			"opening_situation":     input.Session.OpeningSituation,
+			"author_intent":         input.Session.AuthorIntent,
+			"last_author_message":   input.Session.LastAuthorMessage,
+			"current_plot_variable": input.Session.CurrentPlotVariableSummary,
+		},
+		"author_bible":    compactAuthorBible(snapshot.AuthorBible),
+		"world_state":     compactWorldState(snapshot.WorldState, 6),
+		"characters":      compactCharacters(snapshot.Characters, 8),
+		"relationships":   compactRelationships(snapshot.Relationships, 8),
+		"recent_chapters": compactChapters(snapshot.RecentChapters, 3),
+		"recent_memories": compactMemories(snapshot.RecentMemories, 2),
+	}
+}
+
+func compactAuthorBible(bible *model.AuthorBible) map[string]any {
+	if bible == nil {
+		return nil
+	}
+	return map[string]any{
+		"theme":                bible.Theme,
+		"style_guide":          bible.StyleGuide,
+		"world_rules":          firstStrings(bible.WorldRules, 4),
+		"hard_constraints":     firstStrings(bible.HardConstraints, 4),
+		"forbidden_moves":      firstStrings(bible.ForbiddenMoves, 4),
+		"aesthetic_principles": firstStrings(bible.AestheticPrinciples, 4),
+	}
+}
+
+func compactWorldState(entries []model.WorldStateEntry, limit int) []map[string]any {
+	out := make([]map[string]any, 0, minInt(len(entries), limit))
+	for _, entry := range firstEntries(entries, limit) {
+		out = append(out, map[string]any{
+			"key":        entry.Key,
+			"value":      entry.Value,
+			"note":       entry.Note,
+			"importance": entry.Importance,
+			"volatility": entry.Volatility,
+		})
+	}
+	return out
+}
+
+func compactCharacters(characters []model.Character, limit int) []map[string]any {
+	out := make([]map[string]any, 0, minInt(len(characters), limit))
+	for _, character := range firstEntries(characters, limit) {
+		out = append(out, map[string]any{
+			"id":          character.ID,
+			"name":        character.Name,
+			"role":        character.Role,
+			"profile":     character.Profile,
+			"goals":       firstStrings(character.Goals, 3),
+			"fears":       firstStrings(character.Fears, 3),
+			"constraints": firstStrings(character.Constraints, 3),
+		})
+	}
+	return out
+}
+
+func compactRelationships(relationships []model.Relationship, limit int) []map[string]any {
+	out := make([]map[string]any, 0, minInt(len(relationships), limit))
+	for _, relationship := range firstEntries(relationships, limit) {
+		out = append(out, map[string]any{
+			"pair_id":            relationship.Pair.ID,
+			"left_character_id":  relationship.Pair.LeftCharacterID,
+			"right_character_id": relationship.Pair.RightCharacterID,
+			"summary":            relationship.Pair.Summary,
+			"tension_points":     firstStrings(relationship.Pair.TensionPoints, 3),
+		})
+	}
+	return out
+}
+
+func compactChapters(chapters []model.Chapter, limit int) []map[string]any {
+	out := make([]map[string]any, 0, minInt(len(chapters), limit))
+	for _, chapter := range firstEntries(chapters, limit) {
+		out = append(out, map[string]any{
+			"title":   chapter.Title,
+			"summary": chapter.Summary,
+		})
+	}
+	return out
+}
+
+func compactMemories(memories map[string][]model.Memory, limitPerCharacter int) map[string][]string {
+	out := make(map[string][]string, len(memories))
+	for characterID, items := range memories {
+		contents := make([]string, 0, minInt(len(items), limitPerCharacter))
+		for _, memory := range firstEntries(items, limitPerCharacter) {
+			contents = append(contents, memory.Content)
+		}
+		if len(contents) > 0 {
+			out[characterID] = contents
+		}
+	}
+	return out
+}
+
+func firstStrings(values []string, limit int) []string {
+	return firstEntries(values, limit)
+}
+
+func firstEntries[T any](values []T, limit int) []T {
+	if limit < 0 || len(values) <= limit {
+		return values
+	}
+	return values[:limit]
+}
+
+func minInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (g *StoryRunGenerator) generateNarrative(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) (StoryNarrativeResult, error) {
@@ -262,7 +500,7 @@ func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input 
 	}, maxTokensOption(g.cfg.Model, 4000))
 	if err == nil {
 		var out StoryNarrativeResult
-		if decodeModelJSON(msg.Content, &out) == nil {
+		if decodeModelJSON(msg.Content, &out) == nil && storyNarrativeResultUsable(out) {
 			if len(out.Turns) == 0 {
 				out.Turns = plan.Turns
 			}
@@ -285,6 +523,14 @@ func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input 
 		Review: StoryNarrativeReview{Pass: true},
 		Turns:  plan.Turns,
 	}
+}
+
+func storyNarrativeResultUsable(result StoryNarrativeResult) bool {
+	return strings.TrimSpace(result.Title) != "" || strings.TrimSpace(result.Summary) != "" || strings.TrimSpace(result.Content) != "" || storyPlotVariableUsable(result.PlotVariable) || len(result.MemoryPatch.CharacterMemoryUpdates) > 0 || len(result.MemoryPatch.RelationshipUpdates) > 0 || len(result.MemoryPatch.WorldStateUpdates) > 0 || len(result.Turns) > 0
+}
+
+func storyPlotVariableUsable(variable StoryNarrativePlotVariable) bool {
+	return strings.TrimSpace(variable.PressureSource) != "" || strings.TrimSpace(variable.CoreChoice) != "" || strings.TrimSpace(variable.FocalCharacterID) != "" || len(variable.RelatedCharacterIDs) > 0 || len(variable.WorldStatePressure) > 0
 }
 
 func (g *StoryRunGenerator) variableSystemPrompt() string {

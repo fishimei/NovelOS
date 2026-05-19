@@ -13,9 +13,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/application/service"
 	"github.com/fishimei/NovelOS/internal/config"
 	einoai "github.com/fishimei/NovelOS/internal/infrastructure/ai/eino"
+	memoryinfra "github.com/fishimei/NovelOS/internal/infrastructure/memory"
 	gormstore "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm"
 	"github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm/repository"
 	transporthttp "github.com/fishimei/NovelOS/internal/transport/http"
@@ -48,6 +50,7 @@ func New(cfg config.Config) *App {
 	txManager := gormstore.NewTxManager(store.DB())
 	repos := repository.New(store.DB(), idGenerator, clock)
 	eventStream := service.NewInMemoryEventStream()
+	memoryService := configuredMemoryService(cfg)
 
 	setupStarter := service.NewSetupSessionStarter(repos.SetupSessions)
 	setupGenerator, err := einoai.NewSetupRunGenerator(context.Background(), einoai.SetupRunGeneratorDeps{
@@ -80,6 +83,7 @@ func New(cfg config.Config) *App {
 		Relationships: repos.Relationships,
 		Chapters:      repos.Chapters,
 		Memories:      repos.Memories,
+		MemoryService: memoryService,
 		Events:        eventStream,
 		Clock:         clock,
 		IDs:           idGenerator,
@@ -87,6 +91,7 @@ func New(cfg config.Config) *App {
 	if err != nil {
 		log.Fatalf("bootstrap story generator: %v", err)
 	}
+	storyStarter := service.NewStorySessionStarter(repos.StorySessions)
 	storyAdvancer := service.NewStorySessionAdvancer(repos.StorySessions, repos.Audit, storyGenerator, eventStream)
 	storyCommitter := service.NewStoryRunCommitter(
 		repos.StorySessions,
@@ -95,20 +100,57 @@ func New(cfg config.Config) *App {
 		repos.WorldState,
 		repos.Relationships,
 		repos.Audit,
+		memoryService,
 		txManager,
 		clock,
 		idGenerator,
 	)
+	dialogueValidator := service.NewDialogueActionValidator(repos.SetupSessions, repos.StorySessions)
+	dialogueExecutor := service.NewDialogueActionExecutor(
+		repos.DialogueSessions,
+		setupStarter,
+		setupAdvancer,
+		setupApplier,
+		storyStarter,
+		storyAdvancer,
+		storyCommitter,
+		repos.Audit,
+		dialogueValidator,
+		clock,
+	)
+	dialogueGenerator, err := einoai.NewDialogueRunGenerator(context.Background(), einoai.DialogueRunGeneratorDeps{
+		Config:           cfg.AI,
+		Projects:         repos.Projects,
+		AuthorBibles:     repos.AuthorBibles,
+		WorldState:       repos.WorldState,
+		Characters:       repos.Characters,
+		Relationships:    repos.Relationships,
+		SetupSessions:    repos.SetupSessions,
+		StorySessions:    repos.StorySessions,
+		Chapters:         repos.Chapters,
+		DialogueSessions: repos.DialogueSessions,
+		ActionExecutor:   dialogueExecutor,
+		OptionValidator:  dialogueValidator,
+		Events:           eventStream,
+		Clock:            clock,
+		IDs:              idGenerator,
+	})
+	if err != nil {
+		log.Fatalf("bootstrap dialogue generator: %v", err)
+	}
+	dialogueStarter := service.NewDialogueSessionStarter(repos.DialogueSessions)
+	dialogueAdvancer := service.NewDialogueSessionAdvancer(repos.DialogueSessions, repos.Audit, dialogueGenerator, eventStream)
 
 	handlers := transporthttp.Handlers{
-		Projects:      handler.NewProjectsHandler(repos.Projects),
-		AuthorBibles:  handler.NewAuthorBibleHandler(repos.AuthorBibles),
-		Characters:    handler.NewCharactersHandler(repos.Characters),
-		Relationships: handler.NewRelationshipsHandler(repos.Relationships),
-		SetupSessions: handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
-		StorySessions: handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCommitter),
-		Chapters:      handler.NewChaptersHandler(repos.Chapters),
-		Memories:      handler.NewMemoriesHandler(repos.Memories),
+		Projects:         handler.NewProjectsHandler(repos.Projects),
+		AuthorBibles:     handler.NewAuthorBibleHandler(repos.AuthorBibles),
+		Characters:       handler.NewCharactersHandler(repos.Characters),
+		Relationships:    handler.NewRelationshipsHandler(repos.Relationships),
+		SetupSessions:    handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
+		DialogueSessions: handler.NewDialogueSessionsHandler(repos.DialogueSessions, repos.Audit, eventStream, dialogueStarter, dialogueAdvancer, dialogueExecutor),
+		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCommitter),
+		Chapters:         handler.NewChaptersHandler(repos.Chapters),
+		Memories:         handler.NewMemoriesHandler(repos.Memories),
 	}
 	router := transporthttp.NewRouter(handlers)
 
@@ -120,6 +162,27 @@ func New(cfg config.Config) *App {
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 	}
+}
+
+func configuredMemoryService(cfg config.Config) port.CharacterMemoryService {
+	mem0Enabled := memoryinfra.ProviderEnabled(cfg.Memory.Provider, "mem0")
+	qdrantEnabled := memoryinfra.ProviderEnabled(cfg.Memory.Provider, "qdrant")
+	if !mem0Enabled && !qdrantEnabled {
+		return nil
+	}
+	var primary port.CharacterMemoryService
+	writers := make([]port.CharacterMemoryService, 0, 2)
+	if mem0Enabled {
+		mem0 := memoryinfra.NewMem0Service(cfg.Memory.Mem0)
+		primary = mem0
+		writers = append(writers, mem0)
+	}
+	if qdrantEnabled {
+		qdrant := memoryinfra.NewQdrantService(cfg.Memory.Qdrant, cfg.Memory.Embedding)
+		primary = qdrant
+		writers = append(writers, qdrant)
+	}
+	return memoryinfra.NewFanoutService(primary, writers...)
 }
 
 // serviceClock 是服务层的时钟实现，使用 UTC 时间。

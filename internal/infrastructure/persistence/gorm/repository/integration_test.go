@@ -273,10 +273,17 @@ func TestStoryCommitRunPersistsChapterMemoryRelationshipAndWorldState(t *testing
 		repos.WorldState,
 		repos.Relationships,
 		repos.Audit,
+		nil,
 		txm,
 		clock,
 		ids,
 	)
+
+	if err := repos.WorldState.UpsertEntries(context.Background(), project.ID, []model.WorldStateEntry{
+		{ID: "world_weather", Key: "station_weather", Value: "clear", Note: "旧天气", Importance: 5, Volatility: 4, Status: "active"},
+	}); err != nil {
+		t.Fatalf("seed world state: %v", err)
+	}
 
 	session, _ := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "第一章"})
 	run, _ := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "推进"})
@@ -362,6 +369,9 @@ func TestStoryCommitRunPersistsChapterMemoryRelationshipAndWorldState(t *testing
 	if len(world) != 1 || world[0].Key != "station_weather" {
 		t.Fatalf("unexpected world state: %+v", world)
 	}
+	if world[0].Importance != 5 || world[0].Volatility != 4 {
+		t.Fatalf("expected world state weight to be preserved, got importance=%d volatility=%d", world[0].Importance, world[0].Volatility)
+	}
 	if _, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
 		DraftID:       "draft_1",
 		MemoryPatchID: "patch_1",
@@ -381,6 +391,7 @@ func TestStoryCommitRunRejectsMismatchedDraftOrPatchID(t *testing.T) {
 		repos.WorldState,
 		repos.Relationships,
 		repos.Audit,
+		nil,
 		txm,
 		clock,
 		ids,

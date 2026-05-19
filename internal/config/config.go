@@ -17,6 +17,7 @@ type Config struct {
 	App      AppConfig      `mapstructure:"app"`
 	Postgres PostgresConfig `mapstructure:"postgres"`
 	AI       AIConfig       `mapstructure:"ai"`
+	Memory   MemoryConfig   `mapstructure:"memory"`
 	SSE      SSEConfig      `mapstructure:"sse"`
 }
 
@@ -37,12 +38,13 @@ type PostgresConfig struct {
 
 // AIConfig 包含 AI 模型提供者的配置。
 type AIConfig struct {
-	Provider   string           `mapstructure:"provider"`
-	BaseURL    string           `mapstructure:"base_url"`
-	APIKey     string           `mapstructure:"api_key"`
-	Model      string           `mapstructure:"model"`
-	SetupAgent SetupAgentConfig `mapstructure:"setup_agent"`
-	StoryAgent StoryAgentConfig `mapstructure:"story_agent"`
+	Provider      string              `mapstructure:"provider"`
+	BaseURL       string              `mapstructure:"base_url"`
+	APIKey        string              `mapstructure:"api_key"`
+	Model         string              `mapstructure:"model"`
+	SetupAgent    SetupAgentConfig    `mapstructure:"setup_agent"`
+	StoryAgent    StoryAgentConfig    `mapstructure:"story_agent"`
+	DialogueAgent DialogueAgentConfig `mapstructure:"dialogue_agent"`
 }
 
 type SetupAgentConfig struct {
@@ -56,6 +58,40 @@ type StoryAgentConfig struct {
 	ResultPrompt     string `mapstructure:"result_prompt"`
 	NarrativePrompt  string `mapstructure:"narrative_prompt"`
 	VariablePrompt   string `mapstructure:"variable_prompt"`
+}
+
+type DialogueAgentConfig struct {
+	Prompt   string `mapstructure:"prompt"`
+	MaxSteps int    `mapstructure:"max_steps"`
+}
+
+type MemoryConfig struct {
+	Provider  string          `mapstructure:"provider"`
+	Embedding EmbeddingConfig `mapstructure:"embedding"`
+	Mem0      Mem0Config      `mapstructure:"mem0"`
+	Qdrant    QdrantConfig    `mapstructure:"qdrant"`
+}
+
+type EmbeddingConfig struct {
+	Provider string `mapstructure:"provider"`
+	BaseURL  string `mapstructure:"base_url"`
+	APIKey   string `mapstructure:"api_key"`
+	Model    string `mapstructure:"model"`
+	Dims     int    `mapstructure:"dims"`
+}
+
+type Mem0Config struct {
+	BaseURL string `mapstructure:"base_url"`
+	APIKey  string `mapstructure:"api_key"`
+	AppID   string `mapstructure:"app_id"`
+	TopK    int    `mapstructure:"top_k"`
+	Rerank  bool   `mapstructure:"rerank"`
+}
+
+type QdrantConfig struct {
+	URL        string `mapstructure:"url"`
+	APIKey     string `mapstructure:"api_key"`
+	Collection string `mapstructure:"collection"`
 }
 
 // SSEConfig 包含服务器发送事件（Server-Sent Events）的配置。
@@ -74,6 +110,8 @@ const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘�
 const defaultStoryAgentNarrativePrompt = `你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。`
 
 const defaultStoryAgentVariablePrompt = `你是 NovelOS 的剧情变量 agent。你的职责是在角色演绎之前，基于作者意图、当前故事状态、世界压力、角色目标和关系张力，生成一个会推动本章状态变化的核心变量，并为每个相关角色生成受限视角下可感知的变量切片。全局剧情变量可以知道完整结构；角色切片只能包含该角色合理知道、误读、感受到的压力和行动倾向。输出必须是 JSON 对象。`
+
+const defaultDialogueAgentPrompt = `你是 NovelOS 的统一对话 Agent。每轮必须先调用 load_dialogue_context。你的职责是和用户交流、澄清目标、读取当前项目状态，并通过 propose_* 工具提出可确认选项。用户未明确确认前，不能调用 execute_confirmed_action；不要声称已经修改项目状态。涉及 setup/story 状态变更时，只创建待确认 option；若缺少 run/session/draft ID，先 inspect 或 list，再不足则提出澄清问题。结束本轮必须调用 finalize_dialogue_response。`
 
 // Load 从多个来源加载配置并返回 Config 结构体。
 // 配置优先级（从高到低）：命令行参数 > 环境变量 > 配置文件 > 默认值。
@@ -112,6 +150,22 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("ai.story_agent.result_prompt", defaultStoryAgentResultPrompt)
 	v.SetDefault("ai.story_agent.narrative_prompt", defaultStoryAgentNarrativePrompt)
 	v.SetDefault("ai.story_agent.variable_prompt", defaultStoryAgentVariablePrompt)
+	v.SetDefault("ai.dialogue_agent.prompt", defaultDialogueAgentPrompt)
+	v.SetDefault("ai.dialogue_agent.max_steps", 16)
+	v.SetDefault("memory.provider", "local")
+	v.SetDefault("memory.embedding.provider", "openai_compatible")
+	v.SetDefault("memory.embedding.base_url", "")
+	v.SetDefault("memory.embedding.api_key", "")
+	v.SetDefault("memory.embedding.model", "")
+	v.SetDefault("memory.embedding.dims", 1536)
+	v.SetDefault("memory.mem0.base_url", "https://api.mem0.ai")
+	v.SetDefault("memory.mem0.api_key", "")
+	v.SetDefault("memory.mem0.app_id", "novelos")
+	v.SetDefault("memory.mem0.top_k", 12)
+	v.SetDefault("memory.mem0.rerank", false)
+	v.SetDefault("memory.qdrant.url", "")
+	v.SetDefault("memory.qdrant.api_key", "")
+	v.SetDefault("memory.qdrant.collection", "novelos_character_memories")
 	v.SetDefault("sse.heartbeat_seconds", 15)
 
 	if configFile != "" {

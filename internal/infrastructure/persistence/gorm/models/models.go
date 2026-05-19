@@ -240,6 +240,76 @@ type StoryRunResult struct {
 
 func (StoryRunResult) TableName() string { return "story_run_results" }
 
+type DialogueSession struct {
+	ID              string    `gorm:"primaryKey;size:64"`
+	ProjectID       string    `gorm:"not null;index"`
+	Title           string    `gorm:"not null;default:''"`
+	LastUserMessage string    `gorm:"not null;default:''"`
+	Status          string    `gorm:"not null;default:''"`
+	CreatedAt       time.Time `gorm:"not null"`
+	UpdatedAt       time.Time `gorm:"not null"`
+}
+
+func (DialogueSession) TableName() string { return "dialogue_sessions" }
+
+type DialogueMessage struct {
+	ID           string    `gorm:"primaryKey;size:64"`
+	SessionID    string    `gorm:"not null;index"`
+	Role         string    `gorm:"not null"`
+	Content      string    `gorm:"not null"`
+	MetadataJSON JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt    time.Time `gorm:"not null"`
+}
+
+func (DialogueMessage) TableName() string { return "dialogue_messages" }
+
+type DialogueRun struct {
+	ID          string    `gorm:"primaryKey;size:64"`
+	SessionID   string    `gorm:"not null;index"`
+	ProjectID   string    `gorm:"not null;index"`
+	Status      string    `gorm:"not null;default:''"`
+	CurrentStep string    `gorm:"not null;default:''"`
+	Progress    int       `gorm:"not null;default:0"`
+	Error       string    `gorm:"not null;default:''"`
+	CreatedAt   time.Time `gorm:"not null"`
+	UpdatedAt   time.Time `gorm:"not null"`
+}
+
+func (DialogueRun) TableName() string { return "dialogue_runs" }
+
+type DialogueRunResult struct {
+	ID          string    `gorm:"primaryKey;size:64"`
+	RunID       string    `gorm:"not null;uniqueIndex"`
+	SessionID   string    `gorm:"not null;index"`
+	Status      string    `gorm:"not null;default:''"`
+	PayloadJSON JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt   time.Time `gorm:"not null"`
+	UpdatedAt   time.Time `gorm:"not null"`
+}
+
+func (DialogueRunResult) TableName() string { return "dialogue_run_results" }
+
+type DialogueActionOption struct {
+	ID                   string     `gorm:"primaryKey;size:64"`
+	SessionID            string     `gorm:"not null;index"`
+	RunID                string     `gorm:"not null;index"`
+	ProjectID            string     `gorm:"not null;index"`
+	ActionType           string     `gorm:"not null;index"`
+	Label                string     `gorm:"not null;default:''"`
+	Description          string     `gorm:"not null;default:''"`
+	Rationale            string     `gorm:"not null;default:''"`
+	ConfirmationRequired bool       `gorm:"not null;default:true"`
+	PayloadJSON          JSONB      `gorm:"type:jsonb;not null"`
+	Status               string     `gorm:"not null;default:'';index"`
+	ResultJSON           JSONB      `gorm:"type:jsonb;not null"`
+	Error                string     `gorm:"not null;default:''"`
+	ExpiresAt            *time.Time `gorm:"index"`
+	CreatedAt            time.Time  `gorm:"not null"`
+	UpdatedAt            time.Time  `gorm:"not null"`
+}
+
+func (DialogueActionOption) TableName() string { return "dialogue_action_options" }
+
 type RunEvent struct {
 	ID          string    `gorm:"primaryKey;size:64"`
 	RunKind     string    `gorm:"not null;index:idx_run_event_lookup,priority:1"`

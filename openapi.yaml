@@ -23,6 +23,9 @@ tags:
   - name: Relationships
   - name: SetupSessions
   - name: SetupRuns
+  - name: DialogueSessions
+  - name: DialogueRuns
+  - name: DialogueActions
   - name: StorySessions
   - name: StoryRuns
   - name: Chapters
@@ -392,6 +395,185 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ApplySetupRunRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /projects/{project_id}/dialogue-sessions:
+    post:
+      tags: [DialogueSessions]
+      summary: Create dialogue session
+      operationId: createDialogueSession
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDialogueSessionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+    get:
+      tags: [DialogueSessions]
+      summary: List dialogue sessions
+      operationId: listDialogueSessions
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /dialogue-sessions/{session_id}:
+    get:
+      tags: [DialogueSessions]
+      summary: Get dialogue session
+      operationId: getDialogueSession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /dialogue-sessions/{session_id}/advance:
+    post:
+      tags: [DialogueSessions]
+      summary: Advance dialogue session
+      description: 用户发送一条自然语言消息，由统一对话 Agent 调用工具读取上下文并提出可确认选项。
+      operationId: advanceDialogueSession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceDialogueSessionRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /dialogue-runs/{run_id}:
+    get:
+      tags: [DialogueRuns]
+      summary: Get dialogue run
+      operationId: getDialogueRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /dialogue-runs/{run_id}/result:
+    get:
+      tags: [DialogueRuns]
+      summary: Get dialogue run result
+      operationId: getDialogueRunResult
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /dialogue-runs/{run_id}/events:
+    get:
+      tags: [DialogueRuns]
+      summary: Subscribe dialogue run events
+      operationId: subscribeDialogueRunEvents
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: SSE stream
+
+  /dialogue-runs/{run_id}/event-history:
+    get:
+      tags: [DialogueRuns]
+      summary: List dialogue run event history
+      operationId: listDialogueRunEvents
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /dialogue-action-options/{option_id}/confirm:
+    post:
+      tags: [DialogueActions]
+      summary: Confirm and execute dialogue action option
+      operationId: confirmDialogueActionOption
+      parameters:
+        - name: option_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmDialogueActionOptionRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
+  /dialogue-action-options/{option_id}/reject:
+    post:
+      tags: [DialogueActions]
+      summary: Reject dialogue action option
+      operationId: rejectDialogueActionOption
+      parameters:
+        - name: option_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectDialogueActionOptionRequest"
       responses:
         "200":
           description: OK
@@ -1064,6 +1246,34 @@ components:
           type: string
         setup_draft:
           $ref: "#/components/schemas/SetupDraft"
+
+    CreateDialogueSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+
+    AdvanceDialogueSessionRequest:
+      type: object
+      required: [user_message]
+      properties:
+        user_message:
+          type: string
+
+    ConfirmDialogueActionOptionRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm:
+          type: boolean
+        author_note:
+          type: string
+
+    RejectDialogueActionOptionRequest:
+      type: object
+      properties:
+        reason:
+          type: string
 
     CreateStorySessionRequest:
       type: object

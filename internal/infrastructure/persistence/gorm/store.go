@@ -16,8 +16,8 @@ import (
 
 // Store 是 GORM 存储层的封装，提供数据库访问和连接管理。
 type Store struct {
-	db  *gorm.DB  // GORM 数据库实例
-	sql *sql.DB   // 标准库 SQL 数据库实例（用于底层操作）
+	db  *gorm.DB // GORM 数据库实例
+	sql *sql.DB  // 标准库 SQL 数据库实例（用于底层操作）
 }
 
 // New 创建并初始化新的数据库存储实例。
@@ -103,6 +103,13 @@ func (s *Store) AutoMigrate() error {
 			&persistencemodels.StoryMessage{},
 			&persistencemodels.StoryRun{},
 			&persistencemodels.StoryRunResult{},
+		},
+		{
+			&persistencemodels.DialogueSession{},
+			&persistencemodels.DialogueMessage{},
+			&persistencemodels.DialogueRun{},
+			&persistencemodels.DialogueRunResult{},
+			&persistencemodels.DialogueActionOption{},
 		},
 		{
 			&persistencemodels.RunEvent{},

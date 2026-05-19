@@ -26,7 +26,7 @@ func newOpenAIChatModel(ctx context.Context, cfg config.AIConfig) (llmmodel.Tool
 		APIKey:  cfg.APIKey,
 		Model:   cfg.Model,
 		BaseURL: cfg.BaseURL,
-		Timeout: 90 * time.Second,
+		Timeout: 5 * time.Minute,
 	})
 }
 

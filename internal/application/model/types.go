@@ -61,15 +61,15 @@ type ProjectDetail struct {
 // WorldStateEntry 代表世界状态中的一个条目，用于跟踪故事世界中的关键信息。
 // 世界状态是 AI 在生成内容时需要参考的背景知识库。
 type WorldStateEntry struct {
-	ID         string    // 条目唯一标识符
-	ProjectID  string    // 所属项目 ID
-	Key        string    // 状态键（如 "king_name", "current_year"）
-	Value      any       // 状态值（可以是任意类型）
-	Note       string    // 备注说明
-	Status     string    // 状态标识
-	Importance int       // 重要性等级（影响 AI 生成时的权重）
-	Volatility int       // 变化频率（高 volatility 表示该状态可能频繁变化）
-	UpdatedAt  time.Time // 最后更新时间
+	ID         string    `json:"id"`         // 条目唯一标识符
+	ProjectID  string    `json:"project_id"` // 所属项目 ID
+	Key        string    `json:"key"`        // 状态键（如 "king_name", "current_year"）
+	Value      any       `json:"value"`      // 状态值（可以是任意类型）
+	Note       string    `json:"note"`       // 备注说明
+	Status     string    `json:"status"`     // 状态标识
+	Importance int       `json:"importance"` // 重要性等级（影响 AI 生成时的权重）
+	Volatility int       `json:"volatility"` // 变化频率（高 volatility 表示该状态可能频繁变化）
+	UpdatedAt  time.Time `json:"updated_at"` // 最后更新时间
 }
 
 // UpdateAuthorBibleInput 是更新作者圣经的输入参数。
@@ -87,18 +87,18 @@ type UpdateAuthorBibleInput struct {
 
 // AuthorBible 是作者圣经的完整模型，包含指导 AI 创作的元数据。
 type AuthorBible struct {
-	ID                  string            // 圣经唯一标识符
-	ProjectID           string            // 所属项目 ID
-	Theme               string            // 作品主题
-	StyleGuide          string            // 风格指南
-	WorldRules          []string          // 世界规则列表
-	AestheticPrinciples []string          // 审美原则列表
-	HardConstraints     []string          // 硬性约束
-	SoftPreferences     []string          // 软性偏好
-	ForbiddenMoves      []string          // 禁止行为
-	InitialWorldState   []WorldStateEntry // 初始世界状态
-	Status              string            // 状态标识
-	UpdatedAt           time.Time         // 最后更新时间
+	ID                  string            `json:"id"`                   // 圣经唯一标识符
+	ProjectID           string            `json:"project_id"`           // 所属项目 ID
+	Theme               string            `json:"theme"`                // 作品主题
+	StyleGuide          string            `json:"style_guide"`          // 风格指南
+	WorldRules          []string          `json:"world_rules"`          // 世界规则列表
+	AestheticPrinciples []string          `json:"aesthetic_principles"` // 审美原则列表
+	HardConstraints     []string          `json:"hard_constraints"`     // 硬性约束
+	SoftPreferences     []string          `json:"soft_preferences"`     // 软性偏好
+	ForbiddenMoves      []string          `json:"forbidden_moves"`      // 禁止行为
+	InitialWorldState   []WorldStateEntry `json:"initial_world_state"`  // 初始世界状态
+	Status              string            `json:"status"`               // 状态标识
+	UpdatedAt           time.Time         `json:"updated_at"`           // 最后更新时间
 }
 
 // CreateCharacterInput 是创建新角色的输入参数。
@@ -273,14 +273,17 @@ type ConversationMessage struct {
 // SetupSession 是设置会话的模型。
 // 设置会话是作者与 AI 之间的多轮对话，用于逐步构建项目的基础设定。
 type SetupSession struct {
-	ID              string                `json:"id"`                // 会话唯一标识符
-	ProjectID       string                `json:"project_id"`        // 所属项目 ID
-	SeedIdea        string                `json:"seed_idea"`         // 种子想法
-	LastUserMessage string                `json:"last_user_message"` // 最后一条用户消息
-	Status          string                `json:"status"`            // 会话状态
-	Messages        []ConversationMessage `json:"messages"`          // 会话消息历史
-	CreatedAt       time.Time             `json:"created_at"`        // 创建时间
-	UpdatedAt       time.Time             `json:"updated_at"`        // 最后更新时间
+	ID              string                `json:"id"`                          // 会话唯一标识符
+	ProjectID       string                `json:"project_id"`                  // 所属项目 ID
+	SeedIdea        string                `json:"seed_idea"`                   // 种子想法
+	LastUserMessage string                `json:"last_user_message"`           // 最后一条用户消息
+	Status          string                `json:"status"`                      // 会话状态
+	LatestRunID     string                `json:"latest_run_id,omitempty"`     // 最近一次运行 ID
+	LatestRunStatus string                `json:"latest_run_status,omitempty"` // 最近一次运行状态
+	LatestRunError  string                `json:"latest_run_error,omitempty"`  // 最近一次运行错误
+	Messages        []ConversationMessage `json:"messages"`                    // 会话消息历史
+	CreatedAt       time.Time             `json:"created_at"`                  // 创建时间
+	UpdatedAt       time.Time             `json:"updated_at"`                  // 最后更新时间
 }
 
 // SetupRun 是设置运行的模型。
@@ -523,6 +526,102 @@ type CommitStoryRunResult struct {
 	Chapter  Chapter     `json:"chapter"`   // 提交的章节
 	Patch    MemoryPatch `json:"patch"`     // 应用的记忆补丁
 	StoryRun StoryRun    `json:"story_run"` // 关联的故事运行
+}
+
+type CreateDialogueSessionInput struct {
+	Title string `json:"title"`
+}
+
+type AdvanceDialogueSessionInput struct {
+	UserMessage string `json:"user_message"`
+}
+
+type ExecuteDialogueActionInput struct {
+	Confirm    bool   `json:"confirm"`
+	AuthorNote string `json:"author_note"`
+}
+
+type RejectDialogueActionInput struct {
+	Reason string `json:"reason"`
+}
+
+type DialogueMessage struct {
+	ID        string         `json:"id"`
+	SessionID string         `json:"session_id"`
+	Role      string         `json:"role"`
+	Content   string         `json:"content"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+}
+
+type DialogueSession struct {
+	ID              string            `json:"id"`
+	ProjectID       string            `json:"project_id"`
+	Title           string            `json:"title"`
+	LastUserMessage string            `json:"last_user_message"`
+	Status          string            `json:"status"`
+	LatestRunID     string            `json:"latest_run_id,omitempty"`
+	LatestRunStatus string            `json:"latest_run_status,omitempty"`
+	LatestRunError  string            `json:"latest_run_error,omitempty"`
+	Messages        []DialogueMessage `json:"messages"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
+}
+
+type DialogueRun struct {
+	RunID       string    `json:"run_id"`
+	SessionID   string    `json:"session_id"`
+	ProjectID   string    `json:"project_id"`
+	Status      string    `json:"status"`
+	CurrentStep string    `json:"current_step"`
+	Progress    int       `json:"progress"`
+	Error       string    `json:"error,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type DialogueQuestion struct {
+	Key          string `json:"key"`
+	Question     string `json:"question"`
+	WhyItMatters string `json:"why_it_matters"`
+}
+
+type DialogueToolTrace struct {
+	ToolName  string    `json:"tool_name"`
+	Summary   string    `json:"summary"`
+	OK        bool      `json:"ok"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type DialogueActionOption struct {
+	ID                   string         `json:"id"`
+	SessionID            string         `json:"session_id"`
+	RunID                string         `json:"run_id"`
+	ProjectID            string         `json:"project_id"`
+	ActionType           string         `json:"action_type"`
+	Label                string         `json:"label"`
+	Description          string         `json:"description"`
+	Rationale            string         `json:"rationale"`
+	ConfirmationRequired bool           `json:"confirmation_required"`
+	Payload              map[string]any `json:"payload"`
+	Status               string         `json:"status"`
+	Result               map[string]any `json:"result,omitempty"`
+	Error                string         `json:"error,omitempty"`
+	ExpiresAt            *time.Time     `json:"expires_at,omitempty"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+}
+
+type DialogueRunResult struct {
+	RunID               string                 `json:"run_id"`
+	SessionID           string                 `json:"session_id"`
+	Status              string                 `json:"status"`
+	AssistantMessage    string                 `json:"assistant_message"`
+	ActionOptions       []DialogueActionOption `json:"action_options"`
+	ClarifyingQuestions []DialogueQuestion     `json:"clarifying_questions"`
+	SuggestedReplies    []string               `json:"suggested_replies"`
+	ContextSummary      string                 `json:"context_summary"`
+	ToolTrace           []DialogueToolTrace    `json:"tool_trace"`
 }
 
 // Chapter 是已提交的故事章节。

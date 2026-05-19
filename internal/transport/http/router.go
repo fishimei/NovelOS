@@ -14,14 +14,15 @@ import (
 
 // Handlers 聚合所有 HTTP 处理器。
 type Handlers struct {
-	Projects      handler.ProjectsHandler
-	AuthorBibles  handler.AuthorBibleHandler
-	Characters    handler.CharactersHandler
-	Relationships handler.RelationshipsHandler
-	SetupSessions handler.SetupSessionsHandler
-	StorySessions handler.StorySessionsHandler
-	Chapters      handler.ChaptersHandler
-	Memories      handler.MemoriesHandler
+	Projects         handler.ProjectsHandler
+	AuthorBibles     handler.AuthorBibleHandler
+	Characters       handler.CharactersHandler
+	Relationships    handler.RelationshipsHandler
+	SetupSessions    handler.SetupSessionsHandler
+	DialogueSessions handler.DialogueSessionsHandler
+	StorySessions    handler.StorySessionsHandler
+	Chapters         handler.ChaptersHandler
+	Memories         handler.MemoriesHandler
 }
 
 // NewRouter 创建并配置 Gin 路由引擎。
@@ -64,6 +65,17 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.GET("/setup-runs/:run_id/result", handlers.SetupSessions.GetRunResult)
 		api.GET("/setup-runs/:run_id/event-history", handlers.SetupSessions.GetRunEventHistory)
 		api.POST("/setup-sessions/:session_id/apply", handlers.SetupSessions.ApplyRun)
+
+		api.POST("/projects/:project_id/dialogue-sessions", handlers.DialogueSessions.Create)
+		api.GET("/projects/:project_id/dialogue-sessions", handlers.DialogueSessions.List)
+		api.GET("/dialogue-sessions/:session_id", handlers.DialogueSessions.Get)
+		api.POST("/dialogue-sessions/:session_id/advance", handlers.DialogueSessions.Advance)
+		api.GET("/dialogue-runs/:run_id", handlers.DialogueSessions.GetRun)
+		api.GET("/dialogue-runs/:run_id/result", handlers.DialogueSessions.GetRunResult)
+		api.GET("/dialogue-runs/:run_id/event-history", handlers.DialogueSessions.GetRunEventHistory)
+		api.GET("/dialogue-runs/:run_id/events", handlers.DialogueSessions.Subscribe)
+		api.POST("/dialogue-action-options/:option_id/confirm", handlers.DialogueSessions.ConfirmActionOption)
+		api.POST("/dialogue-action-options/:option_id/reject", handlers.DialogueSessions.RejectActionOption)
 
 		api.POST("/projects/:project_id/story-sessions", handlers.StorySessions.Create)
 		api.GET("/projects/:project_id/story-sessions", handlers.StorySessions.List)

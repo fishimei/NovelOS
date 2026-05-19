@@ -9,6 +9,18 @@ import (
 	"github.com/fishimei/NovelOS/internal/domain"
 )
 
+type StorySessionStarter struct {
+	sessions port.StorySessionRepository
+}
+
+func NewStorySessionStarter(sessions port.StorySessionRepository) *StorySessionStarter {
+	return &StorySessionStarter{sessions: sessions}
+}
+
+func (s *StorySessionStarter) Start(ctx context.Context, projectID string, input model.CreateStorySessionInput) (model.StorySession, error) {
+	return s.sessions.CreateSession(ctx, projectID, input)
+}
+
 // StorySessionAdvancer 负责推进故事会话。
 // 管理从作者提示到故事运行的转换。
 type StorySessionAdvancer struct {

@@ -62,6 +62,27 @@ type SetupSessionRepository interface {
 	GetRunResultByID(ctx context.Context, runID string) (model.SetupRunResult, error)
 	SaveRunResult(ctx context.Context, runID string, result model.SetupRunResult) error
 	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
+	MarkApplied(ctx context.Context, sessionID string, runID string) error
+}
+
+type DialogueSessionRepository interface {
+	CreateSession(ctx context.Context, projectID string, input model.CreateDialogueSessionInput) (model.DialogueSession, error)
+	ListSessionsByProjectID(ctx context.Context, projectID string, pageInput model.PageInput) (model.ListResult[model.DialogueSession], error)
+	GetSessionByID(ctx context.Context, sessionID string) (model.DialogueSession, error)
+	UpdateSession(ctx context.Context, session model.DialogueSession) (model.DialogueSession, error)
+	AppendMessage(ctx context.Context, sessionID string, role string, content string, metadata map[string]any) (model.DialogueMessage, error)
+	ListMessagesBySessionID(ctx context.Context, sessionID string) ([]model.DialogueMessage, error)
+	CreateRun(ctx context.Context, sessionID string, input model.AdvanceDialogueSessionInput) (model.DialogueRun, error)
+	GetRunByID(ctx context.Context, runID string) (model.DialogueRun, error)
+	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
+	SaveRunResult(ctx context.Context, runID string, result model.DialogueRunResult) error
+	GetRunResultByID(ctx context.Context, runID string) (model.DialogueRunResult, error)
+	SaveActionOptions(ctx context.Context, options []model.DialogueActionOption) error
+	ListActionOptionsByRunID(ctx context.Context, runID string) ([]model.DialogueActionOption, error)
+	ListPendingActionOptionsBySessionID(ctx context.Context, sessionID string) ([]model.DialogueActionOption, error)
+	GetActionOptionByID(ctx context.Context, optionID string) (model.DialogueActionOption, error)
+	UpdateActionOption(ctx context.Context, option model.DialogueActionOption) (model.DialogueActionOption, error)
+	TryStartActionExecution(ctx context.Context, optionID string) (model.DialogueActionOption, error)
 }
 
 // StorySessionRepository 是故事会话仓库的接口。
@@ -105,14 +126,15 @@ type AuditRepository interface {
 // Repositories 是所有仓库接口的聚合。
 // 方便在需要多个仓库时进行传递。
 type Repositories struct {
-	Projects      ProjectRepository
-	AuthorBibles  AuthorBibleRepository
-	WorldState    WorldStateRepository
-	Characters    CharacterRepository
-	Relationships RelationshipRepository
-	SetupSessions SetupSessionRepository
-	StorySessions StorySessionRepository
-	Chapters      ChapterRepository
-	Memories      MemoryRepository
-	Audit         AuditRepository
+	Projects         ProjectRepository
+	AuthorBibles     AuthorBibleRepository
+	WorldState       WorldStateRepository
+	Characters       CharacterRepository
+	Relationships    RelationshipRepository
+	SetupSessions    SetupSessionRepository
+	DialogueSessions DialogueSessionRepository
+	StorySessions    StorySessionRepository
+	Chapters         ChapterRepository
+	Memories         MemoryRepository
+	Audit            AuditRepository
 }

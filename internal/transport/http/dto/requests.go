@@ -75,7 +75,7 @@ type UpdateCharacterRequest struct {
 
 // CreateRelationshipRequest 是创建关系的请求参数。
 type CreateRelationshipRequest struct {
-	CharacterAID   string   `json:"character_a_id" binding:"required"`
+	CharacterAID  string   `json:"character_a_id" binding:"required"`
 	CharacterBID  string   `json:"character_b_id" binding:"required"`
 	Summary       string   `json:"summary" binding:"required"`
 	Anchors       []string `json:"anchors"`
@@ -128,6 +128,23 @@ type CommitStoryRunRequest struct {
 	DraftID       string `json:"draft_id" binding:"required"`
 	MemoryPatchID string `json:"memory_patch_id" binding:"required"`
 	AuthorNote    string `json:"author_note"`
+}
+
+type CreateDialogueSessionRequest struct {
+	Title string `json:"title"`
+}
+
+type AdvanceDialogueSessionRequest struct {
+	UserMessage string `json:"user_message" binding:"required"`
+}
+
+type ConfirmDialogueActionOptionRequest struct {
+	Confirm    bool   `json:"confirm" binding:"required"`
+	AuthorNote string `json:"author_note"`
+}
+
+type RejectDialogueActionOptionRequest struct {
+	Reason string `json:"reason"`
 }
 
 // CreateMemoryRequest 是创建记忆的请求参数。

@@ -136,6 +136,44 @@ func TestBuildResultPrefersPreGeneratedVariable(t *testing.T) {
 	}
 }
 
+func TestGenerateStoryVariableUsesBackendState(t *testing.T) {
+	generator := &StoryRunGenerator{}
+	variable, err := generator.generateStoryVariable(context.Background(), port.StoryRunGenerationInput{
+		Session: model.StorySession{
+			OpeningSituation:  "城门提前关闭",
+			AuthorIntent:      "让林澈被迫决定是否暴露身份",
+			LastAuthorMessage: "林澈和沈砚在雨巷交换密信",
+		},
+	}, StoryContextSnapshot{
+		WorldState: []model.WorldStateEntry{
+			{Key: "gate_lockdown", Note: "城门提前关闭", Importance: 5, Volatility: 4},
+			{Key: "rain", Note: "雨势遮住行踪", Importance: 2, Volatility: 2},
+		},
+		Characters: []model.Character{
+			{ID: "character_1", Name: "林澈"},
+			{ID: "character_2", Name: "沈砚"},
+		},
+		Relationships: []model.Relationship{{Pair: model.RelationshipPair{LeftCharacterID: "character_1", RightCharacterID: "character_2"}, Views: []model.RelationshipView{
+			{SourceCharacterID: "character_1", TargetCharacterID: "character_2", BelievedTargetAttitude: "沈砚可能藏着另一封信"},
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("generateStoryVariable returned error: %v", err)
+	}
+	if variable.PlotVariable.FocalCharacterID != "character_1" {
+		t.Fatalf("expected focal character to be 林澈, got %#v", variable.PlotVariable)
+	}
+	if !containsString(variable.PlotVariable.RelatedCharacterIDs, "character_2") {
+		t.Fatalf("expected mentioned character to be related, got %#v", variable.PlotVariable.RelatedCharacterIDs)
+	}
+	if len(variable.PlotVariable.WorldStatePressure) == 0 || variable.PlotVariable.WorldStatePressure[0] != "gate_lockdown" {
+		t.Fatalf("expected high-pressure world state, got %#v", variable.PlotVariable.WorldStatePressure)
+	}
+	if len(variable.CharacterViews) == 0 || len(variable.CharacterViews[0].KnownFacts) == 0 {
+		t.Fatalf("expected character views, got %#v", variable.CharacterViews)
+	}
+}
+
 func TestPerspectiveForTurnOnlyIncludesActorRelationshipViews(t *testing.T) {
 	generator := &StoryRunGenerator{}
 	perspective := generator.perspectiveForTurn(StoryContextSnapshot{

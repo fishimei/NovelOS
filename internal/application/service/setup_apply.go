@@ -83,7 +83,10 @@ func (a *SetupRunApplier) Apply(ctx context.Context, sessionID string, input mod
 				return err
 			}
 		}
-		return a.appendAppliedEvent(txCtx, sessionID, run, input)
+		if err := a.appendAppliedEvent(txCtx, sessionID, run, input); err != nil {
+			return err
+		}
+		return a.sessions.MarkApplied(txCtx, sessionID, run.RunID)
 	})
 	if err != nil {
 		return model.ApplySetupRunResult{}, err

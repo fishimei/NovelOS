@@ -45,6 +45,42 @@ type StoryRunGenerationInput struct {
 	Session model.StorySession
 }
 
+type DialogueRunGenerator interface {
+	Generate(ctx context.Context, input DialogueRunGenerationInput) (model.DialogueRunResult, error)
+}
+
+type DialogueRunGenerationInput struct {
+	Run     model.DialogueRun
+	Session model.DialogueSession
+}
+
+type DialogueConfirmedActionExecutor interface {
+	ExecuteConfirmed(ctx context.Context, optionID string, input model.ExecuteDialogueActionInput) (model.DialogueActionOption, error)
+}
+
+type DialogueActionOptionValidator interface {
+	ValidateOption(ctx context.Context, option model.DialogueActionOption) error
+}
+
+type CharacterMemoryRecallInput struct {
+	ProjectID   string
+	CharacterID string
+	Query       string
+	Limit       int
+}
+
+type CharacterMemoryCommitInput struct {
+	ProjectID string
+	RunID     string
+	Chapter   model.Chapter
+	Memories  []model.Memory
+}
+
+type CharacterMemoryService interface {
+	Recall(ctx context.Context, input CharacterMemoryRecallInput) ([]model.Memory, error)
+	Commit(ctx context.Context, input CharacterMemoryCommitInput) error
+}
+
 // TxManager 是事务管理器的接口。
 // 封装数据库事务逻辑，确保跨多个仓库操作的一致性。
 type TxManager interface {
