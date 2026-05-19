@@ -56,6 +56,7 @@ type SetupSessionRepository interface {
 	ListSessionsByProjectID(ctx context.Context, projectID string, pageInput model.PageInput) (model.ListResult[model.SetupSession], error)
 	GetSessionByID(ctx context.Context, sessionID string) (model.SetupSession, error)
 	UpdateSession(ctx context.Context, session model.SetupSession) (model.SetupSession, error)
+	DeleteSession(ctx context.Context, sessionID string) error
 	AppendMessage(ctx context.Context, sessionID string, role string, content string) (model.ConversationMessage, error)
 	CreateRun(ctx context.Context, sessionID string, input model.AdvanceSetupSessionInput) (model.SetupRun, error)
 	GetRunByID(ctx context.Context, runID string) (model.SetupRun, error)

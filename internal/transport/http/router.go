@@ -60,6 +60,8 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.POST("/projects/:project_id/setup-sessions", handlers.SetupSessions.Create)
 		api.GET("/projects/:project_id/setup-sessions", handlers.SetupSessions.List)
 		api.GET("/setup-sessions/:session_id", handlers.SetupSessions.Get)
+		api.PUT("/setup-sessions/:session_id", handlers.SetupSessions.Update)
+		api.DELETE("/setup-sessions/:session_id", handlers.SetupSessions.Delete)
 		api.POST("/setup-sessions/:session_id/advance", handlers.SetupSessions.Advance)
 		api.GET("/setup-runs/:run_id", handlers.SetupSessions.GetRun)
 		api.GET("/setup-runs/:run_id/result", handlers.SetupSessions.GetRunResult)

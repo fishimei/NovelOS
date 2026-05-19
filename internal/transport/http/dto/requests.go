@@ -101,6 +101,11 @@ type AdvanceSetupSessionRequest struct {
 	UserMessage string `json:"user_message" binding:"required"`
 }
 
+// UpdateSetupSessionRequest 是更新设置会话补充信息的请求参数。
+type UpdateSetupSessionRequest struct {
+	LastUserMessage string `json:"last_user_message"`
+}
+
 // ApplySetupRunRequest 是应用设置运行的请求参数。
 type ApplySetupRunRequest struct {
 	RunID               string `json:"run_id" binding:"required"`

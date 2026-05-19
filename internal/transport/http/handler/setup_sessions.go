@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -77,6 +78,37 @@ func (h SetupSessionsHandler) Get(c *gin.Context) {
 	}
 
 	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h SetupSessionsHandler) Update(c *gin.Context) {
+	var req dto.UpdateSetupSessionRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	session, err := h.sessions.GetSessionByID(c.Request.Context(), c.Param("session_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	session.LastUserMessage = strings.TrimSpace(req.LastUserMessage)
+	result, err := h.sessions.UpdateSession(c.Request.Context(), session)
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h SetupSessionsHandler) Delete(c *gin.Context) {
+	if err := h.sessions.DeleteSession(c.Request.Context(), c.Param("session_id")); err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, gin.H{"deleted": true})
 }
 
 func (h SetupSessionsHandler) Advance(c *gin.Context) {

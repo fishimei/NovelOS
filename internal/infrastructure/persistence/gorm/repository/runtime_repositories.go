@@ -105,6 +105,72 @@ func (r *setupSessionRepository) UpdateSession(ctx context.Context, session mode
 	return r.GetSessionByID(ctx, session.ID)
 }
 
+func (r *setupSessionRepository) DeleteSession(ctx context.Context, sessionID string) error {
+	err := r.dbFor(ctx).Transaction(func(tx *gorm.DB) error {
+		var session persistencemodels.SetupSession
+		if err := tx.First(&session, "id = ?", sessionID).Error; err != nil {
+			return err
+		}
+
+		var runIDs []string
+		if err := tx.Model(&persistencemodels.SetupRun{}).Where("session_id = ?", sessionID).Pluck("id", &runIDs).Error; err != nil {
+			return err
+		}
+		if len(runIDs) > 0 {
+			if err := tx.Where("run_kind = ? AND run_id IN ?", "setup", runIDs).Delete(&persistencemodels.RunEvent{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("run_id IN ?", runIDs).Delete(&persistencemodels.SetupRunResult{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", runIDs).Delete(&persistencemodels.SetupRun{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("session_id = ?", sessionID).Delete(&persistencemodels.SetupMessage{}).Error; err != nil {
+			return err
+		}
+
+		var dialogueSessionIDs []string
+		if err := tx.Model(&persistencemodels.DialogueSession{}).
+			Where("project_id = ? AND title = ?", session.ProjectID, "setup-discussion:"+sessionID).
+			Pluck("id", &dialogueSessionIDs).Error; err != nil {
+			return err
+		}
+		if len(dialogueSessionIDs) > 0 {
+			var dialogueRunIDs []string
+			if err := tx.Model(&persistencemodels.DialogueRun{}).Where("session_id IN ?", dialogueSessionIDs).Pluck("id", &dialogueRunIDs).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("session_id IN ?", dialogueSessionIDs).Delete(&persistencemodels.DialogueActionOption{}).Error; err != nil {
+				return err
+			}
+			if len(dialogueRunIDs) > 0 {
+				if err := tx.Where("run_kind = ? AND run_id IN ?", "dialogue", dialogueRunIDs).Delete(&persistencemodels.RunEvent{}).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("run_id IN ?", dialogueRunIDs).Delete(&persistencemodels.DialogueRunResult{}).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("id IN ?", dialogueRunIDs).Delete(&persistencemodels.DialogueRun{}).Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Where("session_id IN ?", dialogueSessionIDs).Delete(&persistencemodels.DialogueMessage{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", dialogueSessionIDs).Delete(&persistencemodels.DialogueSession{}).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Delete(&session).Error
+	})
+	if err != nil {
+		return mapDBError(err, "setup session not found")
+	}
+	return nil
+}
+
 func (r *setupSessionRepository) setupSessionFromRow(ctx context.Context, row persistencemodels.SetupSession) model.SetupSession {
 	session := model.SetupSession{
 		ID:              row.ID,
