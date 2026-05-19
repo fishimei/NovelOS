@@ -596,9 +596,47 @@
   gap: 6px;
 }
 
+.setup-context-card__block-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.setup-context-card__edit {
+  font-size: 12px;
+  min-height: 28px;
+  padding: 4px 9px;
+}
+
 .setup-context-card__block p {
   color: #39342f;
   line-height: 1.75;
+}
+
+.setup-context-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.setup-context-summary__row {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 78px minmax(0, 1fr);
+}
+
+.setup-context-summary dt {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.setup-context-summary dd {
+  color: #39342f;
+  line-height: 1.65;
+  margin: 0;
 }
 
 .composer--setup {
@@ -758,6 +796,41 @@
   white-space: pre-wrap;
 }
 
+.setup-discussion-message__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.setup-discussion-message__adopt {
+  align-items: center;
+  background: #f4f0e7;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #4c463d;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12.5px;
+  font-weight: 650;
+  gap: 6px;
+  padding: 5px 10px;
+}
+
+.setup-discussion-message__adopt span {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-discussion-message__adopt:hover {
+  background: var(--accent-soft);
+  border-color: rgba(90, 107, 78, 0.32);
+  color: var(--accent-strong);
+}
+
 .setup-discussion-actions,
 .setup-generate-confirm {
   border-top: 1px solid var(--border);
@@ -855,6 +928,23 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
+}
+
+.setup-supplement-editor {
+  background: #fbfaf6;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+}
+
+.setup-supplement-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .setup-generate-confirm p,

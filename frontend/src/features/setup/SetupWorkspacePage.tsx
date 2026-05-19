@@ -11,6 +11,7 @@ import {
   Send,
   Sparkles,
   Target,
+  Trash2,
   Users,
   XCircle,
 } from 'lucide-react';
@@ -28,7 +29,14 @@ import {
   rejectDialogueActionOption,
 } from '../../api/dialogueSessions';
 import { getSetupRun, getSetupRunResult, listSetupRunEventHistory } from '../../api/setupRuns';
-import { advanceSetupSession, applySetupRun, createSetupSession, listSetupSessions } from '../../api/setupSessions';
+import {
+  advanceSetupSession,
+  applySetupRun,
+  createSetupSession,
+  deleteSetupSession,
+  listSetupSessions,
+  updateSetupSession,
+} from '../../api/setupSessions';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
@@ -37,6 +45,7 @@ import type {
   DialogueActionOption,
   DialogueMessage,
   DialogueSession,
+  PaginatedResponse,
   Relationship,
   Run,
   RunEvent,
@@ -47,150 +56,162 @@ import type {
 import { submitTextareaOnEnter } from '../../utils/keyboard';
 
 const copy = {
-  sessionTitle: '\u8bbe\u5b9a\u4f1a\u8bdd',
-  sessionSubtitle: '\u4ece\u6545\u4e8b\u79cd\u5b50\u5f00\u59cb\uff0c\u7ef4\u62a4\u4e00\u6761\u53ef\u56de\u6eaf\u7684\u8bbe\u5b9a\u8ba8\u8bba\u6d41\u3002',
-  sessionHistoryTitle: '\u5386\u53f2\u4f1a\u8bdd',
-  noSessions: '\u8fd8\u6ca1\u6709\u8bbe\u5b9a\u4f1a\u8bdd\u3002',
-  seedPlaceholder: '\u8f93\u5165\u6545\u4e8b\u79cd\u5b50\uff0c\u4f8b\u5982\u4e3b\u9898\u3001\u4e16\u754c\u89c2\u3001\u4e3b\u89d2\u51b2\u7a81\u6216\u60c5\u7eea\u57fa\u8c03',
-  createSessionButton: '\u521b\u5efa\u8bbe\u5b9a\u4f1a\u8bdd',
-  createSessionLoading: '\u521b\u5efa\u4e2d...',
-  workspaceTitle: '\u8bbe\u5b9a\u5de5\u4f5c\u53f0',
-  workspaceDesc: '\u628a\u4f1a\u8bdd\u79cd\u5b50\u6574\u7406\u6210\u7ed3\u6784\u5316\u8349\u6848\uff0c\u518d\u6309\u6a21\u5757\u5ba1\u6838\u5e76\u5e94\u7528\u5230\u9879\u76ee\u8bbe\u5b9a\u3002',
-  breadcrumb: '\u5199\u4f5c / \u8bbe\u5b9a\u5de5\u4f5c\u53f0',
-  connectedHint: '\u5f53\u524d\u4f1a\u8bdd\u5df2\u5c31\u7eea',
-  waitingHint: '\u7b49\u5f85\u521b\u5efa\u4f1a\u8bdd',
-  emptyTitle: '\u5148\u521b\u5efa\u4e00\u4e2a\u8bbe\u5b9a\u4f1a\u8bdd',
-  emptyDesc: '\u4ece\u79cd\u5b50\u60f3\u6cd5\u5f00\u59cb\uff0c\u9010\u6b65\u751f\u6210\u4f5c\u8005\u5723\u7ecf\u3001\u89d2\u8272\u3001\u5173\u7cfb\u4e0e\u4e16\u754c\u72b6\u6001\u8349\u6848\u3002',
-  stepContext: '\u5f53\u524d\u4f1a\u8bdd\u4e0a\u4e0b\u6587',
-  stepContextDesc: '\u5148\u786e\u8ba4\u8fd9\u6b21\u8bbe\u5b9a\u751f\u6210\u8981\u56f4\u7ed5\u54ea\u4e2a\u79cd\u5b50\u548c\u54ea\u4e9b\u8865\u5145\u3002',
-  stepCompose: '\u8bbe\u5b9a\u8ba8\u8bba\u533a',
-  stepComposeDesc: '\u5148\u548c AI \u8f7b\u91cf\u8ba8\u8bba\u3001\u6f84\u6e05\u65b9\u5411\uff0c\u518d\u663e\u5f0f\u751f\u6210\u6216\u66f4\u65b0\u8349\u6848\u3002',
-  stepDraft: '\u8bbe\u5b9a\u8349\u6848',
-  stepDraftDesc: '\u5148\u770b\u6a21\u5757\u9aa8\u67b6\uff0c\u751f\u6210\u540e\u518d\u9010\u4e2a\u5ba1\u9605\u5e76\u51b3\u5b9a\u662f\u5426\u5e94\u7528\u3002',
-  sessionSeedTitle: '\u79cd\u5b50\u6784\u60f3',
-  lastSupplementTitle: '\u6700\u8fd1\u8865\u5145',
-  noSupplement: '\u8fd8\u6ca1\u6709\u989d\u5916\u8865\u5145\u3002',
-  emptySeed: '\u8be5\u4f1a\u8bdd\u8fd8\u6ca1\u6709\u5199\u5165\u79cd\u5b50\u5185\u5bb9\u3002',
-  advanceButton: '\u751f\u6210 / \u66f4\u65b0\u8349\u6848',
-  advanceRunning: '\u751f\u6210\u4e2d...',
-  advanceTooltip: '\u5c06\u57fa\u4e8e\u5f53\u524d\u8ba8\u8bba\u4e0a\u4e0b\u6587\u751f\u6210\u8349\u6848\uff0c\u9884\u8ba1 20-40 \u79d2\u3002',
-  generatePanelTitle: '\u751f\u6210\u524d\u8865\u5145\u8bf4\u660e\uff08\u53ef\u9009\uff09',
-  generatePanelDesc: '\u4e0d\u9700\u8981\u91cd\u65b0\u603b\u7ed3\u8ba8\u8bba\u3002\u53ea\u586b\u8fd9\u6b21\u751f\u6210\u9700\u8981\u989d\u5916\u9075\u5faa\u7684\u4e00\u53e5\u8bdd\u3002',
-  generateNotePlaceholder: '\u4f8b\u5982\uff1a\u8fd9\u6b21\u53ea\u66f4\u65b0\u4e16\u754c\u72b6\u6001\uff0c\u4e0d\u6539\u89d2\u8272\u5173\u7cfb',
-  generateConfirm: '\u751f\u6210\u8349\u6848',
-  generateCancel: '\u53d6\u6d88',
-  discussionScopeTitle: '\u4f5c\u7528\u57df',
-  discussionScopeHelp: '\u4f5c\u7528\u57df\u53ea\u7ea6\u675f AI \u5199\u5165\u8349\u6848\u7684\u8303\u56f4\uff0c\u4e0d\u9650\u5236\u8ba8\u8bba\u8bdd\u9898\u3002',
-  discussionStarterIntro: 'AI \u5df2\u8bfb\u53d6\u4f60\u7684\u79cd\u5b50\u6784\u60f3\uff0c\u60f3\u5148\u548c\u4f60\u786e\u8ba4\u51e0\u4ef6\u4e8b\uff1a',
-  discussionPlaceholder: '\u548c AI \u8ba8\u8bba\u8bbe\u5b9a\u65b9\u5411\uff0c\u4f8b\u5982\u201c\u90ae\u5dee\u8eab\u4efd\u80fd\u4e0d\u80fd\u5e26\u70b9\u8bc5\u5492\u611f\uff1f\u201d',
-  discussionSend: '\u53d1\u9001',
-  discussionSending: '\u8ba8\u8bba\u4e2d...',
-  discussionReady: '\u666e\u901a\u8ba8\u8bba\u4e0d\u4f1a\u89e6\u53d1\u8349\u6848\u751f\u6210\u3002',
-  discussionCreateHint: '\u9996\u6b21\u53d1\u9001\u65f6\u4f1a\u4e3a\u5f53\u524d\u8bbe\u5b9a\u4f1a\u8bdd\u521b\u5efa\u4e00\u6761\u8ba8\u8bba\u7ebf\u3002',
-  discussionLoading: '\u6b63\u5728\u52a0\u8f7d\u8ba8\u8bba\u6d88\u606f',
-  discussionActionTitle: '\u5f85\u786e\u8ba4\u64cd\u4f5c',
-  discussionConfirmAction: '\u786e\u8ba4\u6267\u884c',
-  discussionRejectAction: '\u62d2\u7edd',
-  discussionConfirming: '\u6267\u884c\u4e2d...',
-  discussionRejecting: '\u62d2\u7edd\u4e2d...',
-  draftRequestTitle: '\u8349\u6848\u751f\u6210\u8f93\u5165',
-  resultLoading: '\u6b63\u5728\u751f\u6210\u8bbe\u5b9a\u8349\u6848',
-  resultEmpty: '\u8fd8\u6ca1\u6709\u53ef\u5ba1\u9605\u7684\u8349\u6848\uff0c\u4f46\u5de5\u4f5c\u53f0\u5df2\u7ecf\u4e3a\u4f60\u9884\u7559\u4e86\u6a21\u5757\u9aa8\u67b6\u3002',
-  resultReady: '\u5df2\u751f\u6210',
-  resultOpenQuestions: '\u5f85\u786e\u8ba4\u95ee\u9898',
-  resultOpenQuestionsEmpty: '\u6ca1\u6709\u989d\u5916\u5f85\u786e\u8ba4\u95ee\u9898\u3002',
-  visualDraftTitle: '\u4e3b\u63a7 Agent \u8349\u6848\u770b\u677f',
-  visualDraftSubtitle: '\u8fd9\u662f agent \u5185\u90e8\u6df1\u5316\u540e\u901a\u8fc7\u5de5\u5177\u5c55\u793a\u7684\u5b8c\u6574\u8be6\u7ec6\u8349\u6848\uff0c\u786e\u8ba4\u524d\u4e0d\u4f1a\u5199\u5165\u6b63\u5f0f\u8bbe\u5b9a\u3002',
-  visualStyle: '\u98ce\u683c',
-  visualTone: '\u6c14\u8d28',
-  visualBoldness: '\u5927\u80c6\u7a0b\u5ea6',
-  visualWorldPressure: '\u4e16\u754c\u538b\u529b',
-  visualCharacterCards: '\u4eba\u7269\u5361\u7247',
-  visualRelationshipGraph: '\u5173\u7cfb\u7f51\u7edc',
-  visualNextAgents: '\u5efa\u8bae\u4e0b\u4e00\u6b65',
-  visualNoBoard: '\u8fd9\u7248\u7ed3\u679c\u6ca1\u6709\u8fd4\u56de\u53ef\u89c6\u5316\u770b\u677f\uff0c\u4f46\u4e0b\u65b9\u7ed3\u6784\u5316\u8349\u6848\u4ecd\u53ef\u5ba1\u9605\u548c\u5e94\u7528\u3002',
-  regenerateDraft: '\u91cd\u8d77\u8349\u4e00\u7248',
-  cancelDraft: '\u53d6\u6d88\u8fd9\u7248\u8349\u6848',
-  applyTitle: '\u5e94\u7528\u8349\u6848',
-  applySubtitle: '\u9009\u62e9\u8981\u5199\u5165\u9879\u76ee\u7684\u6a21\u5757\uff0c\u5e76\u4e3a\u8fd9\u6b21\u63d0\u4ea4\u7559\u4e0b\u5907\u6ce8\u3002',
-  applyScopeTitle: '\u5e94\u7528\u8303\u56f4',
-  applyBible: '\u4f5c\u8005\u5723\u7ecf',
-  applyCharacters: '\u89d2\u8272\u8bbe\u5b9a',
-  applyRelationships: '\u5173\u7cfb\u8bbe\u5b9a',
-  applyWorld: '\u4e16\u754c\u72b6\u6001',
-  scopePending: '\u6682\u65e0\u8349\u6848',
-  scopeDiscussing: '\u8ba8\u8bba\u4e2d \u00b7 \u6682\u65e0\u8349\u6848',
-  scopeGenerating: '\u751f\u6210\u4e2d',
-  scopeReady: '\u5f85\u5e94\u7528',
-  scopeApplied: '\u5df2\u5e94\u7528',
-  noteTitle: '\u5e94\u7528\u5907\u6ce8\uff08\u53ef\u9009\uff09',
-  authorNotePlaceholder: '\u8bb0\u5f55\u8fd9\u6b21\u5e94\u7528\u7684\u51b3\u7b56\u3001\u53d6\u820d\u6216\u540e\u7eed\u5f85\u8c03\u6574\u70b9',
-  applyButton: '\u5e94\u7528\u5230\u9879\u76ee',
-  applyDisabled: '\u8bf7\u5148\u751f\u6210\u8349\u6848',
-  applyDisabledHint: '\u751f\u6210\u8349\u6848\u540e\u53ef\u9010\u6a21\u5757\u5e94\u7528\u3002',
-  applyPending: '\u5e94\u7528\u4e2d...',
-  eventHistoryTitle: '\u8fd0\u884c\u8bb0\u5f55',
-  eventHistoryHint: '\u4f1a\u8bdd\u521b\u5efa\u3001\u8349\u6848\u751f\u6210\u4e0e\u5e94\u7528\u8fc7\u7a0b\u90fd\u4f1a\u8bb0\u5f55\u5728\u8fd9\u91cc\u3002',
-  eventHistoryLoading: '\u6b63\u5728\u52a0\u8f7d\u8fd0\u884c\u8bb0\u5f55',
-  eventHistoryEmpty: '\u5f00\u59cb\u7b2c\u4e00\u6b21\u8bbe\u5b9a\u751f\u6210\u540e\uff0c\u8fd9\u91cc\u4f1a\u51fa\u73b0\u65f6\u95f4\u7ebf\u8bb0\u5f55\u3002',
-  noRunHistory: '\u751f\u6210\u8349\u6848\u540e\u624d\u4f1a\u51fa\u73b0\u8fd0\u884c\u8bb0\u5f55\u3002',
-  expandEvents: '\u5c55\u5f00\u5168\u90e8',
-  collapseEvents: '\u6536\u8d77',
-  summaryTitle: '\u8349\u6848\u6458\u8981',
-  bibleTitle: '\u4f5c\u8005\u5723\u7ecf',
-  theme: '\u4e3b\u9898',
-  styleGuide: '\u6587\u98ce',
-  worldRules: '\u4e16\u754c\u89c4\u5219',
-  aesthetic: '\u5ba1\u7f8e\u539f\u5219',
-  hardConstraints: '\u786c\u7ea6\u675f',
-  softPreferences: '\u8f6f\u504f\u597d',
-  forbiddenMoves: '\u7981\u7528\u5957\u8def',
-  charactersTitle: '\u89d2\u8272\u8349\u6848',
-  relationshipsTitle: '\u5173\u7cfb\u8349\u6848',
-  worldStateTitle: '\u4e16\u754c\u72b6\u6001',
-  charactersUnit: '\u4eba',
-  relationshipsUnit: '\u6761',
-  worldStateUnit: '\u9879',
-  questionsUnit: '\u4e2a',
-  defaultRole: '\u672a\u8bbe\u5b9a\u89d2\u8272\u5b9a\u4f4d',
-  defaultProfile: '\u672a\u63d0\u4f9b\u89d2\u8272\u7b80\u4ecb\u3002',
-  personality: '\u6027\u683c',
-  voiceStyle: '\u53e3\u543b',
-  goals: '\u76ee\u6807',
-  fears: '\u6050\u60e7',
-  secrets: '\u79d8\u5bc6',
-  constraints: '\u7ea6\u675f',
-  noCharacters: '\u672a\u751f\u6210\u89d2\u8272\u8349\u6848\u3002',
-  noRelationships: '\u672a\u751f\u6210\u5173\u7cfb\u8349\u6848\u3002',
-  relationshipDraft: '\u5173\u7cfb\u8349\u6848',
-  volatility: '\u6ce2\u52a8',
-  defaultRelationshipSummary: '\u672a\u63d0\u4f9b\u5173\u7cfb\u6458\u8981\u3002',
-  anchors: '\u5173\u7cfb\u951a\u70b9',
-  tensionPoints: '\u5f20\u529b\u70b9',
-  noWorldState: '\u672a\u751f\u6210\u4e16\u754c\u72b6\u6001\u3002',
-  defaultNote: '\u672a\u63d0\u4f9b\u8bf4\u660e',
-  defaultQuestionReason: '\u672a\u8bf4\u660e\u8be5\u95ee\u9898\u7684\u5f71\u54cd\u3002',
-  noQuestions: '\u6ca1\u6709\u989d\u5916\u5f85\u786e\u8ba4\u7684\u95ee\u9898\u3002',
+  sessionTitle: '设定会话',
+  sessionSubtitle: '从故事种子开始，维护一条可回溯的设定讨论流。',
+  sessionHistoryTitle: '历史会话',
+  deleteSessionTitle: '删除会话',
+  deleteSessionConfirm: '删除这个设定会话？已应用到项目的正式设定不会删除。',
+  deleteSessionPending: '删除中...',
+  noSessions: '还没有设定会话。',
+  seedPlaceholder: '输入故事种子，例如主题、世界观、主角冲突或情绪基调',
+  createSessionButton: '创建设定会话',
+  createSessionLoading: '创建中...',
+  workspaceTitle: '设定工作台',
+  workspaceDesc: '把会话种子整理成结构化草案，再按模块审核并应用到项目设定。',
+  breadcrumb: '写作 / 设定工作台',
+  connectedHint: '当前会话已就绪',
+  waitingHint: '等待创建会话',
+  emptyTitle: '先创建一个设定会话',
+  emptyDesc: '从种子想法开始，逐步生成作者圣经、角色、关系与世界状态草案。',
+  stepContext: '当前会话上下文',
+  stepContextDesc: '先确认这次设定生成要围绕哪个种子和哪些补充。',
+  stepCompose: '设定讨论区',
+  stepComposeDesc: '先和 AI 轻量讨论、澄清方向，再显式生成或更新草案。',
+  stepDraft: '设定草案',
+  stepDraftDesc: '先看模块骨架，生成后再逐个审阅并决定是否应用。',
+  sessionSeedTitle: '种子构想',
+  lastSupplementTitle: '最近补充',
+  supplementEditButton: '编辑补充',
+  supplementManualButton: '手动补充',
+  supplementEditorTitle: '整理补充内容',
+  supplementEditorPlaceholder: '保留要采纳的主题、设定要求或修改意见，支持 Markdown。',
+  supplementSave: '保存到补充区',
+  supplementSaving: '保存中...',
+  supplementCancel: '取消',
+  supplementAdopt: '采纳为补充',
+  supplementAdoptWhole: '采纳全文',
+  noSupplement: '还没有额外补充。',
+  emptySeed: '该会话还没有写入种子内容。',
+  advanceButton: '生成 / 更新草案',
+  advanceRunning: '生成中...',
+  advanceTooltip: '将基于当前讨论上下文生成草案，预计 20-40 秒。',
+  generatePanelTitle: '生成前补充说明（可选）',
+  generatePanelDesc: '不需要重新总结讨论。只填这次生成需要额外遵循的一句话。',
+  generateNotePlaceholder: '例如：这次只更新世界状态，不改角色关系',
+  generateConfirm: '生成草案',
+  generateCancel: '取消',
+  discussionScopeTitle: '作用域',
+  discussionScopeHelp: '作用域只约束 AI 写入草案的范围，不限制讨论话题。',
+  discussionStarterIntro: 'AI 已读取你的种子构想，想先和你确认几件事：',
+  discussionPlaceholder: '和 AI 讨论设定方向，例如“邮差身份能不能带点诅咒感？”',
+  discussionSend: '发送',
+  discussionSending: '讨论中...',
+  discussionReady: '普通讨论不会触发草案生成。',
+  discussionCreateHint: '首次发送时会为当前设定会话创建一条讨论线。',
+  discussionLoading: '正在加载讨论消息',
+  discussionActionTitle: '待确认操作',
+  discussionConfirmAction: '确认执行',
+  discussionRejectAction: '拒绝',
+  discussionConfirming: '执行中...',
+  discussionRejecting: '拒绝中...',
+  draftRequestTitle: '草案生成输入',
+  resultLoading: '正在生成设定草案',
+  resultEmpty: '还没有可审阅的草案，但工作台已经为你预留了模块骨架。',
+  resultReady: '已生成',
+  resultOpenQuestions: '待确认问题',
+  resultOpenQuestionsEmpty: '没有额外待确认问题。',
+  visualDraftTitle: '主控 Agent 草案看板',
+  visualDraftSubtitle: '这是 agent 内部深化后通过工具展示的完整详细草案，确认前不会写入正式设定。',
+  visualStyle: '风格',
+  visualTone: '气质',
+  visualBoldness: '大胆程度',
+  visualWorldPressure: '世界压力',
+  visualCharacterCards: '人物卡片',
+  visualRelationshipGraph: '关系网络',
+  visualNextAgents: '建议下一步',
+  visualNoBoard: '这版结果没有返回可视化看板，但下方结构化草案仍可审阅和应用。',
+  regenerateDraft: '重起草一版',
+  cancelDraft: '取消这版草案',
+  applyTitle: '应用草案',
+  applySubtitle: '选择要写入项目的模块，并为这次提交留下备注。',
+  applyScopeTitle: '应用范围',
+  applyBible: '作者圣经',
+  applyCharacters: '角色设定',
+  applyRelationships: '关系设定',
+  applyWorld: '世界状态',
+  scopePending: '暂无草案',
+  scopeDiscussing: '讨论中 · 暂无草案',
+  scopeGenerating: '生成中',
+  scopeReady: '待应用',
+  scopeApplied: '已应用',
+  noteTitle: '应用备注（可选）',
+  authorNotePlaceholder: '记录这次应用的决策、取舍或后续待调整点',
+  applyButton: '应用到项目',
+  applyDisabled: '请先生成草案',
+  applyDisabledHint: '生成草案后可逐模块应用。',
+  applyPending: '应用中...',
+  eventHistoryTitle: '运行记录',
+  eventHistoryHint: '会话创建、草案生成与应用过程都会记录在这里。',
+  eventHistoryLoading: '正在加载运行记录',
+  eventHistoryEmpty: '开始第一次设定生成后，这里会出现时间线记录。',
+  noRunHistory: '生成草案后才会出现运行记录。',
+  expandEvents: '展开全部',
+  collapseEvents: '收起',
+  summaryTitle: '草案摘要',
+  bibleTitle: '作者圣经',
+  theme: '主题',
+  styleGuide: '文风',
+  worldRules: '世界规则',
+  aesthetic: '审美原则',
+  hardConstraints: '硬约束',
+  softPreferences: '软偏好',
+  forbiddenMoves: '禁用套路',
+  charactersTitle: '角色草案',
+  relationshipsTitle: '关系草案',
+  worldStateTitle: '世界状态',
+  charactersUnit: '人',
+  relationshipsUnit: '条',
+  worldStateUnit: '项',
+  questionsUnit: '个',
+  defaultRole: '未设定角色定位',
+  defaultProfile: '未提供角色简介。',
+  personality: '性格',
+  voiceStyle: '口吻',
+  goals: '目标',
+  fears: '恐惧',
+  secrets: '秘密',
+  constraints: '约束',
+  noCharacters: '未生成角色草案。',
+  noRelationships: '未生成关系草案。',
+  relationshipDraft: '关系草案',
+  volatility: '波动',
+  defaultRelationshipSummary: '未提供关系摘要。',
+  anchors: '关系锚点',
+  tensionPoints: '张力点',
+  noWorldState: '未生成世界状态。',
+  defaultNote: '未提供说明',
+  defaultQuestionReason: '未说明该问题的影响。',
+  noQuestions: '没有额外待确认的问题。',
   listEmpty: '-',
-  rolePrefix: '\u89d2\u8272',
-  statePrefix: '\u72b6\u6001',
-  questionPrefix: '\u95ee\u9898',
-  roleA: '\u89d2\u8272 A',
-  roleB: '\u89d2\u8272 B',
-  viewSuffix: '\u7684\u89c6\u89d2',
-  surfaceView: '\u8868\u9762\uff1a',
-  privateView: '\u79c1\u4e0b\uff1a',
-  misunderstanding: '\u8bef\u5224\uff1a',
-  masking: '\u4f2a\u88c5\uff1a',
-  moduleApply: '\u52a0\u5165\u5e94\u7528',
-  moduleApplied: '\u5df2\u9009\u4e2d',
-  modulePrompt: '\u751f\u6210\u6b64\u6a21\u5757\u63d0\u793a',
-  waitingGenerate: '\u5f85\u751f\u6210',
-  failureTitle: '\u4e0a\u6b21\u751f\u6210\u5931\u8d25',
-  failurePendingTitle: '\u8fd9\u6761\u4f1a\u8bdd\u5f85\u91cd\u8bd5',
-  failurePendingMessage: '\u4e0a\u6b21\u751f\u6210\u6ca1\u6709\u5b8c\u6210\uff0c\u4f60\u53ef\u4ee5\u76f4\u63a5\u8865\u5145\u8981\u6c42\u540e\u518d\u91cd\u65b0\u751f\u6210\uff0c\u4e0d\u9700\u8981\u65b0\u5efa\u4f1a\u8bdd\u3002',
-  failureAction: '\u751f\u6210\u4e00\u6761\u91cd\u8bd5\u63d0\u793a',
-  failureFallback: '\u53ef\u4ee5\u7f29\u5c0f\u8303\u56f4\u3001\u8865\u5145\u7ea6\u675f\u6216\u91cd\u65b0\u63cf\u8ff0\u79cd\u5b50\u540e\u518d\u8bd5\u4e00\u6b21\u3002',
+  rolePrefix: '角色',
+  statePrefix: '状态',
+  questionPrefix: '问题',
+  roleA: '角色 A',
+  roleB: '角色 B',
+  viewSuffix: '的视角',
+  surfaceView: '表面：',
+  privateView: '私下：',
+  misunderstanding: '误判：',
+  masking: '伪装：',
+  moduleApply: '加入应用',
+  moduleApplied: '已选中',
+  modulePrompt: '生成此模块提示',
+  waitingGenerate: '待生成',
+  failureTitle: '上次生成失败',
+  failurePendingTitle: '这条会话待重试',
+  failurePendingMessage: '上次生成没有完成，你可以直接补充要求后再重新生成，不需要新建会话。',
+  failureAction: '生成一条重试提示',
+  failureFallback: '可以缩小范围、补充约束或重新描述种子后再试一次。',
 } as const;
 
 const defaultAcceptSections = {
@@ -207,17 +228,17 @@ type ApplyPanelState = 'empty' | 'discussing' | 'generating' | 'ready' | 'applie
 type FlowStepTone = 'idle' | 'active' | 'done';
 
 const discussionScopes: Array<{ key: DiscussionScope; label: string }> = [
-  { key: 'all', label: '\u5168\u90e8' },
-  { key: 'author_bible', label: '\u4f5c\u8005\u5723\u7ecf' },
-  { key: 'characters', label: '\u89d2\u8272' },
-  { key: 'relationships', label: '\u5173\u7cfb' },
-  { key: 'world', label: '\u4e16\u754c' },
+  { key: 'all', label: '全部' },
+  { key: 'author_bible', label: '作者圣经' },
+  { key: 'characters', label: '角色' },
+  { key: 'relationships', label: '关系' },
+  { key: 'world', label: '世界' },
 ];
 
 const starterPrompts = [
-  '\u4e3b\u89d2\u6700\u60f3\u9003\u907f\u7684\u8fc7\u5f80\u6216\u5fc3\u7ed3\u5177\u4f53\u662f\u4ec0\u4e48\uff1f',
-  '\u8fd9\u4e2a\u4e16\u754c\u91cc\u6700\u91cd\u8981\u7684\u89c4\u5219\u6216\u4ee3\u4ef7\u662f\u4ec0\u4e48\uff1f',
-  '\u89d2\u8272\u5173\u7cfb\u60f3\u5148\u4ece\u4fe1\u4efb\u3001\u4e8f\u6b20\u8fd8\u662f\u51b2\u7a81\u5f00\u59cb\uff1f',
+  '主角最想逃避的过往或心结具体是什么？',
+  '这个世界里最重要的规则或代价是什么？',
+  '角色关系想先从信任、亏欠还是冲突开始？',
 ];
 
 const moduleDefinitions: Array<{
@@ -230,25 +251,25 @@ const moduleDefinitions: Array<{
     key: 'authorBible',
     icon: FileText,
     label: copy.applyBible,
-    prompt: '\u8bf7\u91cd\u65b0\u751f\u6210\u4f5c\u8005\u5723\u7ecf\uff0c\u91cd\u70b9\u8865\u5f3a\u4e3b\u9898\u3001\u6587\u98ce\u4e0e\u4e16\u754c\u89c4\u5219\u3002',
+    prompt: '请重新生成作者圣经，重点补强主题、文风与世界规则。',
   },
   {
     key: 'characters',
     icon: Users,
     label: copy.applyCharacters,
-    prompt: '\u8bf7\u91cd\u65b0\u751f\u6210\u89d2\u8272\u8349\u6848\uff0c\u91cd\u70b9\u8865\u5f3a\u89d2\u8272\u52a8\u673a\u3001\u51b2\u7a81\u548c\u53e3\u543b\u533a\u5206\u3002',
+    prompt: '请重新生成角色草案，重点补强角色动机、冲突和口吻区分。',
   },
   {
     key: 'relationships',
     icon: Link2,
     label: copy.applyRelationships,
-    prompt: '\u8bf7\u91cd\u65b0\u751f\u6210\u5173\u7cfb\u8349\u6848\uff0c\u91cd\u70b9\u8865\u5f3a\u53cc\u5411\u89c6\u89d2\u3001\u5f20\u529b\u70b9\u548c\u5173\u7cfb\u6f14\u5316\u7ebf\u7d22\u3002',
+    prompt: '请重新生成关系草案，重点补强双向视角、张力点和关系演化线索。',
   },
   {
     key: 'worldState',
     icon: Globe2,
     label: copy.applyWorld,
-    prompt: '\u8bf7\u91cd\u65b0\u751f\u6210\u4e16\u754c\u72b6\u6001\uff0c\u91cd\u70b9\u8865\u5145\u89c4\u5219\u8bbe\u5b9a\u3001\u5173\u952e\u53d8\u91cf\u548c\u7ea6\u675f\u6761\u4ef6\u3002',
+    prompt: '请重新生成世界状态，重点补充规则设定、关键变量和约束条件。',
   },
 ];
 
@@ -267,6 +288,9 @@ export function SetupWorkspacePage() {
   const [authorNote, setAuthorNote] = useState('');
   const [acceptSections, setAcceptSections] = useState(defaultAcceptSections);
   const [noteExpanded, setNoteExpanded] = useState(false);
+  const [supplementDraft, setSupplementDraft] = useState('');
+  const [supplementEditorOpen, setSupplementEditorOpen] = useState(false);
+  const [localSupplement, setLocalSupplement] = useState('');
 
   const sessionsQuery = useQuery({
     queryKey: ['setupSessions', projectId, 1, 20],
@@ -277,6 +301,7 @@ export function SetupWorkspacePage() {
   const sessions = sessionsQuery.data?.data ?? [];
   const selectedSessionId = activeSessionId || sessions[0]?.id || '';
   const currentSession = sessions.find((session) => session.id === selectedSessionId) ?? sessions[0] ?? null;
+  const currentSupplement = localSupplement || currentSession?.last_user_message || '';
 
   const dialogueSessionsQuery = useQuery({
     queryKey: ['dialogueSessions', projectId, 1, 50],
@@ -343,6 +368,9 @@ export function SetupWorkspacePage() {
     setDiscussionMessage('');
     setGenerationNote('');
     setGeneratePanelOpen(false);
+    setSupplementDraft('');
+    setSupplementEditorOpen(false);
+    setLocalSupplement('');
   }, [selectedSessionId]);
 
   useEffect(() => {
@@ -366,6 +394,39 @@ export function SetupWorkspacePage() {
     },
   });
 
+  const deleteSessionMutation = useMutation({
+    mutationFn: (session: SetupSession) => deleteSetupSession(session.id),
+    onSuccess: (_result, deletedSession) => {
+      const deletedSessionId = deletedSession.id;
+      queryClient.setQueriesData<PaginatedResponse<SetupSession>>({ queryKey: ['setupSessions', projectId] }, (page) =>
+        removeSetupSessionFromPage(page, deletedSessionId),
+      );
+      queryClient.removeQueries({ queryKey: ['setupSession', deletedSessionId] });
+      if (deletedSession.latest_run_id) {
+        queryClient.removeQueries({ queryKey: ['setupRun', deletedSession.latest_run_id] });
+        queryClient.removeQueries({ queryKey: ['setupRunResult', deletedSession.latest_run_id] });
+        queryClient.removeQueries({ queryKey: ['setupRunEventHistory', deletedSession.latest_run_id] });
+      }
+      if (selectedSessionId === deletedSessionId) {
+        const nextSession = sessions.find((session) => session.id !== deletedSessionId);
+        setActiveSessionId(nextSession?.id ?? '');
+        setActiveRunId(nextSession?.latest_run_id ?? '');
+        setActiveDialogueSessionId('');
+        setActiveDialogueRunId('');
+        setDiscussionMessage('');
+        setGenerationNote('');
+        setGeneratePanelOpen(false);
+        setSupplementDraft('');
+        setSupplementEditorOpen(false);
+        setLocalSupplement('');
+        setAuthorNote('');
+        setAcceptSections(defaultAcceptSections);
+      }
+      queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['dialogueSessions', projectId] });
+    },
+  });
+
   const advanceMutation = useMutation({
     mutationFn: (userMessage: string) => advanceSetupSession(selectedSessionId, { user_message: userMessage.trim() }),
     onSuccess: (run) => {
@@ -373,6 +434,19 @@ export function SetupWorkspacePage() {
       setGenerationNote('');
       setGeneratePanelOpen(false);
       setAcceptSections(defaultAcceptSections);
+      queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
+    },
+  });
+
+  const supplementMutation = useMutation({
+    mutationFn: (lastUserMessage: string) =>
+      updateSetupSession(selectedSessionId, {
+        last_user_message: lastUserMessage.trim(),
+      }),
+    onSuccess: (session) => {
+      setLocalSupplement(session.last_user_message ?? '');
+      setSupplementDraft('');
+      setSupplementEditorOpen(false);
       queryClient.invalidateQueries({ queryKey: ['setupSessions', projectId] });
     },
   });
@@ -391,6 +465,7 @@ export function SetupWorkspacePage() {
           message: rawMessage,
           scope: activeDiscussionScope,
           session: currentSession,
+          supplement: currentSupplement,
         }),
       });
       return { dialogueSessionId, run };
@@ -427,7 +502,7 @@ export function SetupWorkspacePage() {
   });
 
   const rejectActionMutation = useMutation({
-    mutationFn: (optionId: string) => rejectDialogueActionOption(optionId, { reason: '\u4f5c\u8005\u5728\u8bbe\u5b9a\u8ba8\u8bba\u533a\u62d2\u7edd\u4e86\u8fd9\u4e2a\u64cd\u4f5c\u3002' }),
+    mutationFn: (optionId: string) => rejectDialogueActionOption(optionId, { reason: '作者在设定讨论区拒绝了这个操作。' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dialogueSession', selectedDialogueSessionId] });
       queryClient.invalidateQueries({ queryKey: ['dialogueRunResult', selectedDialogueRunId] });
@@ -508,11 +583,48 @@ export function SetupWorkspacePage() {
     createSessionMutation.mutate();
   };
 
+  const removeSession = (session: SetupSession) => {
+    if (deleteSessionMutation.isPending) {
+      return;
+    }
+    if (window.confirm(`${copy.deleteSessionConfirm}\n\n${getSessionTitle(session)}`)) {
+      deleteSessionMutation.mutate(session);
+    }
+  };
+
   const openGeneratePanel = () => {
     if (!selectedSessionId || advanceMutation.isPending || isRunActive) {
       return;
     }
     setGeneratePanelOpen(true);
+  };
+
+  const openSupplementEditor = () => {
+    setSupplementDraft(formatSetupSupplementForDisplay(currentSupplement));
+    setSupplementEditorOpen(true);
+  };
+
+  const adoptSupplement = (value: string) => {
+    const content = value.trim();
+    if (!content) {
+      return;
+    }
+    setSupplementDraft(content);
+    setSupplementEditorOpen(true);
+  };
+
+  const cancelSupplementEditor = () => {
+    setSupplementDraft('');
+    setSupplementEditorOpen(false);
+  };
+
+  const saveSupplement = (event: FormEvent) => {
+    event.preventDefault();
+    const content = supplementDraft.trim();
+    if (!selectedSessionId || !content || supplementMutation.isPending) {
+      return;
+    }
+    supplementMutation.mutate(content);
   };
 
   const startDraftGeneration = (optionalInstruction = generationNote) => {
@@ -527,6 +639,7 @@ export function SetupWorkspacePage() {
         optionalInstruction,
         scope: activeDiscussionScope,
         session: currentSession,
+        supplement: currentSupplement,
       }),
     );
   };
@@ -564,7 +677,7 @@ export function SetupWorkspacePage() {
 
   const fillRetryPrompt = () => {
     setGenerationNote(
-      '\u8bf7\u91cd\u65b0\u751f\u6210\u8fd9\u6b21\u8bbe\u5b9a\u8349\u6848\uff0c\u5e76\u5728\u4e0d\u6539\u53d8\u6838\u5fc3\u79cd\u5b50\u7684\u524d\u63d0\u4e0b\u7f29\u5c0f\u8303\u56f4\uff0c\u8865\u5145\u786c\u7ea6\u675f\u4e0e\u4e16\u754c\u89c4\u5219\u3002',
+      '请重新生成这次设定草案，并在不改变核心种子的前提下缩小范围，补充硬约束与世界规则。',
     );
     setGeneratePanelOpen(true);
   };
@@ -573,7 +686,7 @@ export function SetupWorkspacePage() {
     if (!selectedSessionId || advanceMutation.isPending || isRunActive) {
       return;
     }
-    startDraftGeneration('\u8bf7\u57fa\u4e8e\u5f53\u524d\u4f1a\u8bdd\u91cd\u65b0\u8d77\u8349\u4e00\u7248\uff0c\u4e0d\u8981\u76f4\u63a5\u6cbf\u7528\u4e0a\u4e00\u7248\uff1b\u65b9\u5411\u66f4\u5927\u80c6\u3001\u66f4\u5929\u9a6c\u884c\u7a7a\uff0c\u540c\u65f6\u4fdd\u7559\u53ef\u843d\u5730\u7684\u4eba\u7269\u52a8\u673a\u548c\u5173\u7cfb\u5f20\u529b\u3002');
+    startDraftGeneration('请基于当前会话重新起草一版，不要直接沿用上一版；方向更大胆、更天马行空，同时保留可落地的人物动机和关系张力。');
   };
 
   const cancelDraft = () => {
@@ -625,31 +738,57 @@ export function SetupWorkspacePage() {
             <div className="session-list session-list--setup">
               {sessions.map((session) => {
                 const discussionCount = getSessionDiscussionCount(session, dialogueSessions, selectedSessionId, visibleDiscussionMessages);
+                const isDeletingSession = deleteSessionMutation.isPending && deleteSessionMutation.variables?.id === session.id;
                 return (
-                  <button
-                    className={selectedSessionId === session.id ? 'session-item session-item--active' : 'session-item'}
+                  <article
+                    className={
+                      selectedSessionId === session.id
+                        ? 'session-item session-item--setup session-item--active'
+                        : 'session-item session-item--setup'
+                    }
                     key={session.id}
-                    onClick={() => {
-                      setActiveSessionId(session.id);
-                      setActiveRunId(session.latest_run_id ?? '');
-                    }}
-                    type="button"
                   >
-                    <div className="session-item__headline">
-                      <strong>{getSessionTitle(session)}</strong>
-                    </div>
-                    <p className="session-item__summary">{getSessionSummary(session)}</p>
-                    <div className="session-item__meta">
-                      <span>
-                        {formatSetupSessionMeta({
-                          applied: isSetupApplied(session.status),
-                          discussionCount,
-                          draftCount: session.latest_run_id ? 1 : 0,
-                          updatedAt: session.updated_at ?? session.created_at,
-                        })}
-                      </span>
-                    </div>
-                  </button>
+                    <button
+                      aria-label={`选择设定会话 ${getSessionTitle(session)}`}
+                      className="session-item__body session-item__body--setup"
+                      onClick={() => {
+                        setActiveSessionId(session.id);
+                        setActiveRunId(session.latest_run_id ?? '');
+                      }}
+                      type="button"
+                    >
+                      <div className="session-item__headline">
+                        <strong>{getSessionTitle(session)}</strong>
+                      </div>
+                      <p className="session-item__summary">{getSessionSummary(session)}</p>
+                      <div className="session-item__meta">
+                        <span>
+                          {formatSetupSessionMeta({
+                            applied: isSetupApplied(session.status),
+                            discussionCount,
+                            draftCount: session.latest_run_id ? 1 : 0,
+                            updatedAt: session.updated_at ?? session.created_at,
+                          })}
+                        </span>
+                      </div>
+                    </button>
+                    <button
+                      aria-label={`${copy.deleteSessionTitle} ${getSessionTitle(session)}`}
+                      aria-busy={isDeletingSession}
+                      className={`icon-button session-item__action session-item__action--danger${
+                        isDeletingSession ? ' session-item__action--pending' : ''
+                      }`}
+                      disabled={deleteSessionMutation.isPending}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeSession(session);
+                      }}
+                      title={isDeletingSession ? copy.deleteSessionPending : copy.deleteSessionTitle}
+                      type="button"
+                    >
+                      {isDeletingSession ? <span className="session-item__action-spinner" /> : <Trash2 size={15} />}
+                    </button>
+                  </article>
                 );
               })}
             </div>
@@ -666,6 +805,7 @@ export function SetupWorkspacePage() {
           </div>
 
           {createSessionMutation.isError ? <ErrorState message={(createSessionMutation.error as Error).message} /> : null}
+          {deleteSessionMutation.isError ? <ErrorState message={(deleteSessionMutation.error as Error).message} /> : null}
           {advanceMutation.isError ? <ErrorState message={(advanceMutation.error as Error).message} /> : null}
           {resultQuery.isError ? <ErrorState message={(resultQuery.error as Error).message} /> : null}
 
@@ -692,8 +832,26 @@ export function SetupWorkspacePage() {
                     <p>{firstText(currentSession?.seed_idea, copy.emptySeed)}</p>
                   </div>
                   <div className="setup-context-card__block">
-                    <small>{copy.lastSupplementTitle}</small>
-                    <p>{firstText(currentSession?.last_user_message, copy.noSupplement)}</p>
+                    <div className="setup-context-card__block-heading">
+                      <small>{copy.lastSupplementTitle}</small>
+                      <button className="button button--ghost setup-context-card__edit" onClick={openSupplementEditor} type="button">
+                        {currentSupplement ? copy.supplementEditButton : copy.supplementManualButton}
+                      </button>
+                    </div>
+                    <SetupContextSupplement
+                      lastDiscussion={getLastDiscussionText(visibleDiscussionMessages)}
+                      supplement={currentSupplement}
+                    />
+                    {supplementEditorOpen ? (
+                      <SetupSupplementEditor
+                        isSaving={supplementMutation.isPending}
+                        onCancel={cancelSupplementEditor}
+                        onSubmit={saveSupplement}
+                        onValueChange={setSupplementDraft}
+                        value={supplementDraft}
+                      />
+                    ) : null}
+                    {supplementMutation.isError ? <ErrorState message={(supplementMutation.error as Error).message} /> : null}
                   </div>
                 </div>
               </section>
@@ -718,6 +876,7 @@ export function SetupWorkspacePage() {
                   isRunning={discussionMutation.isPending || isDialogueRunActive}
                   messages={dialogueMessages}
                   onConfirmAction={(optionId) => confirmActionMutation.mutate(optionId)}
+                  onAdoptSupplement={adoptSupplement}
                   onGenerateDraft={openGeneratePanel}
                   onRejectAction={(optionId) => rejectActionMutation.mutate(optionId)}
                   onScopeChange={setActiveDiscussionScope}
@@ -867,11 +1026,13 @@ function buildSetupDiscussionMessage({
   message,
   scope,
   session,
+  supplement,
 }: {
   activeRunId: string;
   message: string;
   scope: DiscussionScope;
   session: SetupSession | null;
+  supplement?: string;
 }) {
   const setupRunId = firstText(activeRunId, session?.latest_run_id);
   return [
@@ -880,7 +1041,7 @@ function buildSetupDiscussionMessage({
     `setup_session_id=${session?.id ?? ''}`,
     `setup_run_id=${setupRunId}`,
     `seed_idea=${session?.seed_idea ?? ''}`,
-    `last_setup_supplement=${session?.last_user_message ?? ''}`,
+    `last_setup_supplement=${formatSetupSupplementForDisplay(supplement || session?.last_user_message)}`,
     'instruction=这是设定工作台的轻量讨论消息。除非用户明确要求生成、更新或应用草案，否则只追问、总结或给建议，不要提出执行操作。',
     '__user_message__',
     message,
@@ -893,14 +1054,15 @@ function buildSetupDraftGenerationMessage({
   optionalInstruction,
   scope,
   session,
+  supplement,
 }: {
   activeRunId: string;
   discussionMessages: DialogueMessage[];
   optionalInstruction: string;
   scope: DiscussionScope;
   session: SetupSession | null;
+  supplement?: string;
 }) {
-  const setupRunId = firstText(activeRunId, session?.latest_run_id);
   const discussionContext = discussionMessages
     .map((message) => {
       const content = displayDiscussionContent(message.content);
@@ -912,18 +1074,23 @@ function buildSetupDraftGenerationMessage({
     .filter(Boolean)
     .slice(-20)
     .join('\n');
+  const optional = optionalInstruction.trim();
+  const lastSupplement = formatSetupSupplementForDisplay(supplement || session?.last_user_message);
 
   return [
-    '__setup_draft_generation_context__',
-    `scope=${scope}`,
-    `setup_session_id=${session?.id ?? ''}`,
-    `setup_run_id=${setupRunId}`,
-    `seed_idea=${session?.seed_idea ?? ''}`,
-    `last_setup_supplement=${session?.last_user_message ?? ''}`,
-    'discussion_context:',
-    discussionContext || '\u6682\u65e0\u8ba8\u8bba\u6d88\u606f\uff0c\u8bf7\u57fa\u4e8e\u79cd\u5b50\u6784\u60f3\u8d77\u8349\u3002',
-    optionalInstruction.trim() ? `optional_instruction=${optionalInstruction.trim()}` : '',
-    'instruction=\u8bf7\u57fa\u4e8e\u79cd\u5b50\u6784\u60f3\u548c\u5f53\u524d\u8bbe\u5b9a\u8ba8\u8bba\u4e0a\u4e0b\u6587\u751f\u6210\u7ed3\u6784\u5316\u8bbe\u5b9a\u8349\u6848\uff1b\u4e0d\u8981\u8981\u6c42\u4f5c\u8005\u91cd\u590d\u8f93\u5165\u5df2\u7ecf\u8ba8\u8bba\u8fc7\u7684\u4fe1\u606f\u3002',
+    '请基于当前设定讨论生成一版结构化草案。',
+    '',
+    `生成范围：${formatDiscussionScope(scope)}`,
+    '',
+    '种子构想：',
+    firstText(session?.seed_idea, '暂无种子内容。'),
+    lastSupplement ? `\n最近补充：\n${lastSupplement}` : '',
+    '',
+    '讨论上下文：',
+    discussionContext || '暂无讨论消息，请基于种子构想起草。',
+    optional ? `\n本次生成额外要求：${optional}` : '',
+    '',
+    '请不要要求作者重复输入已经讨论过的信息。',
   ]
     .filter(Boolean)
     .join('\n');
@@ -936,6 +1103,175 @@ function displayDiscussionContent(content: string) {
     return content.slice(markerIndex + marker.length).trim();
   }
   return content.trim();
+}
+
+function getSupplementAdoptionOptions(content: string) {
+  const lines = content.split(/\r?\n/);
+  const headings = lines
+    .map((line, index) => {
+      const match = line.match(/^\s{0,3}#{2,4}\s+(.+?)\s*#*\s*$/);
+      if (!match) {
+        return undefined;
+      }
+      return {
+        index,
+        label: cleanSupplementOptionLabel(match[1]),
+      };
+    })
+    .filter(Boolean) as Array<{ index: number; label: string }>;
+
+  return headings
+    .filter((heading) => heading.label)
+    .slice(0, 4)
+    .map((heading, order, selectedHeadings) => {
+      const nextHeading = selectedHeadings[order + 1] ?? headings.find((item) => item.index > heading.index);
+      const endIndex = nextHeading?.index ?? lines.length;
+      return {
+        label: heading.label,
+        content: lines.slice(heading.index, endIndex).join('\n').trim(),
+      };
+    })
+    .filter((option) => option.content);
+}
+
+function cleanSupplementOptionLabel(value: string) {
+  const label = value
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/[*_`~]/g, '')
+    .replace(/[：:]\s*$/, '')
+    .trim();
+  return label;
+}
+
+function SetupContextSupplement({ supplement, lastDiscussion }: { supplement?: string; lastDiscussion?: string }) {
+  const summary = parseSetupSupplement(supplement);
+  const rows = [
+    summary.action ? ['最近动作', summary.action] : undefined,
+    summary.scope ? ['生成范围', summary.scope] : undefined,
+    summary.instruction ? ['额外要求', summary.instruction] : undefined,
+    summary.content ? ['最近补充', summary.content] : undefined,
+    lastDiscussion ? ['最后讨论', lastDiscussion] : undefined,
+  ].filter(Boolean) as Array<[string, string]>;
+
+  if (rows.length === 0) {
+    return <p>{copy.noSupplement}</p>;
+  }
+
+  return (
+    <dl className="setup-context-summary">
+      {rows.map(([label, value]) => (
+        <div className="setup-context-summary__row" key={label}>
+          <dt>{label}</dt>
+          <dd>
+            <MarkdownRenderer source={value} variant="compact" />
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function parseSetupSupplement(value?: string) {
+  const text = value?.trim();
+  if (!text) {
+    return {};
+  }
+
+  if (text.includes('__setup_draft_generation_context__')) {
+    return {
+      action: '生成设定草案',
+      instruction: extractInternalOptionalInstruction(text),
+      scope: formatDiscussionScope(text.match(/^scope=([^\s\n]+)/m)?.[1]),
+    };
+  }
+
+  if (text.startsWith('请基于当前设定讨论生成一版结构化草案')) {
+    return {
+      action: '生成设定草案',
+      instruction: text.match(/^本次生成额外要求：(.+)$/m)?.[1]?.trim(),
+      scope: text.match(/^生成范围：(.+)$/m)?.[1]?.trim() || formatDiscussionScope('all'),
+    };
+  }
+
+  if (text.includes('__setup_discussion_context__')) {
+    return {
+      action: '补充设定讨论',
+      content: displayDiscussionContent(text),
+    };
+  }
+
+  return {
+    action: '补充设定要求',
+    content: text,
+  };
+}
+
+function extractInternalOptionalInstruction(text: string) {
+  return text.match(/^optional_instruction=(.*?)(?:\s+instruction=|$)/m)?.[1]?.trim();
+}
+
+function getLastDiscussionText(messages: DialogueMessage[]) {
+  const last = [...messages].reverse().find((message) => displayDiscussionContent(message.content));
+  return last ? displayDiscussionContent(last.content) : '';
+}
+
+function formatSetupSupplementForDisplay(value?: string) {
+  const text = value?.trim();
+  if (!text) {
+    return '';
+  }
+
+  if (text.includes('__setup_discussion_context__')) {
+    return displayDiscussionContent(text);
+  }
+
+  if (text.includes('__setup_draft_generation_context__')) {
+    return summarizeInternalDraftGeneration(text);
+  }
+
+  if (text.startsWith('请基于当前设定讨论生成一版结构化草案')) {
+    return summarizeReadableDraftGeneration(text);
+  }
+
+  return text;
+}
+
+function summarizeInternalDraftGeneration(text: string) {
+  const scope = text.match(/^scope=([^\s\n]+)/m)?.[1];
+  const optionalInstruction = text.match(/^optional_instruction=([^\n]+)/m)?.[1]?.trim();
+  return formatDraftGenerationSummary(formatDiscussionScope(scope), optionalInstruction);
+}
+
+function summarizeReadableDraftGeneration(text: string) {
+  const scope = text.match(/^生成范围：(.+)$/m)?.[1]?.trim();
+  const optionalInstruction = text.match(/^本次生成额外要求：(.+)$/m)?.[1]?.trim();
+  return formatDraftGenerationSummary(scope || formatDiscussionScope('all'), optionalInstruction);
+}
+
+function formatDraftGenerationSummary(scopeLabel: string, optionalInstruction?: string) {
+  return [
+    '已请求基于当前讨论生成设定草案。',
+    `生成范围：${scopeLabel}。`,
+    optionalInstruction ? `额外要求：${optionalInstruction}。` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function formatDiscussionScope(scope?: string) {
+  switch (scope) {
+    case 'author_bible':
+      return '作者圣经';
+    case 'characters':
+      return '角色设定';
+    case 'relationships':
+      return '关系设定';
+    case 'world':
+      return '世界状态';
+    case 'all':
+    default:
+      return '全部设定';
+  }
 }
 
 function firstError(...values: unknown[]) {
@@ -984,38 +1320,38 @@ function getDialogueActionTone(status?: string) {
 function formatDialogueActionStatus(status?: string) {
   switch (status) {
     case 'pending':
-      return '\u5f85\u786e\u8ba4';
+      return '待确认';
     case 'confirmed':
-      return '\u5df2\u786e\u8ba4';
+      return '已确认';
     case 'executing':
-      return '\u6267\u884c\u4e2d';
+      return '执行中';
     case 'executed':
-      return '\u5df2\u6267\u884c';
+      return '已执行';
     case 'rejected':
-      return '\u5df2\u62d2\u7edd';
+      return '已拒绝';
     case 'failed':
-      return '\u5931\u8d25';
+      return '失败';
     default:
-      return '\u672a\u77e5';
+      return '未知';
   }
 }
 
 function defaultDialogueActionLabel(actionType?: string) {
   switch (actionType) {
     case 'setup.start_and_advance':
-      return '\u751f\u6210\u9879\u76ee\u8bbe\u5b9a\u8349\u6848';
+      return '生成项目设定草案';
     case 'setup.advance':
-      return '\u66f4\u65b0\u8bbe\u5b9a\u8349\u6848';
+      return '更新设定草案';
     case 'setup.apply':
-      return '\u5e94\u7528\u8bbe\u5b9a\u8349\u6848';
+      return '应用设定草案';
     case 'story.create_and_advance':
-      return '\u5f00\u59cb\u5267\u60c5\u7f16\u6392';
+      return '开始剧情编排';
     case 'story.advance':
-      return '\u7ee7\u7eed\u5267\u60c5\u7f16\u6392';
+      return '继续剧情编排';
     case 'story.commit':
-      return '\u63d0\u4ea4\u7ae0\u8282\u8349\u7a3f';
+      return '提交章节草稿';
     default:
-      return '\u6267\u884c\u4e0b\u4e00\u6b65';
+      return '执行下一步';
   }
 }
 
@@ -1023,11 +1359,11 @@ function defaultDialogueActionDescription(actionType?: string) {
   switch (actionType) {
     case 'setup.start_and_advance':
     case 'setup.advance':
-      return '\u786e\u8ba4\u540e\u4f1a\u89e6\u53d1 setup run\uff0c\u751f\u6210\u4e00\u7248\u65b0\u7684\u7ed3\u6784\u5316\u8349\u6848\u3002';
+      return '确认后会触发 setup run，生成一版新的结构化草案。';
     case 'setup.apply':
-      return '\u786e\u8ba4\u540e\u4f1a\u628a\u5df2\u5ba1\u6838\u7684\u8349\u6848\u5199\u5165\u9879\u76ee\u72b6\u6001\u3002';
+      return '确认后会把已审核的草案写入项目状态。';
     default:
-      return '\u786e\u8ba4\u540e\u6267\u884c\u8fd9\u4e2a\u5f85\u786e\u8ba4\u64cd\u4f5c\u3002';
+      return '确认后执行这个待确认操作。';
   }
 }
 
@@ -1036,11 +1372,11 @@ function dialogueRoleLabel(role: string) {
     case 'assistant':
       return 'AI';
     case 'tool':
-      return '\u7cfb\u7edf';
+      return '系统';
     case 'system':
-      return '\u4e0a\u4e0b\u6587';
+      return '上下文';
     default:
-      return '\u6211';
+      return '我';
   }
 }
 
@@ -1163,11 +1499,11 @@ function formatApplyModuleStatus(key: ModuleKey, count: number, state: ApplyPane
 function getApplyPanelHint(state: ApplyPanelState) {
   switch (state) {
     case 'generating':
-      return '\u6b63\u5728\u751f\u6210\u8349\u6848\uff0c\u5b8c\u6210\u540e\u53ef\u9010\u6a21\u5757\u5e94\u7528\u3002';
+      return '正在生成草案，完成后可逐模块应用。';
     case 'ready':
-      return '\u9009\u62e9\u8981\u5199\u5165\u9879\u76ee\u7684\u6a21\u5757\u3002';
+      return '选择要写入项目的模块。';
     case 'applied':
-      return '\u8fd9\u7248\u8349\u6848\u5df2\u5e94\u7528\uff0c\u53ef\u7ee7\u7eed\u8ba8\u8bba\u540e\u66f4\u65b0\u8349\u6848\u3002';
+      return '这版草案已应用，可继续讨论后更新草案。';
     default:
       return copy.applyDisabledHint;
   }
@@ -1202,8 +1538,34 @@ function formatSetupSessionMeta({
   draftCount: number;
   updatedAt?: string;
 }) {
-  const draftLabel = `${draftCount} \u8349\u6848${applied && draftCount > 0 ? '\u5df2\u5e94\u7528' : ''}`;
-  return `${formatRelativeTime(updatedAt)} \u00b7 ${discussionCount} \u8ba8\u8bba \u00b7 ${draftLabel}`;
+  const draftLabel = `${draftCount} 草案${applied && draftCount > 0 ? '已应用' : ''}`;
+  return `${formatRelativeTime(updatedAt)} · ${discussionCount} 讨论 · ${draftLabel}`;
+}
+
+function removeSetupSessionFromPage(page: PaginatedResponse<SetupSession> | undefined, deletedSessionId: string) {
+  if (!page) {
+    return page;
+  }
+
+  const nextData = page.data.filter((session) => session.id !== deletedSessionId);
+  if (nextData.length === page.data.length) {
+    return page;
+  }
+
+  const pagination = page.meta?.pagination;
+  return {
+    ...page,
+    data: nextData,
+    meta: pagination
+      ? {
+          ...page.meta,
+          pagination: {
+            ...pagination,
+            total: Math.max(0, pagination.total - 1),
+          },
+        }
+      : page.meta,
+  };
 }
 
 function SetupFlowProgress({ state }: { state: ApplyPanelState }) {
@@ -1224,27 +1586,27 @@ function getFlowSteps(state: ApplyPanelState): Array<{ label: string; tone: Flow
   switch (state) {
     case 'applied':
       return [
-        { label: '\u8ba8\u8bba\u5b8c\u6210', tone: 'done' },
-        { label: '\u8349\u6848\u5df2\u751f\u6210', tone: 'done' },
-        { label: '\u5df2\u5e94\u7528', tone: 'done' },
+        { label: '讨论完成', tone: 'done' },
+        { label: '草案已生成', tone: 'done' },
+        { label: '已应用', tone: 'done' },
       ];
     case 'generating':
       return [
-        { label: '\u8ba8\u8bba\u5b8c\u6210', tone: 'done' },
-        { label: '\u8349\u6848\u751f\u6210\u4e2d', tone: 'active' },
-        { label: '\u5f85\u5e94\u7528', tone: 'idle' },
+        { label: '讨论完成', tone: 'done' },
+        { label: '草案生成中', tone: 'active' },
+        { label: '待应用', tone: 'idle' },
       ];
     case 'ready':
       return [
-        { label: '\u8ba8\u8bba\u5b8c\u6210', tone: 'done' },
-        { label: '\u8349\u6848\u5df2\u751f\u6210', tone: 'done' },
-        { label: '\u5f85\u5e94\u7528', tone: 'active' },
+        { label: '讨论完成', tone: 'done' },
+        { label: '草案已生成', tone: 'done' },
+        { label: '待应用', tone: 'active' },
       ];
     default:
       return [
-        { label: '\u8ba8\u8bba\u4e2d', tone: 'active' },
-        { label: '\u8349\u6848\u5f85\u751f\u6210', tone: 'idle' },
-        { label: '\u5f85\u5e94\u7528', tone: 'idle' },
+        { label: '讨论中', tone: 'active' },
+        { label: '草案待生成', tone: 'idle' },
+        { label: '待应用', tone: 'idle' },
       ];
   }
 }
@@ -1258,6 +1620,7 @@ function SetupDiscussionPanel({
   isLoading,
   isRunning,
   messages,
+  onAdoptSupplement,
   onConfirmAction,
   onGenerateDraft,
   onRejectAction,
@@ -1278,6 +1641,7 @@ function SetupDiscussionPanel({
   isLoading: boolean;
   isRunning: boolean;
   messages: DialogueMessage[];
+  onAdoptSupplement: (value: string) => void;
   onConfirmAction: (optionId: string) => void;
   onGenerateDraft: () => void;
   onRejectAction: (optionId: string) => void;
@@ -1320,16 +1684,41 @@ function SetupDiscussionPanel({
           </div>
         ) : null}
         {!isLoading
-          ? visibleMessages.map((message) => (
-              <article className={`setup-discussion-message setup-discussion-message--${dialogueRoleClass(message.role)}`} key={message.id}>
-                <div className="setup-discussion-message__meta">
-                  {message.role === 'assistant' ? <Bot size={14} /> : null}
-                  <span>{dialogueRoleLabel(message.role)}</span>
-                  <small>{formatDateTime(message.created_at)}</small>
-                </div>
-                <MarkdownRenderer source={displayDiscussionContent(message.content)} variant="compact" />
-              </article>
-            ))
+          ? visibleMessages.map((message) => {
+              const content = displayDiscussionContent(message.content);
+              const canAdopt = message.role === 'assistant' && Boolean(content.trim());
+              const adoptionOptions = canAdopt ? getSupplementAdoptionOptions(content) : [];
+              return (
+                <article className={`setup-discussion-message setup-discussion-message--${dialogueRoleClass(message.role)}`} key={message.id}>
+                  <div className="setup-discussion-message__meta">
+                    {message.role === 'assistant' ? <Bot size={14} /> : null}
+                    <span>{dialogueRoleLabel(message.role)}</span>
+                    <small>{formatDateTime(message.created_at)}</small>
+                  </div>
+                  <MarkdownRenderer source={content} variant="compact" />
+                  {canAdopt ? (
+                    <div className="setup-discussion-message__actions">
+                      {adoptionOptions.map((option, optionIndex) => (
+                        <button
+                          className="setup-discussion-message__adopt"
+                          key={`${option.label}-${optionIndex}`}
+                          onClick={() => onAdoptSupplement(option.content)}
+                          title={option.label}
+                          type="button"
+                        >
+                          <Check size={14} />
+                          <span>采纳：{option.label}</span>
+                        </button>
+                      ))}
+                      <button className="setup-discussion-message__adopt" onClick={() => onAdoptSupplement(content)} type="button">
+                        <Check size={14} />
+                        {adoptionOptions.length > 0 ? copy.supplementAdoptWhole : copy.supplementAdopt}
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })
           : null}
       </div>
 
@@ -1425,6 +1814,44 @@ function SetupDiscussionPanel({
   );
 }
 
+function SetupSupplementEditor({
+  isSaving,
+  onCancel,
+  onSubmit,
+  onValueChange,
+  value,
+}: {
+  isSaving: boolean;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent) => void;
+  onValueChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <form className="setup-supplement-editor" onSubmit={onSubmit}>
+      <div className="setup-panel__section-header">
+        <h3>{copy.supplementEditorTitle}</h3>
+      </div>
+      <textarea
+        className="setup-grow-textarea"
+        onChange={(event) => onValueChange(event.target.value)}
+        placeholder={copy.supplementEditorPlaceholder}
+        rows={5}
+        value={value}
+      />
+      <div className="setup-supplement-editor__actions">
+        <button className="button button--ghost" disabled={isSaving} onClick={onCancel} type="button">
+          {copy.supplementCancel}
+        </button>
+        <button className="button button--secondary" disabled={!value.trim() || isSaving} type="submit">
+          <Check size={16} />
+          {isSaving ? copy.supplementSaving : copy.supplementSave}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function SetupGenerateConfirmPanel({
   isRunning,
   onCancel,
@@ -1482,15 +1909,8 @@ function SetupDraftPreview({
   onCancelDraft: () => void;
 }) {
   const characterNames = useMemo(() => {
-    const names = new Map<string, string>();
-    (draft?.characters ?? []).forEach((character, index) => {
-      const id = character.id?.trim();
-      if (id) {
-        names.set(id, firstText(character.name, `${copy.rolePrefix} ${index + 1}`));
-      }
-    });
-    return names;
-  }, [draft?.characters]);
+    return buildCharacterNameMap(draft);
+  }, [draft]);
 
   if (!draft) {
     return (
@@ -1673,6 +2093,7 @@ function VisualDraftBoard({
   onCancelDraft: () => void;
 }) {
   const visual = draft.visual_draft;
+  const characterNames = useMemo(() => buildCharacterNameMap(draft), [draft]);
   if (!visual) {
     return (
       <section className="result-section setup-visual-board">
@@ -1727,7 +2148,7 @@ function VisualDraftBoard({
               <article className="setup-card" key={card.character_key ?? `${card.name ?? 'character'}-${index}`}>
                 <div className="setup-card__header">
                   <strong>{firstText(card.name, `${copy.rolePrefix} ${index + 1}`)}</strong>
-                  <span>{firstText(card.role, card.character_key, copy.defaultRole)}</span>
+                  <span>{firstText(card.role, formatCharacterName(card.character_key, characterNames, ''), copy.defaultRole)}</span>
                 </div>
                 <p className="setup-card__copy">{firstText(card.hook, copy.defaultProfile)}</p>
                 <div className="key-value-grid">
@@ -1748,7 +2169,7 @@ function VisualDraftBoard({
               <article className="setup-card" key={`${edge.from_character_key ?? 'from'}-${edge.to_character_key ?? 'to'}-${index}`}>
                 <div className="setup-card__header">
                   <strong>
-                    {firstText(edge.from_character_key, copy.roleA)} / {firstText(edge.to_character_key, copy.roleB)}
+                    {formatCharacterName(edge.from_character_key, characterNames, copy.roleA)} / {formatCharacterName(edge.to_character_key, characterNames, copy.roleB)}
                   </strong>
                   <span>{firstText(edge.tension, copy.relationshipDraft)}</span>
                 </div>
@@ -1870,16 +2291,8 @@ function RelationshipDraftCard({
   characterNames: Map<string, string>;
 }) {
   const pair = relationship.pair;
-  const leftName = firstText(
-    pair?.left_character_id ? characterNames.get(pair.left_character_id) : undefined,
-    pair?.left_character_id,
-    copy.roleA,
-  );
-  const rightName = firstText(
-    pair?.right_character_id ? characterNames.get(pair.right_character_id) : undefined,
-    pair?.right_character_id,
-    copy.roleB,
-  );
+  const leftName = formatCharacterName(pair?.left_character_id, characterNames, copy.roleA);
+  const rightName = formatCharacterName(pair?.right_character_id, characterNames, copy.roleB);
 
   return (
     <article className="setup-card">
@@ -1924,6 +2337,73 @@ function KeyValue({ label, value }: { label: string; value?: string }) {
       <strong>{firstText(value, '-')}</strong>
     </div>
   );
+}
+
+function buildCharacterNameMap(draft?: SetupDraft) {
+  const names = new Map<string, string>();
+
+  (draft?.characters ?? []).forEach((character, index) => {
+    const displayName = firstText(character.name, `${copy.rolePrefix} ${index + 1}`);
+    addCharacterNameAlias(names, character.id, displayName);
+    addCharacterNameAlias(names, character.name, displayName);
+  });
+
+  (draft?.visual_draft?.character_cards ?? []).forEach((card, index) => {
+    const displayName = firstText(card.name, `${copy.rolePrefix} ${index + 1}`);
+    addCharacterNameAlias(names, card.character_key, displayName);
+    addCharacterNameAlias(names, card.name, displayName);
+  });
+
+  return names;
+}
+
+function addCharacterNameAlias(names: Map<string, string>, alias: string | undefined, displayName: string) {
+  const key = alias?.trim();
+  if (!key || !displayName.trim()) {
+    return;
+  }
+
+  names.set(key, displayName);
+  names.set(normalizeCharacterIdentifier(key), displayName);
+}
+
+function formatCharacterName(identifier: string | undefined, characterNames: Map<string, string>, fallback: string) {
+  const key = identifier?.trim();
+  if (!key) {
+    return fallback;
+  }
+
+  return characterNames.get(key) ?? characterNames.get(normalizeCharacterIdentifier(key)) ?? readableCharacterIdentifier(key);
+}
+
+function normalizeCharacterIdentifier(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+function readableCharacterIdentifier(value: string) {
+  const normalized = normalizeCharacterIdentifier(value);
+  const knownNames: Record<string, string> = {
+    a_deng: '阿灯',
+    lin_wanqing: '林婉清',
+    lin_zhou: '林舟',
+    qiao_popo: '乔婆婆',
+    su_mian: '苏眠',
+  };
+
+  if (knownNames[normalized]) {
+    return knownNames[normalized];
+  }
+
+  if (/[一-鿿]/.test(value)) {
+    return value;
+  }
+
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function relationshipViewLines(relationship: Partial<Relationship>, sourceCharacterID?: string) {
@@ -2003,7 +2483,7 @@ function SetupRunEventHistoryPanel({
           </div>
           {events.length > 6 ? (
             <button className="button button--ghost setup-full-button" onClick={() => setExpanded((value) => !value)} type="button">
-              {expanded ? copy.collapseEvents : `${copy.expandEvents} ${events.length} \u6761`}
+              {expanded ? copy.collapseEvents : `${copy.expandEvents} ${events.length} 条`}
             </button>
           ) : null}
         </>
@@ -2015,7 +2495,7 @@ function SetupRunEventHistoryPanel({
 function getSessionTitle(session: SetupSession | null) {
   const seed = session?.seed_idea?.trim();
   if (!seed) {
-    return '\u672a\u547d\u540d\u8bbe\u5b9a\u4f1a\u8bdd';
+    return '未命名设定会话';
   }
 
   const firstLine = seed.split(/\r?\n/)[0]?.trim() ?? seed;
@@ -2023,8 +2503,8 @@ function getSessionTitle(session: SetupSession | null) {
 }
 
 function getSessionSummary(session: SetupSession) {
-  const summary = session.last_user_message?.trim() || session.seed_idea?.trim();
-  return truncateText(summary || '\u6682\u65e0\u6458\u8981', 58);
+  const summary = formatSetupSupplementForDisplay(session.last_user_message) || session.seed_idea?.trim();
+  return truncateText(summary || '暂无摘要', 58);
 }
 
 function getWorkspaceDisplayStatus(runStatus?: string, sessionStatus?: string) {
@@ -2051,26 +2531,26 @@ function truncateText(value: string, maxLength: number) {
 function formatRunStatus(status?: string) {
   switch (status) {
     case 'queued':
-      return '\u6392\u961f\u4e2d';
+      return '排队中';
     case 'running':
     case 'loading_state':
-      return '\u751f\u6210\u4e2d';
+      return '生成中';
     case 'review_required':
-      return '\u5f85\u5ba1\u9605';
+      return '待审阅';
     case 'succeeded':
-      return '\u5df2\u751f\u6210';
+      return '已生成';
     case 'retryable':
-      return '\u5f85\u91cd\u8bd5';
+      return '待重试';
     case 'failed':
-      return '\u5931\u8d25';
+      return '失败';
     case 'applied':
-      return '\u5df2\u5e94\u7528';
+      return '已应用';
     case 'committed':
-      return '\u5df2\u5e94\u7528';
+      return '已应用';
     case 'cancelled':
-      return '\u5df2\u53d6\u6d88';
+      return '已取消';
     default:
-      return '\u5c31\u7eea';
+      return '就绪';
   }
 }
 
@@ -2115,7 +2595,7 @@ function formatModuleCount(key: ModuleKey, count: number) {
     case 'worldState':
       return `${count} ${copy.worldStateUnit}`;
     default:
-      return `${count} \u9879`;
+      return `${count} 项`;
   }
 }
 
@@ -2162,25 +2642,25 @@ function getEventTitle(event: RunEvent) {
   const name = event.event_name.toLowerCase();
   const payloadText = eventPayloadText(event).toLowerCase();
   if (name.includes('session') && name.includes('create')) {
-    return '\u521b\u5efa\u8bbe\u5b9a\u4f1a\u8bdd';
+    return '创建设定会话';
   }
   if (name.includes('apply') && (name.includes('success') || name.includes('done') || name.includes('finish'))) {
-    return '\u5e94\u7528\u8349\u6848';
+    return '应用草案';
   }
   if (name.includes('apply')) {
-    return '\u51c6\u5907\u5e94\u7528\u8349\u6848';
+    return '准备应用草案';
   }
   if (name.includes('fail') || name.includes('error') || payloadText.includes('failed') || payloadText.includes('error')) {
-    return '\u8349\u6848\u751f\u6210\u5931\u8d25';
+    return '草案生成失败';
   }
   if (name.includes('success') || name.includes('finish') || name.includes('complete')) {
-    return '\u8349\u6848\u751f\u6210\u5b8c\u6210';
+    return '草案生成完成';
   }
   if (name.includes('queue')) {
-    return '\u8349\u6848\u8fdb\u5165\u961f\u5217';
+    return '草案进入队列';
   }
   if (name.includes('start') || name.includes('run')) {
-    return '\u5f00\u59cb\u751f\u6210\u8349\u6848';
+    return '开始生成草案';
   }
   return normalizeEventName(event.event_name);
 }
@@ -2221,7 +2701,7 @@ function pickText(...values: unknown[]) {
 
 function formatRelativeTime(value?: string) {
   if (!value) {
-    return '\u521a\u521a\u66f4\u65b0';
+    return '刚刚更新';
   }
 
   const timestamp = new Date(value).getTime();
@@ -2235,19 +2715,19 @@ function formatRelativeTime(value?: string) {
   const day = 24 * hour;
 
   if (diff < minute) {
-    return '\u521a\u521a\u66f4\u65b0';
+    return '刚刚更新';
   }
 
   if (diff < hour) {
-    return `${Math.floor(diff / minute)} \u5206\u949f\u524d`;
+    return `${Math.floor(diff / minute)} 分钟前`;
   }
 
   if (diff < day) {
-    return `${Math.floor(diff / hour)} \u5c0f\u65f6\u524d`;
+    return `${Math.floor(diff / hour)} 小时前`;
   }
 
   if (diff < day * 7) {
-    return `${Math.floor(diff / day)} \u5929\u524d`;
+    return `${Math.floor(diff / day)} 天前`;
   }
 
   return new Intl.DateTimeFormat('zh-CN', {
@@ -2258,7 +2738,7 @@ function formatRelativeTime(value?: string) {
 
 function formatDateTime(value?: string) {
   if (!value) {
-    return '\u6682\u65e0\u8bb0\u5f55';
+    return '暂无记录';
   }
 
   const timestamp = new Date(value);

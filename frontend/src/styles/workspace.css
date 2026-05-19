@@ -96,6 +96,15 @@
   padding: 8px;
 }
 
+.session-item--setup {
+  align-items: start;
+  cursor: default;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px;
+}
+
 .session-item__body {
   background: transparent;
   border: 0;
@@ -107,6 +116,10 @@
   min-width: 0;
   padding: 6px;
   text-align: left;
+}
+
+.session-item__body--setup {
+  width: 100%;
 }
 
 .session-item__body:focus-visible,
@@ -147,6 +160,10 @@
   min-width: 32px;
 }
 
+.session-item--setup .session-item__action {
+  align-self: start;
+}
+
 .session-item__action:hover:not(:disabled) {
   background: var(--accent-soft);
   border-color: rgba(90, 107, 78, 0.18);
@@ -166,6 +183,29 @@
   color: var(--text-subtle);
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.session-item__action--pending:disabled,
+.session-item__action--pending:disabled:hover {
+  background: rgba(169, 76, 61, 0.06);
+  border-color: rgba(169, 76, 61, 0.12);
+  color: var(--danger);
+  opacity: 1;
+}
+
+.session-item__action-spinner {
+  animation: session-action-spin 720ms linear infinite;
+  border: 2px solid rgba(169, 76, 61, 0.22);
+  border-radius: 999px;
+  border-top-color: var(--danger);
+  height: 15px;
+  width: 15px;
+}
+
+@keyframes session-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .session-item__edit {

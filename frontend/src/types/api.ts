@@ -273,6 +273,10 @@ export type AdvanceSetupSessionRequest = {
   user_message: string;
 };
 
+export type UpdateSetupSessionRequest = {
+  last_user_message: string;
+};
+
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | string;
 
 export type Run = {
