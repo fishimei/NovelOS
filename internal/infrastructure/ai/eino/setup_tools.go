@@ -2,6 +2,8 @@ package eino
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -56,7 +58,7 @@ func newSetupTools(state *setupRunState) ([]tool.BaseTool, error) {
 	}
 	setWorldState, err := utils.InferTool("set_setup_world_state", "提交世界状态部分。至少 3 项，每项包含 key、value、note、importance、volatility。只提交 world_state。", func(ctx context.Context, input SetSetupWorldStateInput) (setupToolResult, error) {
 		return setSetupWorldState(ctx, state, input)
-	})
+	}, utils.WithUnmarshalArguments(unmarshalSetSetupWorldStateInput))
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +101,90 @@ func setSetupWorldState(ctx context.Context, state *setupRunState, input SetSetu
 	defer state.mu.Unlock()
 	state.output.WorldState = input.WorldState
 	return setupProgressResult(state.output, "world_state saved"), nil
+}
+
+func unmarshalSetSetupWorldStateInput(ctx context.Context, arguments string) (any, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(arguments), &raw); err == nil {
+		if worldState, ok := raw["world_state"]; ok {
+			entries, err := unmarshalSetupWorldStateEntries(worldState)
+			if err != nil {
+				return nil, err
+			}
+			return SetSetupWorldStateInput{WorldState: entries}, nil
+		}
+	}
+	entries, err := unmarshalSetupWorldStateEntries(json.RawMessage(arguments))
+	if err != nil {
+		return nil, err
+	}
+	return SetSetupWorldStateInput{WorldState: entries}, nil
+}
+
+func unmarshalSetupWorldStateEntries(raw json.RawMessage) ([]setupWorldStateOutput, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err == nil {
+		entries := make([]setupWorldStateOutput, 0, len(items))
+		for idx, item := range items {
+			entry, ok, err := unmarshalSetupWorldStateEntry(item, idx)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				entries = append(entries, entry)
+			}
+		}
+		return entries, nil
+	}
+	entry, ok, err := unmarshalSetupWorldStateEntry(raw, 0)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("world_state is required")
+	}
+	return []setupWorldStateOutput{entry}, nil
+}
+
+func unmarshalSetupWorldStateEntry(raw json.RawMessage, idx int) (setupWorldStateOutput, bool, error) {
+	var encoded string
+	if err := json.Unmarshal(raw, &encoded); err == nil {
+		text := strings.TrimSpace(encoded)
+		if text == "" || isSetupWorldStateSchemaToken(text) {
+			return setupWorldStateOutput{}, false, nil
+		}
+		if strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") {
+			entries, err := unmarshalSetupWorldStateEntries(json.RawMessage(text))
+			if err != nil {
+				return setupWorldStateOutput{}, false, err
+			}
+			if len(entries) == 0 {
+				return setupWorldStateOutput{}, false, nil
+			}
+			return entries[0], true, nil
+		}
+		return setupWorldStateOutput{Key: fmt.Sprintf("world_state_%02d", idx+1), Value: text, Note: text, Importance: 3, Volatility: 3}, true, nil
+	}
+	var entry setupWorldStateOutput
+	if err := json.Unmarshal(raw, &entry); err != nil {
+		return setupWorldStateOutput{}, false, err
+	}
+	if strings.TrimSpace(entry.Key) == "" && entry.Value == nil && strings.TrimSpace(entry.Note) == "" {
+		return setupWorldStateOutput{}, false, nil
+	}
+	if strings.TrimSpace(entry.Key) == "" {
+		entry.Key = fmt.Sprintf("world_state_%02d", idx+1)
+	}
+	return entry, true, nil
+}
+
+func isSetupWorldStateSchemaToken(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "key", "value", "note", "importance", "volatility", "world_state":
+		return true
+	default:
+		return false
+	}
 }
 
 func setSetupCharacters(ctx context.Context, state *setupRunState, input SetSetupCharactersInput) (setupToolResult, error) {

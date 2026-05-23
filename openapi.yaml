@@ -4,11 +4,12 @@ info:
   title: NovelOS API
   version: 0.3.0
   description: |
-    NovelOS 是一个“助手建模 + 主控 AI 推进剧情”的小说创作后端。
+    NovelOS 是一个“助手建模 + 世界模拟 + 可分叉故事推进”的小说创作后端。
 
-    它分成两层：
+    它分成三层：
     - 设定采集层：用户先说一句模糊想法，助手拆解成作者圣经、角色、关系、世界变量，并在必要时追问。
-    - 故事推进层：在完成设定建模后，作者只需提供一句推进语，系统生成具备选择压力的剧情变量并推进故事。
+    - 世界模拟层：simulation tick 独立推进项目时间线，让角色基于当前位置和地点势力影响产生行动、事件与状态快照。
+    - 故事推进层：story run 生成候选正文、交互记录和状态 patch，并可在任意叙事 tick 上浏览、分叉、继续推进。
 
     当前规范描述后端资源边界与流程语义。
 
@@ -29,6 +30,7 @@ tags:
   - name: StorySessions
   - name: StoryRuns
   - name: StoryTimeline
+  - name: StoryTicks
   - name: Chapters
   - name: Memories
 
@@ -844,6 +846,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/CommitStoryRunResponse"
 
+  /projects/{project_id}/story-ticks/advance:
+    post:
+      tags: [StoryTicks]
+      summary: Advance story simulation tick
+      description: |
+        推进项目世界模拟时间线。每次 tick 会：
+        - 读取或初始化 timeline、地点、角色模拟状态
+        - 先结算到期 ongoing action
+        - 对未完成行动的角色记录 skip event
+        - 对空闲角色调用行动裁决器决定下一步行动与持续时间
+        - 保存 simulation events 与 tick 后 snapshot
+      operationId: advanceStoryTick
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceStoryTickRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdvanceStoryTickResponse"
+
+  /projects/{project_id}/story-state:
+    get:
+      tags: [StoryTicks]
+      summary: Get current story simulation state
+      operationId: getStorySimulationState
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorySimulationStateResponse"
+
+  /story-ticks/{tick_id}/events:
+    get:
+      tags: [StoryTicks]
+      summary: List story tick simulation events
+      operationId: listStoryTickEvents
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationEventListResponse"
+
+  /story-ticks/{tick_id}/snapshot:
+    get:
+      tags: [StoryTicks]
+      summary: Get story tick simulation snapshot
+      operationId: getStoryTickSnapshot
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationSnapshotResponse"
+
   /projects/{project_id}/chapters:
     get:
       tags: [Chapters]
@@ -1412,6 +1487,14 @@ components:
         author_message:
           type: string
 
+    AdvanceStoryTickRequest:
+      type: object
+      properties:
+        tick_hours:
+          type: integer
+          default: 1
+          minimum: 1
+
     CommitStoryRunRequest:
       type: object
       required: [draft_id, memory_patch_id]
@@ -1435,6 +1518,50 @@ components:
         content:
           type: string
         created_at:
+          type: string
+          format: date-time
+
+    Character:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        profile:
+          type: string
+        personality:
+          type: string
+        voice_style:
+          type: string
+        goals:
+          type: array
+          items:
+            type: string
+        fears:
+          type: array
+          items:
+            type: string
+        secrets:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: array
+          items:
+            type: string
+        recent_memory_summary:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
 
@@ -1904,6 +2031,320 @@ components:
           items:
             $ref: "#/components/schemas/StoryTick"
 
+    SimulationTimeline:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        current_time:
+          type: string
+          format: date-time
+        tick:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StoryTickRun:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        tick:
+          type: integer
+        from_time:
+          type: string
+          format: date-time
+        to_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [running, completed, failed]
+        current_step:
+          type: string
+        error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorldMap:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        seed:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+        status:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MapTile:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        map_id:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        altitude:
+          type: integer
+        temperature:
+          type: integer
+        humidity:
+          type: integer
+        is_ocean:
+          type: boolean
+        terrain:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LocationState:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        map_id:
+          type: string
+        region_id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        radius:
+          type: integer
+        status:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    FactionInfluence:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        location_id:
+          type: string
+        faction_name:
+          type: string
+        influence:
+          type: integer
+        attitude:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CharacterOngoingAction:
+      type: object
+      properties:
+        action_type:
+          type: string
+        description:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ongoing, completed]
+        rationale:
+          type: string
+
+    CharacterSimulationState:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        character_id:
+          type: string
+        location_id:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        status:
+          type: string
+        ongoing_action:
+          nullable: true
+          $ref: "#/components/schemas/CharacterOngoingAction"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SimulationEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        tick_run_id:
+          type: string
+        event_name:
+          type: string
+          enum:
+            - story_tick_started
+            - character_action_started
+            - character_skipped_ongoing_action
+            - character_action_completed
+            - story_tick_completed
+        sequence:
+          type: integer
+        character_id:
+          type: string
+        location_id:
+          type: string
+        summary:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        occurred_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    StorySimulationState:
+      type: object
+      properties:
+        timeline:
+          $ref: "#/components/schemas/SimulationTimeline"
+        map:
+          nullable: true
+          $ref: "#/components/schemas/WorldMap"
+        tiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapTile"
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocationState"
+        factions:
+          type: array
+          items:
+            $ref: "#/components/schemas/FactionInfluence"
+        character_states:
+          type: array
+          items:
+            $ref: "#/components/schemas/CharacterSimulationState"
+        characters:
+          type: array
+          items:
+            $ref: "#/components/schemas/Character"
+        latest_events:
+          type: array
+          items:
+            $ref: "#/components/schemas/SimulationEvent"
+
+    SimulationSnapshot:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        tick_run_id:
+          type: string
+        tick:
+          type: integer
+        snapshot:
+          $ref: "#/components/schemas/StorySimulationState"
+        created_at:
+          type: string
+          format: date-time
+
+    AdvanceStoryTickResult:
+      type: object
+      properties:
+        run:
+          $ref: "#/components/schemas/StoryTickRun"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/SimulationEvent"
+        snapshot:
+          $ref: "#/components/schemas/SimulationSnapshot"
+        state:
+          $ref: "#/components/schemas/StorySimulationState"
+
     StoryRunResult:
       type: object
       description: Candidate story output. It must be reviewed and committed before it becomes canon.
@@ -2054,6 +2495,40 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/StoryRunResult"
+
+    AdvanceStoryTickResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AdvanceStoryTickResult"
+
+    StorySimulationStateResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StorySimulationState"
+
+    SimulationEventListResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/SimulationEvent"
+
+    SimulationSnapshotResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SimulationSnapshot"
 
     StoryBranchResponse:
       allOf:

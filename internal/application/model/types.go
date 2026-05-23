@@ -585,6 +585,176 @@ type StorySessionTimeline struct {
 	Ticks     []StoryTick   `json:"ticks"`
 }
 
+type AdvanceStoryTickInput struct {
+	TickHours int `json:"tick_hours"`
+}
+
+type StoryTimeline struct {
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"project_id"`
+	CurrentTime time.Time `json:"current_time"`
+	Tick        int       `json:"tick"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type StoryTickRun struct {
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"project_id"`
+	Tick        int       `json:"tick"`
+	FromTime    time.Time `json:"from_time"`
+	ToTime      time.Time `json:"to_time"`
+	Status      string    `json:"status"`
+	CurrentStep string    `json:"current_step"`
+	Error       string    `json:"error,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type WorldMap struct {
+	ID         string         `json:"id"`
+	ProjectID  string         `json:"project_id"`
+	Name       string         `json:"name"`
+	Seed       string         `json:"seed"`
+	Width      int            `json:"width"`
+	Height     int            `json:"height"`
+	Status     string         `json:"status"`
+	Properties map[string]any `json:"properties,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+}
+
+type MapTile struct {
+	ID          string         `json:"id"`
+	ProjectID   string         `json:"project_id"`
+	MapID       string         `json:"map_id"`
+	X           int            `json:"x"`
+	Y           int            `json:"y"`
+	Altitude    int            `json:"altitude"`
+	Temperature int            `json:"temperature"`
+	Humidity    int            `json:"humidity"`
+	IsOcean     bool           `json:"is_ocean"`
+	Terrain     string         `json:"terrain"`
+	Properties  map[string]any `json:"properties,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+type LocationState struct {
+	ID          string         `json:"id"`
+	ProjectID   string         `json:"project_id"`
+	MapID       string         `json:"map_id,omitempty"`
+	RegionID    string         `json:"region_id,omitempty"`
+	Name        string         `json:"name"`
+	Type        string         `json:"type"`
+	Description string         `json:"description"`
+	X           int            `json:"x"`
+	Y           int            `json:"y"`
+	Radius      int            `json:"radius,omitempty"`
+	Status      string         `json:"status"`
+	Properties  map[string]any `json:"properties,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+type FactionInfluence struct {
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"project_id"`
+	LocationID  string    `json:"location_id"`
+	FactionName string    `json:"faction_name"`
+	Influence   int       `json:"influence"`
+	Attitude    string    `json:"attitude"`
+	Description string    `json:"description"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type CharacterOngoingAction struct {
+	ActionType  string    `json:"action_type"`
+	Description string    `json:"description"`
+	StartedAt   time.Time `json:"started_at"`
+	EndsAt      time.Time `json:"ends_at"`
+	Status      string    `json:"status"`
+	Rationale   string    `json:"rationale"`
+}
+
+type CharacterSimulationState struct {
+	ID            string                  `json:"id"`
+	ProjectID     string                  `json:"project_id"`
+	CharacterID   string                  `json:"character_id"`
+	LocationID    string                  `json:"location_id"`
+	X             int                     `json:"x"`
+	Y             int                     `json:"y"`
+	Status        string                  `json:"status"`
+	OngoingAction *CharacterOngoingAction `json:"ongoing_action,omitempty"`
+	CreatedAt     time.Time               `json:"created_at"`
+	UpdatedAt     time.Time               `json:"updated_at"`
+}
+
+type SimulationEvent struct {
+	ID          string         `json:"id"`
+	ProjectID   string         `json:"project_id"`
+	TickRunID   string         `json:"tick_run_id"`
+	EventName   string         `json:"event_name"`
+	Sequence    int            `json:"sequence"`
+	CharacterID string         `json:"character_id,omitempty"`
+	LocationID  string         `json:"location_id,omitempty"`
+	Summary     string         `json:"summary"`
+	Payload     map[string]any `json:"payload,omitempty"`
+	OccurredAt  time.Time      `json:"occurred_at"`
+	CreatedAt   time.Time      `json:"created_at"`
+}
+
+type SimulationSnapshot struct {
+	ID        string               `json:"id"`
+	ProjectID string               `json:"project_id"`
+	TickRunID string               `json:"tick_run_id"`
+	Tick      int                  `json:"tick"`
+	Snapshot  StorySimulationState `json:"snapshot"`
+	CreatedAt time.Time            `json:"created_at"`
+}
+
+type StorySimulationState struct {
+	Timeline        StoryTimeline              `json:"timeline"`
+	Map             *WorldMap                  `json:"map,omitempty"`
+	Tiles           []MapTile                  `json:"tiles,omitempty"`
+	Locations       []LocationState            `json:"locations"`
+	Factions        []FactionInfluence         `json:"factions"`
+	CharacterStates []CharacterSimulationState `json:"character_states"`
+	Characters      []Character                `json:"characters,omitempty"`
+	LatestEvents    []SimulationEvent          `json:"latest_events,omitempty"`
+}
+
+type NearbyLocationContext struct {
+	Location          LocationState      `json:"location"`
+	Distance          float64            `json:"distance"`
+	FactionInfluences []FactionInfluence `json:"faction_influences,omitempty"`
+}
+
+type CharacterActionDecisionInput struct {
+	Timeline          StoryTimeline            `json:"timeline"`
+	Character         Character                `json:"character"`
+	CharacterState    CharacterSimulationState `json:"character_state"`
+	Location          LocationState            `json:"location"`
+	FactionInfluences []FactionInfluence       `json:"faction_influences"`
+	NearbyLocations   []NearbyLocationContext  `json:"nearby_locations,omitempty"`
+}
+
+type CharacterActionDecision struct {
+	ActionType    string `json:"action_type"`
+	Description   string `json:"description"`
+	DurationHours int    `json:"duration_hours"`
+	Rationale     string `json:"rationale"`
+}
+
+type AdvanceStoryTickResult struct {
+	Run      StoryTickRun         `json:"run"`
+	Events   []SimulationEvent    `json:"events"`
+	Snapshot SimulationSnapshot   `json:"snapshot"`
+	State    StorySimulationState `json:"state"`
+}
+
 // ReviewReport 是审阅报告，包含 AI 对生成内容的质量评估。
 type ReviewReport struct {
 	Pass             bool     `json:"pass"`              // 是否通过

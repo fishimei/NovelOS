@@ -20,6 +20,7 @@ import (
 	memoryinfra "github.com/fishimei/NovelOS/internal/infrastructure/memory"
 	gormstore "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm"
 	"github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm/repository"
+	worldgen "github.com/fishimei/NovelOS/internal/infrastructure/worldgen/ironarachne"
 	transporthttp "github.com/fishimei/NovelOS/internal/transport/http"
 	"github.com/fishimei/NovelOS/internal/transport/http/handler"
 )
@@ -73,6 +74,15 @@ func New(cfg config.Config) *App {
 		txManager,
 		clock,
 		idGenerator,
+		repos.Simulation,
+		worldgen.NewInitializer(idGenerator),
+		service.WorldInitializationSettings{
+			Enabled:       cfg.World.Enabled,
+			Seed:          cfg.World.Seed,
+			LocationCount: cfg.World.LocationCount,
+			MapWidth:      cfg.World.MapWidth,
+			MapHeight:     cfg.World.MapHeight,
+		},
 	)
 	storyGenerator, err := einoai.NewStoryRunGenerator(context.Background(), einoai.StoryRunGeneratorDeps{
 		Config:        cfg.AI,
@@ -116,6 +126,19 @@ func New(cfg config.Config) *App {
 		idGenerator,
 	)
 	storyTimeline := service.NewStoryTimelineService(repos.StorySessions, repos.StoryTimeline, storyAdvancer, clock)
+	characterActionDecider, err := einoai.NewCharacterActionDecider(context.Background(), cfg.AI)
+	if err != nil {
+		log.Fatalf("bootstrap character action decider: %v", err)
+	}
+	storyTickAdvancer := service.NewStoryTickAdvancer(
+		repos.Simulation,
+		repos.Characters,
+		characterActionDecider,
+		txManager,
+		clock,
+		idGenerator,
+		cfg.World.NearbyRadius,
+	)
 	dialogueValidator := service.NewDialogueActionValidator(repos.SetupSessions, repos.StorySessions)
 	dialogueExecutor := service.NewDialogueActionExecutor(
 		repos.DialogueSessions,
@@ -160,6 +183,7 @@ func New(cfg config.Config) *App {
 		SetupSessions:    handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
 		DialogueSessions: handler.NewDialogueSessionsHandler(repos.DialogueSessions, repos.Audit, eventStream, dialogueStarter, dialogueAdvancer, dialogueExecutor),
 		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCommitter, storyTimeline),
+		StoryTicks:       handler.NewStoryTicksHandler(storyTickAdvancer),
 		Chapters:         handler.NewChaptersHandler(repos.Chapters),
 		Memories:         handler.NewMemoriesHandler(repos.Memories),
 	}

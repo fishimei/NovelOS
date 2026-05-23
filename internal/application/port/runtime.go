@@ -45,6 +45,35 @@ type StoryRunGenerationInput struct {
 	Session model.StorySession
 }
 
+type CharacterActionDecider interface {
+	Decide(ctx context.Context, input model.CharacterActionDecisionInput) (model.CharacterActionDecision, error)
+}
+
+type WorldInitializationInput struct {
+	ProjectID     string
+	Seed          string
+	LocationCount int
+	MapWidth      int
+	MapHeight     int
+	SetupRun      model.SetupRun
+	SetupDraft    model.SetupDraft
+	Characters    []model.Character
+	CurrentTime   time.Time
+}
+
+type WorldInitializationResult struct {
+	Map             model.WorldMap
+	Tiles           []model.MapTile
+	Locations       []model.LocationState
+	Factions        []model.FactionInfluence
+	CharacterStates []model.CharacterSimulationState
+	Timeline        model.StoryTimeline
+}
+
+type WorldInitializer interface {
+	Initialize(ctx context.Context, input WorldInitializationInput) (WorldInitializationResult, error)
+}
+
 type DialogueRunGenerator interface {
 	Generate(ctx context.Context, input DialogueRunGenerationInput) (model.DialogueRunResult, error)
 }

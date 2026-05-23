@@ -50,6 +50,15 @@ func resetTables(t *testing.T, db *gorm.DB) {
 	tables := []any{
 		&persistencemodels.StateRevision{},
 		&persistencemodels.RunEvent{},
+		&persistencemodels.SimulationSnapshot{},
+		&persistencemodels.SimulationEvent{},
+		&persistencemodels.CharacterSimulationState{},
+		&persistencemodels.FactionInfluence{},
+		&persistencemodels.LocationState{},
+		&persistencemodels.MapTile{},
+		&persistencemodels.WorldMap{},
+		&persistencemodels.StoryTickRun{},
+		&persistencemodels.StoryTimeline{},
 		&persistencemodels.StoryTickStateRef{},
 		&persistencemodels.StoryStateVersion{},
 		&persistencemodels.StoryTick{},
@@ -169,6 +178,9 @@ func TestSetupApplyRunPersistsFormalState(t *testing.T) {
 		txm,
 		clock,
 		ids,
+		nil,
+		nil,
+		service.WorldInitializationSettings{},
 	)
 
 	session, err := repos.SetupSessions.CreateSession(context.Background(), project.ID, model.CreateSetupSessionInput{SeedIdea: "雨夜重逢"})

@@ -21,6 +21,7 @@ type Handlers struct {
 	SetupSessions    handler.SetupSessionsHandler
 	DialogueSessions handler.DialogueSessionsHandler
 	StorySessions    handler.StorySessionsHandler
+	StoryTicks       handler.StoryTicksHandler
 	Chapters         handler.ChaptersHandler
 	Memories         handler.MemoriesHandler
 }
@@ -95,6 +96,11 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.GET("/story-runs/:run_id/event-history", handlers.StorySessions.GetRunEventHistory)
 		api.GET("/story-runs/:run_id/events", handlers.StorySessions.Subscribe)
 		api.POST("/story-runs/:run_id/commit", handlers.StorySessions.CommitRun)
+
+		api.POST("/projects/:project_id/story-ticks/advance", handlers.StoryTicks.Advance)
+		api.GET("/projects/:project_id/story-state", handlers.StoryTicks.CurrentState)
+		api.GET("/story-ticks/:tick_id/events", handlers.StoryTicks.Events)
+		api.GET("/story-ticks/:tick_id/snapshot", handlers.StoryTicks.Snapshot)
 
 		api.GET("/projects/:project_id/chapters", handlers.Chapters.List)
 		api.GET("/chapters/:chapter_id", handlers.Chapters.Get)

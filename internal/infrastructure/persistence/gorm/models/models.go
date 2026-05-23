@@ -298,6 +298,141 @@ type StoryTickStateRef struct {
 
 func (StoryTickStateRef) TableName() string { return "story_tick_state_refs" }
 
+type StoryTimeline struct {
+	ID          string    `gorm:"primaryKey;size:64"`
+	ProjectID   string    `gorm:"not null;uniqueIndex"`
+	CurrentTime time.Time `gorm:"not null"`
+	Tick        int       `gorm:"not null;default:0"`
+	CreatedAt   time.Time `gorm:"not null"`
+	UpdatedAt   time.Time `gorm:"not null"`
+}
+
+func (StoryTimeline) TableName() string { return "story_timelines" }
+
+type StoryTickRun struct {
+	ID          string    `gorm:"primaryKey;size:64"`
+	ProjectID   string    `gorm:"not null;index"`
+	Tick        int       `gorm:"not null;index"`
+	FromTime    time.Time `gorm:"not null"`
+	ToTime      time.Time `gorm:"not null"`
+	Status      string    `gorm:"not null;default:''"`
+	CurrentStep string    `gorm:"not null;default:''"`
+	Error       string    `gorm:"not null;default:''"`
+	CreatedAt   time.Time `gorm:"not null"`
+	UpdatedAt   time.Time `gorm:"not null"`
+}
+
+func (StoryTickRun) TableName() string { return "story_tick_runs" }
+
+type WorldMap struct {
+	ID             string    `gorm:"primaryKey;size:64"`
+	ProjectID      string    `gorm:"not null;uniqueIndex"`
+	Name           string    `gorm:"not null;default:''"`
+	Seed           string    `gorm:"not null;default:''"`
+	Width          int       `gorm:"not null;default:0"`
+	Height         int       `gorm:"not null;default:0"`
+	Status         string    `gorm:"not null;default:''"`
+	PropertiesJSON JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt      time.Time `gorm:"not null"`
+	UpdatedAt      time.Time `gorm:"not null"`
+}
+
+func (WorldMap) TableName() string { return "world_maps" }
+
+type MapTile struct {
+	ID             string    `gorm:"primaryKey;size:64"`
+	ProjectID      string    `gorm:"not null;index"`
+	MapID          string    `gorm:"not null;uniqueIndex:idx_map_tile_unique,priority:1"`
+	X              int       `gorm:"not null;uniqueIndex:idx_map_tile_unique,priority:2"`
+	Y              int       `gorm:"not null;uniqueIndex:idx_map_tile_unique,priority:3"`
+	Altitude       int       `gorm:"not null;default:0"`
+	Temperature    int       `gorm:"not null;default:0"`
+	Humidity       int       `gorm:"not null;default:0"`
+	IsOcean        bool      `gorm:"not null;default:false"`
+	Terrain        string    `gorm:"not null;default:''"`
+	PropertiesJSON JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt      time.Time `gorm:"not null"`
+	UpdatedAt      time.Time `gorm:"not null"`
+}
+
+func (MapTile) TableName() string { return "map_tiles" }
+
+type LocationState struct {
+	ID             string    `gorm:"primaryKey;size:64"`
+	ProjectID      string    `gorm:"not null;index"`
+	MapID          string    `gorm:"not null;default:'';index"`
+	RegionID       string    `gorm:"not null;default:'';index"`
+	Name           string    `gorm:"not null;default:''"`
+	Type           string    `gorm:"not null;default:''"`
+	Description    string    `gorm:"not null;default:''"`
+	X              int       `gorm:"not null;default:0;index"`
+	Y              int       `gorm:"not null;default:0;index"`
+	Radius         int       `gorm:"not null;default:0"`
+	Status         string    `gorm:"not null;default:''"`
+	PropertiesJSON JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt      time.Time `gorm:"not null"`
+	UpdatedAt      time.Time `gorm:"not null"`
+}
+
+func (LocationState) TableName() string { return "location_states" }
+
+type FactionInfluence struct {
+	ID          string    `gorm:"primaryKey;size:64"`
+	ProjectID   string    `gorm:"not null;index"`
+	LocationID  string    `gorm:"not null;index"`
+	FactionName string    `gorm:"not null;default:''"`
+	Influence   int       `gorm:"not null;default:0"`
+	Attitude    string    `gorm:"not null;default:''"`
+	Description string    `gorm:"not null;default:''"`
+	Status      string    `gorm:"not null;default:''"`
+	CreatedAt   time.Time `gorm:"not null"`
+	UpdatedAt   time.Time `gorm:"not null"`
+}
+
+func (FactionInfluence) TableName() string { return "faction_influences" }
+
+type CharacterSimulationState struct {
+	ID                string    `gorm:"primaryKey;size:64"`
+	ProjectID         string    `gorm:"not null;uniqueIndex:idx_character_sim_state_unique,priority:1"`
+	CharacterID       string    `gorm:"not null;uniqueIndex:idx_character_sim_state_unique,priority:2"`
+	LocationID        string    `gorm:"not null;index"`
+	X                 int       `gorm:"not null;default:0;index"`
+	Y                 int       `gorm:"not null;default:0;index"`
+	Status            string    `gorm:"not null;default:''"`
+	OngoingActionJSON JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt         time.Time `gorm:"not null"`
+	UpdatedAt         time.Time `gorm:"not null"`
+}
+
+func (CharacterSimulationState) TableName() string { return "character_simulation_states" }
+
+type SimulationEvent struct {
+	ID          string    `gorm:"primaryKey;size:64"`
+	ProjectID   string    `gorm:"not null;index"`
+	TickRunID   string    `gorm:"not null;index:idx_simulation_event_lookup,priority:1"`
+	EventName   string    `gorm:"not null;default:''"`
+	Sequence    int       `gorm:"not null;index:idx_simulation_event_lookup,priority:2"`
+	CharacterID string    `gorm:"not null;default:'';index"`
+	LocationID  string    `gorm:"not null;default:'';index"`
+	Summary     string    `gorm:"not null;default:''"`
+	PayloadJSON JSONB     `gorm:"type:jsonb;not null"`
+	OccurredAt  time.Time `gorm:"not null"`
+	CreatedAt   time.Time `gorm:"not null"`
+}
+
+func (SimulationEvent) TableName() string { return "simulation_events" }
+
+type SimulationSnapshot struct {
+	ID           string    `gorm:"primaryKey;size:64"`
+	ProjectID    string    `gorm:"not null;index"`
+	TickRunID    string    `gorm:"not null;uniqueIndex"`
+	Tick         int       `gorm:"not null;index"`
+	SnapshotJSON JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt    time.Time `gorm:"not null"`
+}
+
+func (SimulationSnapshot) TableName() string { return "simulation_snapshots" }
+
 type DialogueSession struct {
 	ID              string    `gorm:"primaryKey;size:64"`
 	ProjectID       string    `gorm:"not null;index"`

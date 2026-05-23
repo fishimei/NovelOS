@@ -139,6 +139,10 @@ type ForkStoryTickRequest struct {
 	AuthorMessage string `json:"author_message"`
 }
 
+type AdvanceStoryTickRequest struct {
+	TickHours int `json:"tick_hours"`
+}
+
 // CommitStoryRunRequest 是提交故事运行的请求参数。
 type CommitStoryRunRequest struct {
 	DraftID       string `json:"draft_id" binding:"required"`

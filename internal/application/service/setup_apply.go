@@ -11,15 +11,26 @@ import (
 // SetupRunApplier 负责将已接受的设置草稿转换为正式项目状态。
 // 这是一个跨多个仓库的复杂业务操作，需要在事务中执行以保证一致性。
 type SetupRunApplier struct {
-	sessions      port.SetupSessionRepository
-	authorBibles  port.AuthorBibleRepository
-	worldState    port.WorldStateRepository
-	characters    port.CharacterRepository
-	relationships port.RelationshipRepository
-	audit         port.AuditRepository
-	tx            port.TxManager
-	clock         port.Clock
-	ids           port.IDGenerator
+	sessions         port.SetupSessionRepository
+	authorBibles     port.AuthorBibleRepository
+	worldState       port.WorldStateRepository
+	characters       port.CharacterRepository
+	relationships    port.RelationshipRepository
+	audit            port.AuditRepository
+	simulation       port.SimulationRepository
+	worldInitializer port.WorldInitializer
+	world            WorldInitializationSettings
+	tx               port.TxManager
+	clock            port.Clock
+	ids              port.IDGenerator
+}
+
+type WorldInitializationSettings struct {
+	Enabled       bool
+	Seed          string
+	LocationCount int
+	MapWidth      int
+	MapHeight     int
 }
 
 func NewSetupRunApplier(
@@ -32,17 +43,23 @@ func NewSetupRunApplier(
 	tx port.TxManager,
 	clock port.Clock,
 	ids port.IDGenerator,
+	simulation port.SimulationRepository,
+	worldInitializer port.WorldInitializer,
+	world WorldInitializationSettings,
 ) *SetupRunApplier {
 	return &SetupRunApplier{
-		sessions:      sessions,
-		authorBibles:  authorBibles,
-		worldState:    worldState,
-		characters:    characters,
-		relationships: relationships,
-		audit:         audit,
-		tx:            tx,
-		clock:         clock,
-		ids:           ids,
+		sessions:         sessions,
+		authorBibles:     authorBibles,
+		worldState:       worldState,
+		characters:       characters,
+		relationships:    relationships,
+		audit:            audit,
+		simulation:       simulation,
+		worldInitializer: worldInitializer,
+		world:            world,
+		tx:               tx,
+		clock:            clock,
+		ids:              ids,
 	}
 }
 
@@ -82,6 +99,9 @@ func (a *SetupRunApplier) Apply(ctx context.Context, sessionID string, input mod
 			if err := a.applyRelationships(txCtx, run, result.SetupDraft.Relationships); err != nil {
 				return err
 			}
+		}
+		if err := a.applyWorldInitialization(txCtx, run, result.SetupDraft); err != nil {
+			return err
 		}
 		if err := a.appendAppliedEvent(txCtx, sessionID, run, input); err != nil {
 			return err
@@ -155,6 +175,60 @@ func (a *SetupRunApplier) applyCharacters(ctx context.Context, run model.SetupRu
 		}
 	}
 	return nil
+}
+
+func (a *SetupRunApplier) applyWorldInitialization(ctx context.Context, run model.SetupRun, draft model.SetupDraft) error {
+	if !a.world.Enabled || a.simulation == nil || a.worldInitializer == nil {
+		return nil
+	}
+	if _, err := a.simulation.GetWorldMapByProjectID(ctx, run.ProjectID); err == nil {
+		return nil
+	} else if !isNotFound(err) {
+		return err
+	}
+	locations, err := a.simulation.ListLocationsByProjectID(ctx, run.ProjectID)
+	if err != nil {
+		return err
+	}
+	if len(locations) > 0 {
+		return nil
+	}
+	characters, err := a.characters.ListByProjectID(ctx, run.ProjectID, model.PageInput{Page: 1, PageSize: 100})
+	if err != nil {
+		return err
+	}
+	now := currentTime(a.clock)
+	result, err := a.worldInitializer.Initialize(ctx, port.WorldInitializationInput{
+		ProjectID:     run.ProjectID,
+		Seed:          a.world.Seed,
+		LocationCount: a.world.LocationCount,
+		MapWidth:      a.world.MapWidth,
+		MapHeight:     a.world.MapHeight,
+		SetupRun:      run,
+		SetupDraft:    draft,
+		Characters:    characters.Items,
+		CurrentTime:   now,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := a.simulation.UpsertWorldMap(ctx, result.Map); err != nil {
+		return err
+	}
+	if err := a.simulation.UpsertMapTiles(ctx, run.ProjectID, result.Tiles); err != nil {
+		return err
+	}
+	if err := a.simulation.UpsertLocations(ctx, run.ProjectID, result.Locations); err != nil {
+		return err
+	}
+	if err := a.simulation.UpsertFactionInfluences(ctx, run.ProjectID, result.Factions); err != nil {
+		return err
+	}
+	if err := a.simulation.UpsertCharacterStates(ctx, run.ProjectID, result.CharacterStates); err != nil {
+		return err
+	}
+	_, err = a.simulation.UpsertTimeline(ctx, result.Timeline)
+	return err
 }
 
 func (a *SetupRunApplier) applyRelationships(ctx context.Context, run model.SetupRun, relationships []model.Relationship) error {

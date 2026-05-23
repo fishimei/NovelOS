@@ -54,6 +54,21 @@ const (
 )
 
 const (
+	StoryTickStatusRunning   = "running"
+	StoryTickStatusCompleted = "completed"
+	StoryTickStatusFailed    = "failed"
+
+	CharacterActionStatusOngoing   = "ongoing"
+	CharacterActionStatusCompleted = "completed"
+
+	EventStoryTickStarted              = "story_tick_started"
+	EventCharacterActionStarted        = "character_action_started"
+	EventCharacterSkippedOngoingAction = "character_skipped_ongoing_action"
+	EventCharacterActionCompleted      = "character_action_completed"
+	EventStoryTickCompleted            = "story_tick_completed"
+)
+
+const (
 	DialogueActionStatusPending   = "pending"
 	DialogueActionStatusConfirmed = "confirmed"
 	DialogueActionStatusExecuting = "executing"

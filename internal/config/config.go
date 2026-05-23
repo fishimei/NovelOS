@@ -18,6 +18,7 @@ type Config struct {
 	Postgres PostgresConfig `mapstructure:"postgres"`
 	AI       AIConfig       `mapstructure:"ai"`
 	Memory   MemoryConfig   `mapstructure:"memory"`
+	World    WorldConfig    `mapstructure:"world"`
 	SSE      SSEConfig      `mapstructure:"sse"`
 }
 
@@ -58,6 +59,7 @@ type StoryAgentConfig struct {
 	ResultPrompt     string `mapstructure:"result_prompt"`
 	NarrativePrompt  string `mapstructure:"narrative_prompt"`
 	VariablePrompt   string `mapstructure:"variable_prompt"`
+	SimulationPrompt string `mapstructure:"simulation_prompt"`
 }
 
 type DialogueAgentConfig struct {
@@ -94,6 +96,15 @@ type QdrantConfig struct {
 	Collection string `mapstructure:"collection"`
 }
 
+type WorldConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	Seed          string `mapstructure:"seed"`
+	LocationCount int    `mapstructure:"location_count"`
+	NearbyRadius  int    `mapstructure:"nearby_radius"`
+	MapWidth      int    `mapstructure:"map_width"`
+	MapHeight     int    `mapstructure:"map_height"`
+}
+
 // SSEConfig 包含服务器发送事件（Server-Sent Events）的配置。
 type SSEConfig struct {
 	HeartbeatSeconds int `mapstructure:"heartbeat_seconds"`
@@ -110,6 +121,8 @@ const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘�
 const defaultStoryAgentNarrativePrompt = `你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。`
 
 const defaultStoryAgentVariablePrompt = `你是 NovelOS 的剧情变量 agent。你的职责是在角色演绎之前，基于作者意图、当前故事状态、世界压力、角色目标和关系张力，生成一个会推动本章状态变化的核心变量，并为每个相关角色生成受限视角下可感知的变量切片。全局剧情变量可以知道完整结构；角色切片只能包含该角色合理知道、误读、感受到的压力和行动倾向。输出必须是 JSON 对象。`
+
+const defaultStoryAgentSimulationPrompt = `你是 NovelOS 的世界模拟行动裁决 agent。你会收到角色当前位置、坐标、当前地点势力影响、附近地点与距离信息。你只决定该角色在这些已提供信息下接下来要做什么、持续多久、为什么。不要写章节正文，不要制造多人相遇，不要让角色感知未提供的信息。输出必须是 JSON 对象，包含 action_type、description、duration_hours、rationale。`
 
 const defaultDialogueAgentPrompt = `你是 NovelOS 的统一对话 Agent。每轮必须先调用 load_dialogue_context。你的职责是和用户交流、澄清目标、读取当前项目状态，并通过 propose_* 工具提出可确认选项。用户未明确确认前，不能调用 execute_confirmed_action；不要声称已经修改项目状态。涉及 setup/story 状态变更时，只创建待确认 option；若缺少 run/session/draft ID，先 inspect 或 list，再不足则提出澄清问题。结束本轮必须调用 finalize_dialogue_response。`
 
@@ -150,6 +163,7 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("ai.story_agent.result_prompt", defaultStoryAgentResultPrompt)
 	v.SetDefault("ai.story_agent.narrative_prompt", defaultStoryAgentNarrativePrompt)
 	v.SetDefault("ai.story_agent.variable_prompt", defaultStoryAgentVariablePrompt)
+	v.SetDefault("ai.story_agent.simulation_prompt", defaultStoryAgentSimulationPrompt)
 	v.SetDefault("ai.dialogue_agent.prompt", defaultDialogueAgentPrompt)
 	v.SetDefault("ai.dialogue_agent.max_steps", 16)
 	v.SetDefault("memory.provider", "local")
@@ -166,6 +180,12 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("memory.qdrant.url", "")
 	v.SetDefault("memory.qdrant.api_key", "")
 	v.SetDefault("memory.qdrant.collection", "novelos_character_memories")
+	v.SetDefault("world.enabled", true)
+	v.SetDefault("world.seed", "")
+	v.SetDefault("world.location_count", 15)
+	v.SetDefault("world.nearby_radius", 25)
+	v.SetDefault("world.map_width", 1024)
+	v.SetDefault("world.map_height", 1024)
 	v.SetDefault("sse.heartbeat_seconds", 15)
 
 	if configFile != "" {

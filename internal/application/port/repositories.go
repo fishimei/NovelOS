@@ -116,6 +116,28 @@ type StoryTimelineRepository interface {
 	ResolveTickState(ctx context.Context, tickID string) (model.StoryTickState, error)
 }
 
+type SimulationRepository interface {
+	GetTimelineByProjectID(ctx context.Context, projectID string) (model.StoryTimeline, error)
+	UpsertTimeline(ctx context.Context, timeline model.StoryTimeline) (model.StoryTimeline, error)
+	GetWorldMapByProjectID(ctx context.Context, projectID string) (model.WorldMap, error)
+	UpsertWorldMap(ctx context.Context, worldMap model.WorldMap) (model.WorldMap, error)
+	ListMapTilesByProjectID(ctx context.Context, projectID string) ([]model.MapTile, error)
+	UpsertMapTiles(ctx context.Context, projectID string, tiles []model.MapTile) error
+	CreateTickRun(ctx context.Context, run model.StoryTickRun) (model.StoryTickRun, error)
+	UpdateTickRun(ctx context.Context, run model.StoryTickRun) (model.StoryTickRun, error)
+	GetTickRunByID(ctx context.Context, tickRunID string) (model.StoryTickRun, error)
+	ListLocationsByProjectID(ctx context.Context, projectID string) ([]model.LocationState, error)
+	UpsertLocations(ctx context.Context, projectID string, locations []model.LocationState) error
+	ListFactionInfluencesByProjectID(ctx context.Context, projectID string) ([]model.FactionInfluence, error)
+	UpsertFactionInfluences(ctx context.Context, projectID string, influences []model.FactionInfluence) error
+	ListCharacterStatesByProjectID(ctx context.Context, projectID string) ([]model.CharacterSimulationState, error)
+	UpsertCharacterStates(ctx context.Context, projectID string, states []model.CharacterSimulationState) error
+	AppendEvent(ctx context.Context, event model.SimulationEvent) (model.SimulationEvent, error)
+	ListEventsByTickRunID(ctx context.Context, tickRunID string) ([]model.SimulationEvent, error)
+	CreateSnapshot(ctx context.Context, snapshot model.SimulationSnapshot) (model.SimulationSnapshot, error)
+	GetSnapshotByTickRunID(ctx context.Context, tickRunID string) (model.SimulationSnapshot, error)
+}
+
 // ChapterRepository 是章节仓库的接口。
 type ChapterRepository interface {
 	ListByProjectID(ctx context.Context, projectID string, pageInput model.PageInput) (model.ListResult[model.Chapter], error)
@@ -150,6 +172,7 @@ type Repositories struct {
 	DialogueSessions DialogueSessionRepository
 	StorySessions    StorySessionRepository
 	StoryTimeline    StoryTimelineRepository
+	Simulation       SimulationRepository
 	Chapters         ChapterRepository
 	Memories         MemoryRepository
 	Audit            AuditRepository
