@@ -130,6 +130,13 @@ type UpdateStorySessionRequest struct {
 // AdvanceStorySessionRequest 是推进故事会话的请求参数。
 type AdvanceStorySessionRequest struct {
 	AuthorMessage string `json:"author_message" binding:"required"`
+	BranchID      string `json:"branch_id"`
+	BaseTickID    string `json:"base_tick_id"`
+}
+
+type ForkStoryTickRequest struct {
+	Name          string `json:"name"`
+	AuthorMessage string `json:"author_message"`
 }
 
 // CommitStoryRunRequest 是提交故事运行的请求参数。

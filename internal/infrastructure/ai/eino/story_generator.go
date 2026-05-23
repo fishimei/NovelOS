@@ -30,6 +30,7 @@ type StoryRunGeneratorDeps struct {
 	Memories      port.MemoryRepository
 	MemoryService port.CharacterMemoryService
 	Events        port.GenerationEventStream
+	Audit         port.AuditRepository
 	Clock         port.Clock
 	IDs           port.IDGenerator
 }
@@ -73,6 +74,7 @@ func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*Sto
 			memories:      deps.Memories,
 			memoryService: deps.MemoryService,
 			events:        deps.Events,
+			audit:         deps.Audit,
 		},
 		clock:           deps.Clock,
 		ids:             deps.IDs,
@@ -95,17 +97,13 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	if err != nil {
 		return model.StoryRunResult{}, err
 	}
-	if g.deps.events != nil {
-		_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": domain.RunStatusGeneratingPlotVariable, "progress": 20}})
-	}
+	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusGeneratingPlotVariable, 20)
 	variable, err := g.generateStoryVariable(ctx, input, snapshot)
 	if err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("generate story variable: %w", err)
 	}
 	state.variable = variable
-	if g.deps.events != nil {
-		_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventPlotVariable, Data: variable.PlotVariable})
-	}
+	publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventPlotVariable, map[string]any{"plot_variable": variable.PlotVariable})
 	tools, err := newStoryTools(g.deps, state)
 	if err != nil {
 		return model.StoryRunResult{}, err
@@ -121,9 +119,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	if err != nil {
 		return model.StoryRunResult{}, err
 	}
-	if g.deps.events != nil {
-		_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": domain.RunStatusDrivingCharacterTurns, "progress": 30}})
-	}
+	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusSimulatingEvents, 30)
 	_, err = agent.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.systemPrompt()),
 		schema.UserMessage(g.userPrompt(input, variable)),
@@ -135,16 +131,12 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	if len(plan.Turns) == 0 {
 		plan.Turns = []StoryTurnPlan{{TurnIndex: 1, ActorName: "旁白", ActionType: "narration", Intent: firstText(variable.PlotVariable.CoreChoice, input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, "推进当前故事变量"), Rationale: "模型未产生回合，使用旁白占位"}}
 	}
-	if g.deps.events != nil {
-		_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": domain.RunStatusWritingNarrative, "progress": 80}})
-	}
+	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusWritingNarrative, 80)
 	narrative, err := g.generateNarrative(ctx, input, snapshot, plan, variable)
 	if err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("generate narrative: %w", err)
 	}
-	if g.deps.events != nil {
-		_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": domain.RunStatusGeneratingMemoryPatch, "progress": 90}})
-	}
+	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusGeneratingMemoryPatch, 90)
 	result, err := g.buildResult(ctx, input, plan, narrative, variable)
 	if err != nil {
 		return model.StoryRunResult{}, err
@@ -153,16 +145,13 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 }
 
 func (g *StoryRunGenerator) publishStoryOrchestrationStarted(ctx context.Context, input port.StoryRunGenerationInput) {
-	if g.deps.events == nil {
-		return
-	}
-	_ = g.deps.events.Publish(ctx, input.Run.RunID, port.GenerationEvent{Name: domain.EventStoryOrchestrationStarted, Data: map[string]any{
+	publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventStoryOrchestrationStarted, map[string]any{
 		"story_run_id":      input.Run.RunID,
 		"session_id":        input.Session.ID,
 		"author_message":    input.Session.LastAuthorMessage,
 		"author_intent":     input.Session.AuthorIntent,
 		"opening_situation": input.Session.OpeningSituation,
-	}})
+	})
 }
 
 func (g *StoryRunGenerator) systemPrompt() string {
@@ -183,7 +172,12 @@ func (g *StoryRunGenerator) userPrompt(input port.StoryRunGenerationInput, varia
 	})
 	return fmt.Sprintf(`%s
 
-你是角色回合阶段，不是最终正文作者，也不是关系分析展示器。先调用 load_story_context 核对当前状态，然后在最多 %d 个业务回合内循环判断：是否停止；如果不停，调用 choose_next_story_actor 记录本回合哪个角色说了什么、做了什么。不要生成完整章节正文，不要输出关系分析。停止时调用 decide_story_stop 与 finalize_story_plan。`, string(payload), g.maxTurns)
+你是 NovelOS 的事件模拟和多人物交涉编排阶段，不是最终正文作者。先调用 load_story_context 核对当前状态。然后按顺序推进：
+	1. 事件模拟：为与 story_variable 相关的主要角色调用 record_story_event，记录他们本时间片在什么地点做什么。
+	2. 同地点分析：record_story_event 返回 same_location_candidates 后，只能从这些候选中调用 select_story_interaction 判断哪些角色会实际交互；不要选择不在同一地点的人。
+	3. 多角色交涉：对 should_interact=true 的 interaction_group，用 choose_next_story_actor 记录交涉回合，并带上 interaction_group_id、location_key、phase=negotiation。
+	4. 如果没有同地点候选或没有可交互组，就用旁白/行动回合总结事件推进，不要强行制造对话。
+	最多 %d 个业务回合内停止。停止时调用 decide_story_stop 与 finalize_story_plan。不要生成完整章节正文。`, string(payload), g.maxTurns)
 }
 
 func (g *StoryRunGenerator) generateStoryVariable(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (StoryVariablePlan, error) {
@@ -484,14 +478,17 @@ func (g *StoryRunGenerator) generateTurnContent(ctx context.Context, input port.
 
 func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) StoryNarrativeResult {
 	promptInput := map[string]any{
-		"session":          input.Session,
-		"author_bible":     snapshot.AuthorBible,
-		"recent_chapters":  snapshot.RecentChapters,
-		"world_state_keys": worldStateKeys(snapshot.WorldState),
-		"relationships":    relationshipPublicSummaries(snapshot.Relationships),
-		"story_variable":   variable.PlotVariable,
-		"turns":            plan.Turns,
-		"stop_reason":      plan.StopReason,
+		"session":                 input.Session,
+		"author_bible":            snapshot.AuthorBible,
+		"recent_chapters":         snapshot.RecentChapters,
+		"world_state_keys":        worldStateKeys(snapshot.WorldState),
+		"relationships":           relationshipPublicSummaries(snapshot.Relationships),
+		"story_variable":          variable.PlotVariable,
+		"event_timeline":          plan.EventTimeline,
+		"interaction_analysis":    plan.InteractionAnalysis,
+		"interaction_transcripts": plan.InteractionTranscripts,
+		"turns":                   plan.Turns,
+		"stop_reason":             plan.StopReason,
 	}
 	payload, _ := json.Marshal(promptInput)
 	msg, err := g.model.Generate(ctx, []*schema.Message{
@@ -548,7 +545,7 @@ func (g *StoryRunGenerator) turnNarrativePrompt() string {
 func (g *StoryRunGenerator) summaryPrompt() string {
 	return firstText(g.resultPrompt, "整理故事演绎结果。") + `
 
-根据已完成的角色回合记录 turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、content、plot_variable、memory_patch、review、turns。运行中的 turns 只是“谁说了什么、做了什么”的素材，不是章节正文；content 必须在本阶段统一写成连贯完整章节正文，不要只列提纲。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容。relationship_updates 只填 pair_id、summary、tension_delta。只输出 JSON。`
+根据已完成的 event_timeline、interaction_analysis、interaction_transcripts、turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、content、plot_variable、memory_patch、review、turns。运行中的事件和 turns 只是素材，不是章节正文；content 必须在本阶段统一写成连贯完整章节正文，不要只列提纲。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容。relationship_updates 可填 pair_id、summary、tension_delta、events；交涉造成的关系变化应写入 events，event_type 可用 negotiation 或 interaction_outcome。只输出 JSON。`
 }
 
 func (g *StoryRunGenerator) perspectiveForTurn(snapshot StoryContextSnapshot, turn StoryTurnPlan, variable StoryVariablePlan) *CharacterPerspective {
@@ -599,6 +596,9 @@ func (g *StoryRunGenerator) buildResult(ctx context.Context, input port.StoryRun
 			RelatedCharacterIDs: relatedIDs,
 			WorldStatePressure:  plotVariable.WorldStatePressure,
 		},
+		EventTimeline:          plan.EventTimeline,
+		InteractionAnalysis:    plan.InteractionAnalysis,
+		InteractionTranscripts: plan.InteractionTranscripts,
 		Draft: model.Draft{
 			ID:            g.newID("draft"),
 			Title:         firstText(narrative.Title, input.Session.Title, "未命名章节"),
@@ -808,10 +808,10 @@ func toCharacterMemoryUpdates(updates []StoryNarrativeCharacterMemoryUpdate) []m
 func toRelationshipUpdates(updates []StoryNarrativeRelationshipUpdate) []model.RelationshipUpdate {
 	out := make([]model.RelationshipUpdate, 0, len(updates))
 	for _, update := range updates {
-		if update.PairID == "" && update.Summary == "" {
+		if update.PairID == "" && update.Summary == "" && len(update.Events) == 0 {
 			continue
 		}
-		out = append(out, model.RelationshipUpdate{PairID: update.PairID, Summary: update.Summary, TensionDelta: update.TensionDelta})
+		out = append(out, model.RelationshipUpdate{PairID: update.PairID, Summary: update.Summary, TensionDelta: update.TensionDelta, Events: update.Events})
 	}
 	return out
 }

@@ -17,21 +17,24 @@ const (
 // 故事运行状态常量
 // 运行状态反映了 AI 生成过程的当前步骤
 const (
-	RunStatusQueued                 = "queued"                   // 排队中：等待执行
-	RunStatusLoadingState           = "loading_state"            // 加载状态：正在加载项目状态
-	RunStatusPlanningActions        = "planning_actions"         // 规划动作：正在生成可确认的对话选项
-	RunStatusExecutingAction        = "executing_action"         // 执行动作：正在执行已确认的对话选项
-	RunStatusSelectingConflictAxis  = "selecting_conflict_axis"  // 选择冲突轴：正在确定戏剧冲突的核心
-	RunStatusGeneratingPlotVariable = "generating_plot_variable" // 生成剧情变量：正在创建核心戏剧性选择
-	RunStatusDrivingCharacterTurns  = "driving_character_turns"  // 推进角色回合：正在生成角色互动
-	RunStatusWritingNarrative       = "writing_narrative"        // 书写叙事：正在撰写正文
-	RunStatusCheckingContinuity     = "checking_continuity"      // 检查连续性：正在验证内容一致性
-	RunStatusGeneratingMemoryPatch  = "generating_memory_patch"  // 生成记忆补丁：正在生成状态更新
-	RunStatusReviewRequired         = "review_required"          // 需要审阅：等待用户确认
-	RunStatusCompleted              = "completed"                // 已完成：对话回复已完成且无需确认
-	RunStatusCommitted              = "committed"                // 已提交：内容已确认
-	RunStatusFailed                 = "failed"                   // 失败：运行出错
-	RunStatusCancelled              = "cancelled"                // 已取消：运行被终止
+	RunStatusQueued                  = "queued"                   // 排队中：等待执行
+	RunStatusLoadingState            = "loading_state"            // 加载状态：正在加载项目状态
+	RunStatusPlanningActions         = "planning_actions"         // 规划动作：正在生成可确认的对话选项
+	RunStatusExecutingAction         = "executing_action"         // 执行动作：正在执行已确认的对话选项
+	RunStatusSelectingConflictAxis   = "selecting_conflict_axis"  // 选择冲突轴：正在确定戏剧冲突的核心
+	RunStatusGeneratingPlotVariable  = "generating_plot_variable" // 生成剧情变量：正在创建核心戏剧性选择
+	RunStatusSimulatingEvents        = "simulating_events"        // 模拟事件：正在生成角色行动和地点事件
+	RunStatusSelectingInteractions   = "selecting_interactions"   // 选择交互：正在分析同地点角色是否会互动
+	RunStatusNegotiatingInteractions = "negotiating_interactions" // 交涉互动：正在进行多角色交涉
+	RunStatusDrivingCharacterTurns   = "driving_character_turns"  // 推进角色回合：正在生成角色互动
+	RunStatusWritingNarrative        = "writing_narrative"        // 书写叙事：正在撰写正文
+	RunStatusCheckingContinuity      = "checking_continuity"      // 检查连续性：正在验证内容一致性
+	RunStatusGeneratingMemoryPatch   = "generating_memory_patch"  // 生成记忆补丁：正在生成状态更新
+	RunStatusReviewRequired          = "review_required"          // 需要审阅：等待用户确认
+	RunStatusCompleted               = "completed"                // 已完成：对话回复已完成且无需确认
+	RunStatusCommitted               = "committed"                // 已提交：内容已确认
+	RunStatusFailed                  = "failed"                   // 失败：运行出错
+	RunStatusCancelled               = "cancelled"                // 已取消：运行被终止
 )
 
 // 异步运行流式事件名称常量
@@ -40,6 +43,11 @@ const (
 	EventGenerationStep            = "generation_step"             // 生成步骤事件：报告当前运行步骤
 	EventStoryOrchestrationStarted = "story_orchestration_started" // 故事编排启动事件：传递用户 idea
 	EventPlotVariable              = "plot_variable"               // 剧情变量事件：推送核心戏剧选择
+	EventStoryEventPlanned         = "story_event_planned"         // 故事事件事件：推送角色行动和地点事件
+	EventSameLocationCandidates    = "same_location_candidates"    // 同地点候选事件：推送可能发生交互的地点组
+	EventInteractionAnalysis       = "interaction_analysis"        // 交互分析事件：推送 AI 对候选组的判断
+	EventInteractionSelected       = "interaction_selected"        // 交互选中事件：推送实际进入交涉的角色组
+	EventNegotiationTurn           = "negotiation_turn"            // 交涉回合事件：推送多角色交涉回合
 	EventCharacterTurn             = "character_turn"              // 角色回合事件：推送角色互动内容
 	EventDraftDelta                = "draft_delta"                 // 草稿增量事件：兼容旧正文片段事件
 	EventReviewRequired            = "review_required"             // 需要审阅事件：通知用户需要确认

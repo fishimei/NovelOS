@@ -101,18 +101,106 @@ func TestChooseNextStoryActorAllowsNarrationWithoutActor(t *testing.T) {
 
 func TestStoryTurnDisplayPayloadHidesRationale(t *testing.T) {
 	payload := storyTurnDisplayPayload(StoryTurnPlan{
-		TurnIndex:      2,
-		ActorID:        "character_1",
-		ActorName:      "林澈",
-		ActionType:     "action",
-		Speech:         "跟我走。",
-		ActionSummary:  "推开暗门。",
-		TargetActorIDs: []string{"character_2"},
-		Intent:         "带对方离开",
-		Rationale:      "内部推理不应进入前端实时展示",
+		TurnIndex:          2,
+		ActorID:            "character_1",
+		ActorName:          "林澈",
+		ActionType:         "action",
+		Speech:             "跟我走。",
+		ActionSummary:      "推开暗门。",
+		TargetActorIDs:     []string{"character_2"},
+		Intent:             "带对方离开",
+		Rationale:          "内部推理不应进入前端实时展示",
+		InteractionGroupID: "interaction_1",
+		LocationKey:        "old_dock",
+		Phase:              "negotiation",
 	})
 	if payload.TurnIndex != 2 || payload.Speech != "跟我走。" || payload.ActionSummary != "推开暗门。" {
 		t.Fatalf("unexpected display payload: %#v", payload)
+	}
+	if payload.InteractionGroupID != "interaction_1" || payload.LocationKey != "old_dock" || payload.Phase != "negotiation" {
+		t.Fatalf("expected interaction metadata, got %#v", payload)
+	}
+}
+
+func TestRecordStoryEventBuildsSameLocationCandidates(t *testing.T) {
+	state := &storyRunState{
+		run:      model.StoryRun{RunID: "run_1"},
+		maxTurns: 25,
+		characters: []model.Character{
+			{ID: "character_1", Name: "林澈"},
+			{ID: "character_2", Name: "沈砚"},
+			{ID: "character_3", Name: "顾白"},
+		},
+	}
+	if _, err := recordStoryEvent(context.Background(), storyGeneratorDeps{}, state, RecordStoryEventInput{CharacterName: "林澈", LocationKey: "old_dock", LocationName: "旧码头", ActionType: "action", Summary: "抵达旧码头"}); err != nil {
+		t.Fatalf("record first event: %v", err)
+	}
+	result, err := recordStoryEvent(context.Background(), storyGeneratorDeps{}, state, RecordStoryEventInput{CharacterID: "character_2", LocationKey: "old_dock", LocationName: "旧码头", ActionType: "observe", Summary: "在雨棚下等待"})
+	if err != nil {
+		t.Fatalf("record second event: %v", err)
+	}
+	if len(result.SameLocationCandidates) != 1 {
+		t.Fatalf("expected one same-location candidate, got %#v", result.SameLocationCandidates)
+	}
+	if len(result.SameLocationCandidates[0].CharacterIDs) != 2 {
+		t.Fatalf("expected two characters, got %#v", result.SameLocationCandidates[0])
+	}
+	if _, err := recordStoryEvent(context.Background(), storyGeneratorDeps{}, state, RecordStoryEventInput{CharacterID: "character_3", LocationKey: "inn", ActionType: "action", Summary: "去了旅馆"}); err != nil {
+		t.Fatalf("record third event: %v", err)
+	}
+	if len(state.locationGroups) != 1 || state.locationGroups[0].LocationKey != "old_dock" {
+		t.Fatalf("single-character locations should not become candidates: %#v", state.locationGroups)
+	}
+}
+
+func TestSelectStoryInteractionValidatesSameLocation(t *testing.T) {
+	state := &storyRunState{
+		run:      model.StoryRun{RunID: "run_1"},
+		maxTurns: 25,
+		characters: []model.Character{
+			{ID: "character_1", Name: "林澈"},
+			{ID: "character_2", Name: "沈砚"},
+			{ID: "character_3", Name: "顾白"},
+		},
+		events: []model.StoryTimelineEvent{
+			{ID: "event_1", CharacterID: "character_1", LocationKey: "old_dock"},
+			{ID: "event_2", CharacterID: "character_2", LocationKey: "old_dock"},
+			{ID: "event_3", CharacterID: "character_3", LocationKey: "inn"},
+		},
+	}
+	state.locationGroups = buildStoryLocationGroups(state.events)
+	_, err := selectStoryInteraction(context.Background(), storyGeneratorDeps{}, state, SelectStoryInteractionInput{LocationKey: "old_dock", CharacterIDs: []string{"character_1", "character_3"}, ShouldInteract: true})
+	if err == nil {
+		t.Fatal("expected cross-location interaction to be rejected")
+	}
+	group, err := selectStoryInteraction(context.Background(), storyGeneratorDeps{}, state, SelectStoryInteractionInput{LocationKey: "old_dock", CharacterIDs: []string{"character_1", "character_2"}, ShouldInteract: true, InteractionType: "negotiation"})
+	if err != nil {
+		t.Fatalf("select interaction: %v", err)
+	}
+	if group.ID == "" || !group.ShouldInteract {
+		t.Fatalf("unexpected interaction group: %#v", group)
+	}
+}
+
+func TestChooseNextStoryActorRecordsNegotiationTranscript(t *testing.T) {
+	state := &storyRunState{
+		run:      model.StoryRun{RunID: "run_1"},
+		maxTurns: 25,
+		characters: []model.Character{
+			{ID: "character_1", Name: "林澈"},
+			{ID: "character_2", Name: "沈砚"},
+		},
+		interactionGroups: []model.StoryInteractionGroup{{ID: "interaction_1", LocationKey: "old_dock", LocationName: "旧码头", CharacterIDs: []string{"character_1", "character_2"}, ShouldInteract: true}},
+	}
+	turn, err := chooseNextStoryActor(context.Background(), storyGeneratorDeps{}, state, ChooseNextStoryActorInput{ActorID: "character_1", ActionType: "speak", Speech: "你也收到信了？", TargetActorIDs: []string{"character_2"}, Intent: "试探", InteractionGroupID: "interaction_1"})
+	if err != nil {
+		t.Fatalf("choose negotiation turn: %v", err)
+	}
+	if turn.LocationKey != "old_dock" || turn.Phase != "negotiation" {
+		t.Fatalf("expected interaction location and phase, got %#v", turn)
+	}
+	if len(state.interactionTranscripts) != 1 || len(state.interactionTranscripts[0].Turns) != 1 {
+		t.Fatalf("expected transcript turn, got %#v", state.interactionTranscripts)
 	}
 }
 

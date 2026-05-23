@@ -24,6 +24,7 @@ func New(db *gorm.DB, ids port.IDGenerator, clock port.Clock) Repositories {
 			SetupSessions:    &setupSessionRepository{container: base},
 			DialogueSessions: &dialogueSessionRepository{container: base},
 			StorySessions:    &storySessionRepository{container: base},
+			StoryTimeline:    &storyTimelineRepository{container: base},
 			Chapters:         &chapterRepository{container: base},
 			Memories:         &memoryRepository{container: base},
 			Audit:            &auditRepository{container: base},

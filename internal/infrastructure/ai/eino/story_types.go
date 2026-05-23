@@ -18,26 +18,34 @@ type StoryContextSnapshot struct {
 }
 
 type StoryTurnPlan struct {
-	TurnIndex      int      `json:"turn_index"`
-	ActorID        string   `json:"actor_id,omitempty"`
-	ActorName      string   `json:"actor_name,omitempty"`
-	ActionType     string   `json:"action_type"`
-	Speech         string   `json:"speech,omitempty"`
-	ActionSummary  string   `json:"action_summary,omitempty"`
-	TargetActorIDs []string `json:"target_actor_ids,omitempty"`
-	Intent         string   `json:"intent"`
-	Rationale      string   `json:"rationale,omitempty"`
-	Content        string   `json:"content,omitempty"`
+	TurnIndex          int      `json:"turn_index"`
+	ActorID            string   `json:"actor_id,omitempty"`
+	ActorName          string   `json:"actor_name,omitempty"`
+	ActionType         string   `json:"action_type"`
+	Speech             string   `json:"speech,omitempty"`
+	ActionSummary      string   `json:"action_summary,omitempty"`
+	TargetActorIDs     []string `json:"target_actor_ids,omitempty"`
+	Intent             string   `json:"intent"`
+	Rationale          string   `json:"rationale,omitempty"`
+	Content            string   `json:"content,omitempty"`
+	InteractionGroupID string   `json:"interaction_group_id,omitempty"`
+	LocationKey        string   `json:"location_key,omitempty"`
+	LocationName       string   `json:"location_name,omitempty"`
+	Phase              string   `json:"phase,omitempty"`
 }
 
 type StoryTurnDisplayEvent struct {
-	TurnIndex      int      `json:"turn_index"`
-	ActorID        string   `json:"actor_id,omitempty"`
-	ActorName      string   `json:"actor_name,omitempty"`
-	ActionType     string   `json:"action_type"`
-	Speech         string   `json:"speech,omitempty"`
-	ActionSummary  string   `json:"action_summary,omitempty"`
-	TargetActorIDs []string `json:"target_actor_ids,omitempty"`
+	TurnIndex          int      `json:"turn_index"`
+	ActorID            string   `json:"actor_id,omitempty"`
+	ActorName          string   `json:"actor_name,omitempty"`
+	ActionType         string   `json:"action_type"`
+	Speech             string   `json:"speech,omitempty"`
+	ActionSummary      string   `json:"action_summary,omitempty"`
+	TargetActorIDs     []string `json:"target_actor_ids,omitempty"`
+	InteractionGroupID string   `json:"interaction_group_id,omitempty"`
+	LocationKey        string   `json:"location_key,omitempty"`
+	LocationName       string   `json:"location_name,omitempty"`
+	Phase              string   `json:"phase,omitempty"`
 }
 
 type StoryStopDecision struct {
@@ -46,9 +54,18 @@ type StoryStopDecision struct {
 }
 
 type StoryPlanResult struct {
-	Summary    string          `json:"summary"`
-	StopReason string          `json:"stop_reason"`
-	Turns      []StoryTurnPlan `json:"turns"`
+	Summary                string                             `json:"summary"`
+	StopReason             string                             `json:"stop_reason"`
+	Turns                  []StoryTurnPlan                    `json:"turns"`
+	EventTimeline          []model.StoryTimelineEvent         `json:"event_timeline,omitempty"`
+	InteractionAnalysis    model.StoryInteractionAnalysis     `json:"interaction_analysis,omitempty"`
+	InteractionTranscripts []model.StoryInteractionTranscript `json:"interaction_transcripts,omitempty"`
+}
+
+type StoryEventRecordResult struct {
+	Event                  model.StoryTimelineEvent       `json:"event"`
+	SameLocationCandidates []model.StoryLocationGroup     `json:"same_location_candidates"`
+	InteractionAnalysis    model.StoryInteractionAnalysis `json:"interaction_analysis"`
 }
 
 type StoryVariablePlan struct {
@@ -70,15 +87,43 @@ type LoadStoryContextInput struct {
 }
 
 type ChooseNextStoryActorInput struct {
-	TurnIndex      int      `json:"turn_index" jsonschema:"required"`
-	ActorID        string   `json:"actor_id"`
-	ActorName      string   `json:"actor_name"`
+	TurnIndex          int      `json:"turn_index" jsonschema:"required"`
+	ActorID            string   `json:"actor_id"`
+	ActorName          string   `json:"actor_name"`
+	ActionType         string   `json:"action_type" jsonschema:"required"`
+	Speech             string   `json:"speech"`
+	ActionSummary      string   `json:"action_summary"`
+	TargetActorIDs     []string `json:"target_actor_ids"`
+	Intent             string   `json:"intent" jsonschema:"required"`
+	Rationale          string   `json:"rationale"`
+	InteractionGroupID string   `json:"interaction_group_id"`
+	LocationKey        string   `json:"location_key"`
+	LocationName       string   `json:"location_name"`
+	Phase              string   `json:"phase"`
+}
+
+type RecordStoryEventInput struct {
+	TimeIndex      int      `json:"time_index"`
+	CharacterID    string   `json:"character_id"`
+	CharacterName  string   `json:"character_name"`
+	LocationKey    string   `json:"location_key" jsonschema:"required"`
+	LocationName   string   `json:"location_name"`
 	ActionType     string   `json:"action_type" jsonschema:"required"`
-	Speech         string   `json:"speech"`
-	ActionSummary  string   `json:"action_summary"`
+	Summary        string   `json:"summary" jsonschema:"required"`
+	Intent         string   `json:"intent"`
+	Visibility     string   `json:"visibility"`
 	TargetActorIDs []string `json:"target_actor_ids"`
-	Intent         string   `json:"intent" jsonschema:"required"`
-	Rationale      string   `json:"rationale"`
+}
+
+type SelectStoryInteractionInput struct {
+	LocationKey     string   `json:"location_key" jsonschema:"required"`
+	CharacterIDs    []string `json:"character_ids" jsonschema:"required"`
+	EventIDs        []string `json:"event_ids"`
+	ShouldInteract  bool     `json:"should_interact" jsonschema:"required"`
+	InteractionType string   `json:"interaction_type"`
+	Stakes          string   `json:"stakes"`
+	Rationale       string   `json:"rationale"`
+	Priority        int      `json:"priority"`
 }
 
 type DecideStoryStopInput struct {
@@ -187,9 +232,10 @@ type StoryNarrativeCharacterMemoryUpdate struct {
 }
 
 type StoryNarrativeRelationshipUpdate struct {
-	PairID       string `json:"pair_id"`
-	Summary      string `json:"summary"`
-	TensionDelta string `json:"tension_delta"`
+	PairID       string                    `json:"pair_id"`
+	Summary      string                    `json:"summary"`
+	TensionDelta string                    `json:"tension_delta"`
+	Events       []model.RelationshipEvent `json:"events"`
 }
 
 type StoryNarrativeWorldStateUpdate struct {

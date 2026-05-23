@@ -20,6 +20,7 @@ type StorySessionsHandler struct {
 	events    port.GenerationEventStream
 	advancer  *service.StorySessionAdvancer
 	committer *service.StoryRunCommitter
+	timeline  *service.StoryTimelineService
 }
 
 func NewStorySessionsHandler(
@@ -28,6 +29,7 @@ func NewStorySessionsHandler(
 	events port.GenerationEventStream,
 	advancer *service.StorySessionAdvancer,
 	committer *service.StoryRunCommitter,
+	timeline *service.StoryTimelineService,
 ) StorySessionsHandler {
 	return StorySessionsHandler{
 		sessions:  sessions,
@@ -35,6 +37,7 @@ func NewStorySessionsHandler(
 		events:    events,
 		advancer:  advancer,
 		committer: committer,
+		timeline:  timeline,
 	}
 }
 
@@ -121,6 +124,73 @@ func (h StorySessionsHandler) Advance(c *gin.Context) {
 	}
 
 	result, err := h.advancer.Advance(c.Request.Context(), c.Param("session_id"), model.AdvanceStorySessionInput{
+		AuthorMessage: req.AuthorMessage,
+		BranchID:      req.BranchID,
+		BaseTickID:    req.BaseTickID,
+	})
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusAccepted, result)
+}
+
+func (h StorySessionsHandler) GetTimeline(c *gin.Context) {
+	result, err := h.timeline.ListSessionTimeline(c.Request.Context(), c.Param("session_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h StorySessionsHandler) GetTick(c *gin.Context) {
+	result, err := h.timeline.GetTick(c.Request.Context(), c.Param("tick_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h StorySessionsHandler) GetTickState(c *gin.Context) {
+	result, err := h.timeline.GetTickState(c.Request.Context(), c.Param("tick_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h StorySessionsHandler) ForkTick(c *gin.Context) {
+	var req dto.ForkStoryTickRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.timeline.ForkTick(c.Request.Context(), c.Param("tick_id"), model.ForkStoryTickInput{
+		Name:          req.Name,
+		AuthorMessage: req.AuthorMessage,
+	})
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.Data(c, http.StatusCreated, result)
+}
+
+func (h StorySessionsHandler) AdvanceBranch(c *gin.Context) {
+	var req dto.AdvanceStorySessionRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.timeline.AdvanceBranch(c.Request.Context(), c.Param("branch_id"), model.AdvanceStorySessionInput{
 		AuthorMessage: req.AuthorMessage,
 	})
 	if err != nil {

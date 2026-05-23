@@ -17,10 +17,16 @@ type setupRunResultPayload struct {
 }
 
 type storyRunResultPayload struct {
-	PlotVariable model.PlotVariable `json:"plot_variable"`
-	Draft        model.Draft        `json:"draft"`
-	Review       model.ReviewReport `json:"review"`
-	MemoryPatch  model.MemoryPatch  `json:"memory_patch"`
+	BranchID               string                             `json:"branch_id,omitempty"`
+	BaseTickID             string                             `json:"base_tick_id,omitempty"`
+	HeadTickID             string                             `json:"head_tick_id,omitempty"`
+	PlotVariable           model.PlotVariable                 `json:"plot_variable"`
+	EventTimeline          []model.StoryTimelineEvent         `json:"event_timeline"`
+	InteractionAnalysis    model.StoryInteractionAnalysis     `json:"interaction_analysis"`
+	InteractionTranscripts []model.StoryInteractionTranscript `json:"interaction_transcripts"`
+	Draft                  model.Draft                        `json:"draft"`
+	Review                 model.ReviewReport                 `json:"review"`
+	MemoryPatch            model.MemoryPatch                  `json:"memory_patch"`
 }
 
 type dialogueRunResultPayload struct {
@@ -918,6 +924,8 @@ func (r *storySessionRepository) CreateRun(ctx context.Context, sessionID string
 		ID:          r.nextID("run"),
 		SessionID:   sessionID,
 		ProjectID:   session.ProjectID,
+		BranchID:    input.BranchID,
+		BaseTickID:  input.BaseTickID,
 		Status:      "queued",
 		CurrentStep: "loading_state",
 		Progress:    0,
@@ -931,6 +939,9 @@ func (r *storySessionRepository) CreateRun(ctx context.Context, sessionID string
 		RunID:       row.ID,
 		SessionID:   row.SessionID,
 		ProjectID:   row.ProjectID,
+		BranchID:    row.BranchID,
+		BaseTickID:  row.BaseTickID,
+		HeadTickID:  row.HeadTickID,
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
@@ -949,6 +960,9 @@ func (r *storySessionRepository) GetRunByID(ctx context.Context, runID string) (
 		RunID:       row.ID,
 		SessionID:   row.SessionID,
 		ProjectID:   row.ProjectID,
+		BranchID:    row.BranchID,
+		BaseTickID:  row.BaseTickID,
+		HeadTickID:  row.HeadTickID,
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
@@ -969,22 +983,34 @@ func (r *storySessionRepository) GetRunResultByID(ctx context.Context, runID str
 		return model.StoryRunResult{}, payloadError("story run result", err)
 	}
 	return model.StoryRunResult{
-		RunID:        row.RunID,
-		SessionID:    row.SessionID,
-		Status:       row.Status,
-		PlotVariable: payload.PlotVariable,
-		Draft:        payload.Draft,
-		Review:       payload.Review,
-		MemoryPatch:  payload.MemoryPatch,
+		RunID:                  row.RunID,
+		SessionID:              row.SessionID,
+		Status:                 row.Status,
+		BranchID:               payload.BranchID,
+		BaseTickID:             payload.BaseTickID,
+		HeadTickID:             payload.HeadTickID,
+		PlotVariable:           payload.PlotVariable,
+		EventTimeline:          payload.EventTimeline,
+		InteractionAnalysis:    payload.InteractionAnalysis,
+		InteractionTranscripts: payload.InteractionTranscripts,
+		Draft:                  payload.Draft,
+		Review:                 payload.Review,
+		MemoryPatch:            payload.MemoryPatch,
 	}, nil
 }
 
 func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string, result model.StoryRunResult) error {
 	payloadJSON, err := encodeJSON(storyRunResultPayload{
-		PlotVariable: result.PlotVariable,
-		Draft:        result.Draft,
-		Review:       result.Review,
-		MemoryPatch:  result.MemoryPatch,
+		BranchID:               result.BranchID,
+		BaseTickID:             result.BaseTickID,
+		HeadTickID:             result.HeadTickID,
+		PlotVariable:           result.PlotVariable,
+		EventTimeline:          result.EventTimeline,
+		InteractionAnalysis:    result.InteractionAnalysis,
+		InteractionTranscripts: result.InteractionTranscripts,
+		Draft:                  result.Draft,
+		Review:                 result.Review,
+		MemoryPatch:            result.MemoryPatch,
 	})
 	if err != nil {
 		return payloadError("story run result", err)
@@ -1004,6 +1030,7 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 		"current_step": "review_required",
 		"progress":     100,
 		"error":        "",
+		"head_tick_id": result.HeadTickID,
 		"updated_at":   now,
 	}).Error; err != nil {
 		return mapDBError(err, "story run not found")
@@ -1025,6 +1052,13 @@ func (r *storySessionRepository) UpdateRunStatus(ctx context.Context, runID stri
 		updates["error"] = errorMessage[0]
 	}
 	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(updates).Error, "story run not found")
+}
+
+func (r *storySessionRepository) UpdateRunTimeline(ctx context.Context, runID string, headTickID string) error {
+	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
+		"head_tick_id": headTickID,
+		"updated_at":   r.now(),
+	}).Error, "story run not found")
 }
 
 func (r *storySessionRepository) MarkCommitted(ctx context.Context, runID string) error {

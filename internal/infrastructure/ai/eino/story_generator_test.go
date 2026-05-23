@@ -57,6 +57,22 @@ func TestBuildResultUsesNarrativeOutput(t *testing.T) {
 		Turns: []StoryTurnPlan{
 			{TurnIndex: 1, ActorID: "character_1", ActorName: "林澈", ActionType: "speak", Intent: "试探对方"},
 		},
+		EventTimeline: []model.StoryTimelineEvent{
+			{ID: "event_1", CharacterID: "character_1", CharacterName: "林澈", LocationKey: "old_dock", LocationName: "旧码头", ActionType: "action", Summary: "林澈抵达旧码头"},
+		},
+		InteractionAnalysis: model.StoryInteractionAnalysis{
+			InteractionGroups: []model.StoryInteractionGroup{{ID: "interaction_1", LocationKey: "old_dock", CharacterIDs: []string{"character_1", "character_2"}, ShouldInteract: true}},
+		},
+		InteractionTranscripts: []model.StoryInteractionTranscript{
+			{
+				GroupID:      "interaction_1",
+				LocationKey:  "old_dock",
+				CharacterIDs: []string{"character_1", "character_2"},
+				Turns: []model.StoryInteractionTurn{
+					{TurnIndex: 1, InteractionGroupID: "interaction_1", ActorID: "character_1", ActionType: "speak", Speech: "密信不在我这里。"},
+				},
+			},
+		},
 	}, StoryNarrativeResult{
 		Summary: "密信引发怀疑",
 		Content: "林澈压低声音试探对方。",
@@ -88,6 +104,15 @@ func TestBuildResultUsesNarrativeOutput(t *testing.T) {
 	}
 	if len(result.PlotVariable.RelatedCharacterIDs) != 1 || result.PlotVariable.RelatedCharacterIDs[0] != "character_1" {
 		t.Fatalf("unexpected related character ids: %#v", result.PlotVariable.RelatedCharacterIDs)
+	}
+	if len(result.EventTimeline) != 1 || result.EventTimeline[0].LocationKey != "old_dock" {
+		t.Fatalf("unexpected event timeline: %#v", result.EventTimeline)
+	}
+	if len(result.InteractionAnalysis.InteractionGroups) != 1 || result.InteractionAnalysis.InteractionGroups[0].ID != "interaction_1" {
+		t.Fatalf("unexpected interaction analysis: %#v", result.InteractionAnalysis)
+	}
+	if len(result.InteractionTranscripts) != 1 || len(result.InteractionTranscripts[0].Turns) != 1 {
+		t.Fatalf("unexpected interaction transcripts: %#v", result.InteractionTranscripts)
 	}
 }
 
@@ -133,6 +158,27 @@ func TestBuildResultPrefersPreGeneratedVariable(t *testing.T) {
 	}
 	if result.Draft.Summary != result.PlotVariable.CoreChoice {
 		t.Fatalf("expected draft summary to follow pre-generated variable, got %q", result.Draft.Summary)
+	}
+}
+
+func TestRelationshipUpdatesKeepEvents(t *testing.T) {
+	updates := toRelationshipUpdates([]StoryNarrativeRelationshipUpdate{
+		{
+			PairID:       "pair_1",
+			TensionDelta: "互相警惕加深",
+			Events: []model.RelationshipEvent{
+				{EventType: "negotiation", Summary: "围绕密信互相试探"},
+			},
+		},
+	})
+	if len(updates) != 1 {
+		t.Fatalf("expected one relationship update, got %#v", updates)
+	}
+	if len(updates[0].Events) != 1 || updates[0].Events[0].EventType != "negotiation" {
+		t.Fatalf("expected relationship event to be preserved, got %#v", updates[0].Events)
+	}
+	if updates[0].TensionDelta != "互相警惕加深" {
+		t.Fatalf("expected tension delta, got %#v", updates[0])
 	}
 }
 

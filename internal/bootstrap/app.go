@@ -85,6 +85,7 @@ func New(cfg config.Config) *App {
 		Memories:      repos.Memories,
 		MemoryService: memoryService,
 		Events:        eventStream,
+		Audit:         repos.Audit,
 		Clock:         clock,
 		IDs:           idGenerator,
 	})
@@ -92,9 +93,18 @@ func New(cfg config.Config) *App {
 		log.Fatalf("bootstrap story generator: %v", err)
 	}
 	storyStarter := service.NewStorySessionStarter(repos.StorySessions)
-	storyAdvancer := service.NewStorySessionAdvancer(repos.StorySessions, repos.Audit, storyGenerator, eventStream)
+	storyAdvancer := service.NewStorySessionAdvancer(
+		repos.StorySessions,
+		repos.StoryTimeline,
+		repos.Audit,
+		storyGenerator,
+		eventStream,
+		clock,
+		idGenerator,
+	)
 	storyCommitter := service.NewStoryRunCommitter(
 		repos.StorySessions,
+		repos.StoryTimeline,
 		repos.Chapters,
 		repos.Memories,
 		repos.WorldState,
@@ -105,6 +115,7 @@ func New(cfg config.Config) *App {
 		clock,
 		idGenerator,
 	)
+	storyTimeline := service.NewStoryTimelineService(repos.StorySessions, repos.StoryTimeline, storyAdvancer, clock)
 	dialogueValidator := service.NewDialogueActionValidator(repos.SetupSessions, repos.StorySessions)
 	dialogueExecutor := service.NewDialogueActionExecutor(
 		repos.DialogueSessions,
@@ -148,7 +159,7 @@ func New(cfg config.Config) *App {
 		Relationships:    handler.NewRelationshipsHandler(repos.Relationships),
 		SetupSessions:    handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
 		DialogueSessions: handler.NewDialogueSessionsHandler(repos.DialogueSessions, repos.Audit, eventStream, dialogueStarter, dialogueAdvancer, dialogueExecutor),
-		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCommitter),
+		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCommitter, storyTimeline),
 		Chapters:         handler.NewChaptersHandler(repos.Chapters),
 		Memories:         handler.NewMemoriesHandler(repos.Memories),
 	}

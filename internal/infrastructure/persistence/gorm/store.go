@@ -103,6 +103,10 @@ func (s *Store) AutoMigrate() error {
 			&persistencemodels.StoryMessage{},
 			&persistencemodels.StoryRun{},
 			&persistencemodels.StoryRunResult{},
+			&persistencemodels.StoryBranch{},
+			&persistencemodels.StoryTick{},
+			&persistencemodels.StoryStateVersion{},
+			&persistencemodels.StoryTickStateRef{},
 		},
 		{
 			&persistencemodels.DialogueSession{},

@@ -27,23 +27,40 @@ type storyGeneratorDeps struct {
 	memories      port.MemoryRepository
 	memoryService port.CharacterMemoryService
 	events        port.GenerationEventStream
+	audit         port.AuditRepository
 }
 
 type storyRunState struct {
-	mu         sync.Mutex
-	run        model.StoryRun
-	session    model.StorySession
-	maxTurns   int
-	characters []model.Character
-	turns      []StoryTurnPlan
-	stopReason string
-	summary    string
-	variable   StoryVariablePlan
+	mu                     sync.Mutex
+	run                    model.StoryRun
+	session                model.StorySession
+	maxTurns               int
+	characters             []model.Character
+	turns                  []StoryTurnPlan
+	events                 []model.StoryTimelineEvent
+	locationGroups         []model.StoryLocationGroup
+	interactionGroups      []model.StoryInteractionGroup
+	interactionTranscripts []model.StoryInteractionTranscript
+	stopReason             string
+	summary                string
+	variable               StoryVariablePlan
 }
 
 func newStoryTools(deps storyGeneratorDeps, state *storyRunState) ([]tool.BaseTool, error) {
 	loadContext, err := utils.InferTool("load_story_context", "读取当前 story run 的项目状态、角色、关系、世界状态、章节和近期记忆。", func(ctx context.Context, input LoadStoryContextInput) (StoryContextSnapshot, error) {
 		return loadStoryContext(ctx, deps, state, input)
+	})
+	if err != nil {
+		return nil, err
+	}
+	recordEvent, err := utils.InferTool("record_story_event", "记录事件模拟阶段中某个角色在某个地点的行动。必须提供 location_key、action_type 和 summary。", func(ctx context.Context, input RecordStoryEventInput) (StoryEventRecordResult, error) {
+		return recordStoryEvent(ctx, deps, state, input)
+	})
+	if err != nil {
+		return nil, err
+	}
+	selectInteraction, err := utils.InferTool("select_story_interaction", "从同地点候选组中选择会实际发生交涉的角色组。角色必须来自同一个候选地点。", func(ctx context.Context, input SelectStoryInteractionInput) (model.StoryInteractionGroup, error) {
+		return selectStoryInteraction(ctx, deps, state, input)
 	})
 	if err != nil {
 		return nil, err
@@ -66,7 +83,7 @@ func newStoryTools(deps storyGeneratorDeps, state *storyRunState) ([]tool.BaseTo
 	if err != nil {
 		return nil, err
 	}
-	return []tool.BaseTool{loadContext, chooseActor, decideStop, finalizePlan}, nil
+	return []tool.BaseTool{loadContext, recordEvent, selectInteraction, chooseActor, decideStop, finalizePlan}, nil
 }
 
 func loadStoryContext(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, input LoadStoryContextInput) (StoryContextSnapshot, error) {
@@ -143,9 +160,7 @@ func recallCharacterMemories(ctx context.Context, deps storyGeneratorDeps, runID
 		}
 		if err != nil {
 			log.Printf("story run %s external memory recall failed for character %s: %v", runID, characterID, err)
-			if deps.events != nil {
-				_ = deps.events.Publish(ctx, runID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": "external_memory_recall_failed", "character_id": characterID, "error": err.Error()}})
-			}
+			publishStoryEvent(ctx, deps, runID, domain.EventGenerationStep, map[string]any{"step": "external_memory_recall_failed", "character_id": characterID, "error": err.Error()})
 		}
 	}
 	return deps.memories.ListByCharacterID(ctx, characterID, 5)
@@ -169,6 +184,125 @@ func storyMemoryRecallQuery(session model.StorySession, worldState []model.World
 		return "当前章节中会影响角色选择、信念、情绪和行动模式的长期记忆"
 	}
 	return out
+}
+
+func recordStoryEvent(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, input RecordStoryEventInput) (StoryEventRecordResult, error) {
+	locationKey := strings.TrimSpace(input.LocationKey)
+	if locationKey == "" {
+		return StoryEventRecordResult{}, pkgerr.Validation("story event location_key is required")
+	}
+	if strings.TrimSpace(input.Summary) == "" {
+		return StoryEventRecordResult{}, pkgerr.Validation("story event summary is required")
+	}
+	input.ActionType = normalizeStoryActionType(input.ActionType, "", input.Summary)
+	allowedActions := []string{"speak", "action", "silence", "observe", "narration"}
+	if !slices.Contains(allowedActions, input.ActionType) {
+		return StoryEventRecordResult{}, pkgerr.Validation("invalid story event action type")
+	}
+
+	state.mu.Lock()
+	actorID, actorName, err := resolveStoryActor(state.characters, input.CharacterID, input.CharacterName, input.ActionType)
+	if err != nil {
+		state.mu.Unlock()
+		return StoryEventRecordResult{}, err
+	}
+	targetActorIDs, err := validStoryTargetActorIDs(state.characters, input.TargetActorIDs)
+	if err != nil {
+		state.mu.Unlock()
+		return StoryEventRecordResult{}, err
+	}
+	timeIndex := input.TimeIndex
+	if timeIndex <= 0 {
+		timeIndex = len(state.events) + 1
+	}
+	event := model.StoryTimelineEvent{
+		ID:             fmt.Sprintf("story_event_%d", len(state.events)+1),
+		TimeIndex:      timeIndex,
+		CharacterID:    actorID,
+		CharacterName:  actorName,
+		LocationKey:    locationKey,
+		LocationName:   strings.TrimSpace(input.LocationName),
+		ActionType:     input.ActionType,
+		Summary:        strings.TrimSpace(input.Summary),
+		Intent:         strings.TrimSpace(input.Intent),
+		Visibility:     strings.TrimSpace(input.Visibility),
+		TargetActorIDs: targetActorIDs,
+	}
+	state.events = append(state.events, event)
+	state.locationGroups = buildStoryLocationGroups(state.events)
+	analysis := model.StoryInteractionAnalysis{LocationGroups: copyStoryLocationGroups(state.locationGroups), InteractionGroups: copyStoryInteractionGroups(state.interactionGroups)}
+	result := StoryEventRecordResult{Event: event, SameLocationCandidates: analysis.LocationGroups, InteractionAnalysis: analysis}
+	state.mu.Unlock()
+
+	publishStoryEvent(ctx, deps, state.run.RunID, domain.EventStoryEventPlanned, map[string]any{"event": event})
+	if len(result.SameLocationCandidates) > 0 {
+		updateStoryRunStep(ctx, deps, state.run.RunID, domain.RunStatusSelectingInteractions, 45)
+		publishStoryEvent(ctx, deps, state.run.RunID, domain.EventSameLocationCandidates, map[string]any{"location_groups": result.SameLocationCandidates})
+	}
+	return result, nil
+}
+
+func selectStoryInteraction(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, input SelectStoryInteractionInput) (model.StoryInteractionGroup, error) {
+	locationKey := strings.TrimSpace(input.LocationKey)
+	if locationKey == "" {
+		return model.StoryInteractionGroup{}, pkgerr.Validation("interaction location_key is required")
+	}
+	state.mu.Lock()
+	candidate, ok := locationGroupByKey(state.locationGroups, locationKey)
+	if !ok {
+		state.mu.Unlock()
+		return model.StoryInteractionGroup{}, pkgerr.Validation("interaction must use a same-location candidate")
+	}
+	characterIDs, err := validStoryTargetActorIDs(state.characters, input.CharacterIDs)
+	if err != nil {
+		state.mu.Unlock()
+		return model.StoryInteractionGroup{}, err
+	}
+	characterIDs = uniqueStoryIDs(characterIDs)
+	if len(characterIDs) < 2 {
+		state.mu.Unlock()
+		return model.StoryInteractionGroup{}, pkgerr.Validation("interaction requires at least two characters")
+	}
+	for _, characterID := range characterIDs {
+		if !containsString(candidate.CharacterIDs, characterID) {
+			state.mu.Unlock()
+			return model.StoryInteractionGroup{}, pkgerr.Validation("interaction characters must share the same location")
+		}
+	}
+	if input.ShouldInteract && selectedInteractionCount(state.interactionGroups) >= 3 {
+		state.mu.Unlock()
+		return model.StoryInteractionGroup{}, pkgerr.Validation("max interaction groups reached")
+	}
+	eventIDs := input.EventIDs
+	if len(eventIDs) == 0 {
+		eventIDs = candidate.EventIDs
+	}
+	group := model.StoryInteractionGroup{
+		ID:              fmt.Sprintf("interaction_%d", len(state.interactionGroups)+1),
+		LocationKey:     candidate.LocationKey,
+		LocationName:    candidate.LocationName,
+		CharacterIDs:    characterIDs,
+		EventIDs:        eventIDs,
+		ShouldInteract:  input.ShouldInteract,
+		InteractionType: strings.TrimSpace(input.InteractionType),
+		Stakes:          strings.TrimSpace(input.Stakes),
+		Rationale:       strings.TrimSpace(input.Rationale),
+		Priority:        input.Priority,
+	}
+	state.interactionGroups = append(state.interactionGroups, group)
+	analysis := model.StoryInteractionAnalysis{LocationGroups: copyStoryLocationGroups(state.locationGroups), InteractionGroups: copyStoryInteractionGroups(state.interactionGroups)}
+	state.mu.Unlock()
+
+	if group.ShouldInteract {
+		updateStoryRunStep(ctx, deps, state.run.RunID, domain.RunStatusNegotiatingInteractions, 60)
+	} else {
+		updateStoryRunStep(ctx, deps, state.run.RunID, domain.RunStatusSelectingInteractions, 45)
+	}
+	publishStoryEvent(ctx, deps, state.run.RunID, domain.EventInteractionAnalysis, map[string]any{"analysis": analysis})
+	if group.ShouldInteract {
+		publishStoryEvent(ctx, deps, state.run.RunID, domain.EventInteractionSelected, map[string]any{"interaction_group": group})
+	}
+	return group, nil
 }
 
 func chooseNextStoryActor(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, input ChooseNextStoryActorInput) (StoryTurnPlan, error) {
@@ -196,20 +330,40 @@ func chooseNextStoryActor(ctx context.Context, deps storyGeneratorDeps, state *s
 		turnIndex = len(state.turns) + 1
 	}
 	turn := StoryTurnPlan{
-		TurnIndex:      turnIndex,
-		ActorID:        actorID,
-		ActorName:      actorName,
-		ActionType:     input.ActionType,
-		Speech:         input.Speech,
-		ActionSummary:  input.ActionSummary,
-		TargetActorIDs: targetActorIDs,
-		Intent:         input.Intent,
-		Rationale:      input.Rationale,
+		TurnIndex:          turnIndex,
+		ActorID:            actorID,
+		ActorName:          actorName,
+		ActionType:         input.ActionType,
+		Speech:             input.Speech,
+		ActionSummary:      input.ActionSummary,
+		TargetActorIDs:     targetActorIDs,
+		Intent:             input.Intent,
+		Rationale:          input.Rationale,
+		InteractionGroupID: strings.TrimSpace(input.InteractionGroupID),
+		LocationKey:        strings.TrimSpace(input.LocationKey),
+		LocationName:       strings.TrimSpace(input.LocationName),
+		Phase:              strings.TrimSpace(input.Phase),
+	}
+	if turn.InteractionGroupID != "" {
+		if err := validateStoryTurnInteraction(state.interactionGroups, turn); err != nil {
+			return StoryTurnPlan{}, err
+		}
+		if turn.Phase == "" {
+			turn.Phase = "negotiation"
+		}
+		if turn.LocationKey == "" || turn.LocationName == "" {
+			turn.LocationKey, turn.LocationName = interactionLocation(state.interactionGroups, turn.InteractionGroupID)
+		}
 	}
 	state.turns = append(state.turns, turn)
-	if deps.events != nil {
-		_ = deps.events.Publish(ctx, state.run.RunID, port.GenerationEvent{Name: domain.EventCharacterTurn, Data: storyTurnDisplayPayload(turn)})
+	if turn.InteractionGroupID != "" {
+		state.interactionTranscripts = upsertStoryInteractionTurn(state.interactionTranscripts, state.interactionGroups, turn)
 	}
+	display := storyTurnDisplayPayload(turn)
+	if turn.InteractionGroupID != "" {
+		publishStoryEvent(ctx, deps, state.run.RunID, domain.EventNegotiationTurn, display)
+	}
+	publishStoryEvent(ctx, deps, state.run.RunID, domain.EventCharacterTurn, display)
 	return turn, nil
 }
 
@@ -290,13 +444,17 @@ func validStoryTargetActorIDs(characters []model.Character, targetActorIDs []str
 
 func storyTurnDisplayPayload(turn StoryTurnPlan) StoryTurnDisplayEvent {
 	return StoryTurnDisplayEvent{
-		TurnIndex:      turn.TurnIndex,
-		ActorID:        turn.ActorID,
-		ActorName:      turn.ActorName,
-		ActionType:     turn.ActionType,
-		Speech:         turn.Speech,
-		ActionSummary:  turn.ActionSummary,
-		TargetActorIDs: turn.TargetActorIDs,
+		TurnIndex:          turn.TurnIndex,
+		ActorID:            turn.ActorID,
+		ActorName:          turn.ActorName,
+		ActionType:         turn.ActionType,
+		Speech:             turn.Speech,
+		ActionSummary:      turn.ActionSummary,
+		TargetActorIDs:     turn.TargetActorIDs,
+		InteractionGroupID: turn.InteractionGroupID,
+		LocationKey:        turn.LocationKey,
+		LocationName:       turn.LocationName,
+		Phase:              turn.Phase,
 	}
 }
 
@@ -315,9 +473,7 @@ func decideStoryStop(ctx context.Context, deps storyGeneratorDeps, state *storyR
 		state.stopReason = reason
 	}
 	decision := StoryStopDecision{Stop: stop, Reason: reason}
-	if deps.events != nil {
-		_ = deps.events.Publish(ctx, state.run.RunID, port.GenerationEvent{Name: domain.EventGenerationStep, Data: map[string]any{"step": "stop_decision", "stop": stop, "reason": reason}})
-	}
+	publishStoryEvent(ctx, deps, state.run.RunID, domain.EventGenerationStep, map[string]any{"step": "stop_decision", "stop": stop, "reason": reason})
 	return decision, nil
 }
 
@@ -338,11 +494,173 @@ func isNotFound(err error) bool {
 	return ok && appErr.Code == pkgerr.CodeNotFound
 }
 
+func buildStoryLocationGroups(events []model.StoryTimelineEvent) []model.StoryLocationGroup {
+	byLocation := map[string]*model.StoryLocationGroup{}
+	for _, event := range events {
+		if event.LocationKey == "" || event.CharacterID == "" {
+			continue
+		}
+		group := byLocation[event.LocationKey]
+		if group == nil {
+			group = &model.StoryLocationGroup{ID: fmt.Sprintf("location_group_%d", len(byLocation)+1), LocationKey: event.LocationKey, LocationName: event.LocationName}
+			byLocation[event.LocationKey] = group
+		}
+		group.CharacterIDs = appendUniqueString(group.CharacterIDs, event.CharacterID)
+		group.EventIDs = appendUniqueString(group.EventIDs, event.ID)
+		if group.LocationName == "" {
+			group.LocationName = event.LocationName
+		}
+	}
+	groups := make([]model.StoryLocationGroup, 0, len(byLocation))
+	for _, group := range byLocation {
+		if len(group.CharacterIDs) >= 2 {
+			groups = append(groups, *group)
+		}
+	}
+	return groups
+}
+
+func locationGroupByKey(groups []model.StoryLocationGroup, locationKey string) (model.StoryLocationGroup, bool) {
+	for _, group := range groups {
+		if group.LocationKey == locationKey {
+			return group, true
+		}
+	}
+	return model.StoryLocationGroup{}, false
+}
+
+func selectedInteractionCount(groups []model.StoryInteractionGroup) int {
+	count := 0
+	for _, group := range groups {
+		if group.ShouldInteract {
+			count++
+		}
+	}
+	return count
+}
+
+func uniqueStoryIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = appendUniqueString(out, id)
+	}
+	return out
+}
+
+func validateStoryTurnInteraction(groups []model.StoryInteractionGroup, turn StoryTurnPlan) error {
+	for _, group := range groups {
+		if group.ID != turn.InteractionGroupID || !group.ShouldInteract {
+			continue
+		}
+		if turn.ActorID != "" && !containsString(group.CharacterIDs, turn.ActorID) {
+			return pkgerr.Validation("story turn actor must belong to interaction group")
+		}
+		for _, targetID := range turn.TargetActorIDs {
+			if !containsString(group.CharacterIDs, targetID) {
+				return pkgerr.Validation("story turn targets must belong to interaction group")
+			}
+		}
+		if turn.LocationKey != "" && turn.LocationKey != group.LocationKey {
+			return pkgerr.Validation("story turn location must match interaction group")
+		}
+		return nil
+	}
+	return pkgerr.Validation("story turn interaction group must be selected")
+}
+
+func interactionLocation(groups []model.StoryInteractionGroup, groupID string) (string, string) {
+	for _, group := range groups {
+		if group.ID == groupID {
+			return group.LocationKey, group.LocationName
+		}
+	}
+	return "", ""
+}
+
+func upsertStoryInteractionTurn(transcripts []model.StoryInteractionTranscript, groups []model.StoryInteractionGroup, turn StoryTurnPlan) []model.StoryInteractionTranscript {
+	interactionTurn := model.StoryInteractionTurn{
+		TurnIndex:          turn.TurnIndex,
+		InteractionGroupID: turn.InteractionGroupID,
+		ActorID:            turn.ActorID,
+		ActorName:          turn.ActorName,
+		ActionType:         turn.ActionType,
+		Speech:             turn.Speech,
+		ActionSummary:      turn.ActionSummary,
+		TargetActorIDs:     turn.TargetActorIDs,
+		Intent:             turn.Intent,
+		LocationKey:        turn.LocationKey,
+		LocationName:       turn.LocationName,
+	}
+	for i := range transcripts {
+		if transcripts[i].GroupID == turn.InteractionGroupID {
+			transcripts[i].Turns = append(transcripts[i].Turns, interactionTurn)
+			transcripts[i].OutcomeSummary = firstText(turn.Intent, turn.ActionSummary, turn.Speech, transcripts[i].OutcomeSummary)
+			return transcripts
+		}
+	}
+	transcript := model.StoryInteractionTranscript{GroupID: turn.InteractionGroupID, LocationKey: turn.LocationKey, LocationName: turn.LocationName, Turns: []model.StoryInteractionTurn{interactionTurn}, OutcomeSummary: firstText(turn.Intent, turn.ActionSummary, turn.Speech)}
+	for _, group := range groups {
+		if group.ID == turn.InteractionGroupID {
+			transcript.LocationKey = firstText(transcript.LocationKey, group.LocationKey)
+			transcript.LocationName = firstText(transcript.LocationName, group.LocationName)
+			transcript.CharacterIDs = append([]string(nil), group.CharacterIDs...)
+			break
+		}
+	}
+	return append(transcripts, transcript)
+}
+
+func copyStoryLocationGroups(groups []model.StoryLocationGroup) []model.StoryLocationGroup {
+	out := make([]model.StoryLocationGroup, len(groups))
+	copy(out, groups)
+	return out
+}
+
+func copyStoryInteractionGroups(groups []model.StoryInteractionGroup) []model.StoryInteractionGroup {
+	out := make([]model.StoryInteractionGroup, len(groups))
+	copy(out, groups)
+	return out
+}
+
+func copyStoryInteractionTranscripts(transcripts []model.StoryInteractionTranscript) []model.StoryInteractionTranscript {
+	out := make([]model.StoryInteractionTranscript, len(transcripts))
+	copy(out, transcripts)
+	return out
+}
+
+func updateStoryRunStep(ctx context.Context, deps storyGeneratorDeps, runID string, status string, progress int) {
+	if deps.sessions != nil {
+		_ = deps.sessions.UpdateRunStatus(ctx, runID, status, status, progress)
+	}
+	publishStoryEvent(ctx, deps, runID, domain.EventGenerationStep, map[string]any{"step": status, "progress": progress})
+}
+
+func publishStoryEvent(ctx context.Context, deps storyGeneratorDeps, runID string, name string, data any) {
+	if deps.events != nil {
+		_ = deps.events.Publish(ctx, runID, port.GenerationEvent{Name: name, Data: data})
+	}
+	if deps.audit == nil {
+		return
+	}
+	payload, ok := data.(map[string]any)
+	if !ok {
+		payload = map[string]any{"data": data}
+	}
+	if _, err := deps.audit.AppendRunEvent(ctx, model.RunEvent{RunKind: "story", RunID: runID, EventName: name, Payload: payload}); err != nil {
+		log.Printf("append story run event %s failed: %v", runID, err)
+	}
+}
+
 func (s *storyRunState) planResult() StoryPlanResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	turns := make([]StoryTurnPlan, len(s.turns))
 	copy(turns, s.turns)
+	events := make([]model.StoryTimelineEvent, len(s.events))
+	copy(events, s.events)
+	locationGroups := copyStoryLocationGroups(s.locationGroups)
+	interactionGroups := copyStoryInteractionGroups(s.interactionGroups)
+	transcripts := copyStoryInteractionTranscripts(s.interactionTranscripts)
 	summary := s.summary
 	if summary == "" {
 		summary = fmt.Sprintf("完成 %d 轮回合裁决", len(turns))
@@ -351,5 +669,5 @@ func (s *storyRunState) planResult() StoryPlanResult {
 	if stopReason == "" {
 		stopReason = "回合裁决结束"
 	}
-	return StoryPlanResult{Summary: summary, StopReason: stopReason, Turns: turns}
+	return StoryPlanResult{Summary: summary, StopReason: stopReason, Turns: turns, EventTimeline: events, InteractionAnalysis: model.StoryInteractionAnalysis{LocationGroups: locationGroups, InteractionGroups: interactionGroups}, InteractionTranscripts: transcripts}
 }

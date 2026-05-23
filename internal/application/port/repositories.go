@@ -100,7 +100,20 @@ type StorySessionRepository interface {
 	GetRunResultByID(ctx context.Context, runID string) (model.StoryRunResult, error)
 	SaveRunResult(ctx context.Context, runID string, result model.StoryRunResult) error
 	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
+	UpdateRunTimeline(ctx context.Context, runID string, headTickID string) error
 	MarkCommitted(ctx context.Context, runID string) error
+}
+
+type StoryTimelineRepository interface {
+	CreateBranch(ctx context.Context, branch model.StoryBranch) (model.StoryBranch, error)
+	GetBranchByID(ctx context.Context, branchID string) (model.StoryBranch, error)
+	ListBranchesBySessionID(ctx context.Context, sessionID string) ([]model.StoryBranch, error)
+	UpdateBranchHead(ctx context.Context, branchID string, headTickID string) error
+	AppendTick(ctx context.Context, tick model.StoryTick, refs []model.StoryTickStateRef, versions []model.StoryStateVersion) (model.StoryTick, error)
+	GetTickByID(ctx context.Context, tickID string) (model.StoryTick, error)
+	ListTicksByBranchID(ctx context.Context, branchID string) ([]model.StoryTick, error)
+	ListTickStateRefs(ctx context.Context, tickID string) ([]model.StoryTickStateRef, error)
+	ResolveTickState(ctx context.Context, tickID string) (model.StoryTickState, error)
 }
 
 // ChapterRepository 是章节仓库的接口。
@@ -136,6 +149,7 @@ type Repositories struct {
 	SetupSessions    SetupSessionRepository
 	DialogueSessions DialogueSessionRepository
 	StorySessions    StorySessionRepository
+	StoryTimeline    StoryTimelineRepository
 	Chapters         ChapterRepository
 	Memories         MemoryRepository
 	Audit            AuditRepository

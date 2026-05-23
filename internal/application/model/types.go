@@ -387,6 +387,13 @@ type CreateStorySessionInput struct {
 // AdvanceStorySessionInput 是推进故事会话的输入参数。
 type AdvanceStorySessionInput struct {
 	AuthorMessage string // 作者输入的消息
+	BranchID      string // 继续推进的时间线分支 ID
+	BaseTickID    string // 继续推进的基础 tick ID
+}
+
+type ForkStoryTickInput struct {
+	Name          string `json:"name"`
+	AuthorMessage string `json:"author_message,omitempty"`
 }
 
 // CommitStoryRunInput 是提交故事运行的输入参数。
@@ -415,9 +422,12 @@ type StorySession struct {
 // StoryRun 是故事运行的模型。
 // 每次用户推进故事会话时创建一个运行，跟踪 AI 内容生成进度。
 type StoryRun struct {
-	RunID       string     `json:"run_id"`       // 运行唯一标识符
-	SessionID   string     `json:"session_id"`   // 所属会话 ID
-	ProjectID   string     `json:"project_id"`   // 所属项目 ID
+	RunID       string     `json:"run_id"`     // 运行唯一标识符
+	SessionID   string     `json:"session_id"` // 所属会话 ID
+	ProjectID   string     `json:"project_id"` // 所属项目 ID
+	BranchID    string     `json:"branch_id,omitempty"`
+	BaseTickID  string     `json:"base_tick_id,omitempty"`
+	HeadTickID  string     `json:"head_tick_id,omitempty"`
 	Status      string     `json:"status"`       // 运行状态
 	CurrentStep string     `json:"current_step"` // 当前步骤
 	Progress    int        `json:"progress"`     // 进度百分比
@@ -451,6 +461,128 @@ type PlotVariable struct {
 	IrreversibleEffect  string   `json:"irreversible_effect"`   // 不可逆影响
 	RelatedCharacterIDs []string `json:"related_character_ids"` // 相关角色 ID 列表
 	WorldStatePressure  []string `json:"world_state_pressure"`  // 世界状态压力
+}
+
+type StoryTimelineEvent struct {
+	ID             string   `json:"id"`
+	TimeIndex      int      `json:"time_index"`
+	CharacterID    string   `json:"character_id,omitempty"`
+	CharacterName  string   `json:"character_name,omitempty"`
+	LocationKey    string   `json:"location_key"`
+	LocationName   string   `json:"location_name,omitempty"`
+	ActionType     string   `json:"action_type"`
+	Summary        string   `json:"summary"`
+	Intent         string   `json:"intent,omitempty"`
+	Visibility     string   `json:"visibility,omitempty"`
+	TargetActorIDs []string `json:"target_actor_ids,omitempty"`
+}
+
+type StoryLocationGroup struct {
+	ID           string   `json:"id"`
+	LocationKey  string   `json:"location_key"`
+	LocationName string   `json:"location_name,omitempty"`
+	CharacterIDs []string `json:"character_ids"`
+	EventIDs     []string `json:"event_ids"`
+}
+
+type StoryInteractionGroup struct {
+	ID              string   `json:"id"`
+	LocationKey     string   `json:"location_key"`
+	LocationName    string   `json:"location_name,omitempty"`
+	CharacterIDs    []string `json:"character_ids"`
+	EventIDs        []string `json:"event_ids,omitempty"`
+	ShouldInteract  bool     `json:"should_interact"`
+	InteractionType string   `json:"interaction_type,omitempty"`
+	Stakes          string   `json:"stakes,omitempty"`
+	Rationale       string   `json:"rationale,omitempty"`
+	Priority        int      `json:"priority,omitempty"`
+}
+
+type StoryInteractionAnalysis struct {
+	LocationGroups    []StoryLocationGroup    `json:"location_groups"`
+	InteractionGroups []StoryInteractionGroup `json:"interaction_groups"`
+}
+
+type StoryInteractionTurn struct {
+	TurnIndex          int      `json:"turn_index"`
+	InteractionGroupID string   `json:"interaction_group_id"`
+	ActorID            string   `json:"actor_id,omitempty"`
+	ActorName          string   `json:"actor_name,omitempty"`
+	ActionType         string   `json:"action_type"`
+	Speech             string   `json:"speech,omitempty"`
+	ActionSummary      string   `json:"action_summary,omitempty"`
+	TargetActorIDs     []string `json:"target_actor_ids,omitempty"`
+	Intent             string   `json:"intent,omitempty"`
+	LocationKey        string   `json:"location_key,omitempty"`
+	LocationName       string   `json:"location_name,omitempty"`
+}
+
+type StoryInteractionTranscript struct {
+	GroupID        string                 `json:"group_id"`
+	LocationKey    string                 `json:"location_key"`
+	LocationName   string                 `json:"location_name,omitempty"`
+	CharacterIDs   []string               `json:"character_ids"`
+	Turns          []StoryInteractionTurn `json:"turns"`
+	OutcomeSummary string                 `json:"outcome_summary,omitempty"`
+}
+
+type StoryBranch struct {
+	ID               string    `json:"id"`
+	ProjectID        string    `json:"project_id"`
+	SessionID        string    `json:"session_id"`
+	Name             string    `json:"name"`
+	BaseTickID       string    `json:"base_tick_id,omitempty"`
+	HeadTickID       string    `json:"head_tick_id,omitempty"`
+	Status           string    `json:"status"`
+	CreatedFromRunID string    `json:"created_from_run_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type StoryTick struct {
+	ID           string         `json:"id"`
+	ProjectID    string         `json:"project_id"`
+	SessionID    string         `json:"session_id"`
+	BranchID     string         `json:"branch_id"`
+	ParentTickID string         `json:"parent_tick_id,omitempty"`
+	SourceRunID  string         `json:"source_run_id,omitempty"`
+	Sequence     int            `json:"sequence"`
+	Kind         string         `json:"kind"`
+	Summary      string         `json:"summary"`
+	Payload      map[string]any `json:"payload"`
+	CreatedAt    time.Time      `json:"created_at"`
+}
+
+type StoryStateVersion struct {
+	ID              string         `json:"id"`
+	ProjectID       string         `json:"project_id"`
+	EntityType      string         `json:"entity_type"`
+	EntityID        string         `json:"entity_id"`
+	ParentVersionID string         `json:"parent_version_id,omitempty"`
+	SourceTickID    string         `json:"source_tick_id"`
+	SourceRunID     string         `json:"source_run_id,omitempty"`
+	Snapshot        map[string]any `json:"snapshot"`
+	CreatedAt       time.Time      `json:"created_at"`
+}
+
+type StoryTickStateRef struct {
+	TickID     string `json:"tick_id"`
+	ProjectID  string `json:"project_id"`
+	EntityType string `json:"entity_type"`
+	EntityID   string `json:"entity_id"`
+	VersionID  string `json:"version_id"`
+}
+
+type StoryTickState struct {
+	Tick     StoryTick           `json:"tick"`
+	Refs     []StoryTickStateRef `json:"refs"`
+	Versions []StoryStateVersion `json:"versions"`
+}
+
+type StorySessionTimeline struct {
+	SessionID string        `json:"session_id"`
+	Branches  []StoryBranch `json:"branches"`
+	Ticks     []StoryTick   `json:"ticks"`
 }
 
 // ReviewReport 是审阅报告，包含 AI 对生成内容的质量评估。
@@ -512,13 +644,19 @@ type MemoryPatch struct {
 
 // StoryRunResult 是故事运行结果的模型。
 type StoryRunResult struct {
-	RunID        string       `json:"run_id"`        // 运行 ID
-	SessionID    string       `json:"session_id"`    // 会话 ID
-	Status       string       `json:"status"`        // 结果状态
-	PlotVariable PlotVariable `json:"plot_variable"` // 剧情变量
-	Draft        Draft        `json:"draft"`         // 章节草稿
-	Review       ReviewReport `json:"review"`        // 审阅报告
-	MemoryPatch  MemoryPatch  `json:"memory_patch"`  // 记忆补丁
+	RunID                  string                       `json:"run_id"`     // 运行 ID
+	SessionID              string                       `json:"session_id"` // 会话 ID
+	Status                 string                       `json:"status"`     // 结果状态
+	BranchID               string                       `json:"branch_id,omitempty"`
+	BaseTickID             string                       `json:"base_tick_id,omitempty"`
+	HeadTickID             string                       `json:"head_tick_id,omitempty"`
+	PlotVariable           PlotVariable                 `json:"plot_variable"`           // 剧情变量
+	EventTimeline          []StoryTimelineEvent         `json:"event_timeline"`          // 事件时间线
+	InteractionAnalysis    StoryInteractionAnalysis     `json:"interaction_analysis"`    // 交互分析
+	InteractionTranscripts []StoryInteractionTranscript `json:"interaction_transcripts"` // 交涉记录
+	Draft                  Draft                        `json:"draft"`                   // 章节草稿
+	Review                 ReviewReport                 `json:"review"`                  // 审阅报告
+	MemoryPatch            MemoryPatch                  `json:"memory_patch"`            // 记忆补丁
 }
 
 // CommitStoryRunResult 是提交故事运行后的结果。

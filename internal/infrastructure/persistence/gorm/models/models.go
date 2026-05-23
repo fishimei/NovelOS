@@ -217,6 +217,9 @@ type StoryRun struct {
 	ID          string `gorm:"primaryKey;size:64"`
 	SessionID   string `gorm:"not null;index"`
 	ProjectID   string `gorm:"not null;index"`
+	BranchID    string `gorm:"not null;default:'';index"`
+	BaseTickID  string `gorm:"not null;default:'';index"`
+	HeadTickID  string `gorm:"not null;default:'';index"`
 	Status      string `gorm:"not null;default:''"`
 	CurrentStep string `gorm:"not null;default:''"`
 	Progress    int    `gorm:"not null;default:0"`
@@ -239,6 +242,61 @@ type StoryRunResult struct {
 }
 
 func (StoryRunResult) TableName() string { return "story_run_results" }
+
+type StoryBranch struct {
+	ID               string    `gorm:"primaryKey;size:64"`
+	ProjectID        string    `gorm:"not null;index"`
+	SessionID        string    `gorm:"not null;index"`
+	Name             string    `gorm:"not null;default:''"`
+	BaseTickID       string    `gorm:"not null;default:'';index"`
+	HeadTickID       string    `gorm:"not null;default:'';index"`
+	Status           string    `gorm:"not null;default:''"`
+	CreatedFromRunID string    `gorm:"not null;default:'';index"`
+	CreatedAt        time.Time `gorm:"not null"`
+	UpdatedAt        time.Time `gorm:"not null"`
+}
+
+func (StoryBranch) TableName() string { return "story_branches" }
+
+type StoryTick struct {
+	ID           string    `gorm:"primaryKey;size:64"`
+	ProjectID    string    `gorm:"not null;index"`
+	SessionID    string    `gorm:"not null;index"`
+	BranchID     string    `gorm:"not null;index:idx_story_tick_branch_sequence,priority:1"`
+	ParentTickID string    `gorm:"not null;default:'';index"`
+	SourceRunID  string    `gorm:"not null;default:'';index"`
+	Sequence     int       `gorm:"not null;index:idx_story_tick_branch_sequence,priority:2"`
+	Kind         string    `gorm:"not null;default:''"`
+	Summary      string    `gorm:"not null;default:''"`
+	PayloadJSON  JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt    time.Time `gorm:"not null"`
+}
+
+func (StoryTick) TableName() string { return "story_ticks" }
+
+type StoryStateVersion struct {
+	ID              string    `gorm:"primaryKey;size:64"`
+	ProjectID       string    `gorm:"not null;index:idx_story_state_entity,priority:1"`
+	EntityType      string    `gorm:"not null;index:idx_story_state_entity,priority:2"`
+	EntityID        string    `gorm:"not null;index:idx_story_state_entity,priority:3"`
+	ParentVersionID string    `gorm:"not null;default:'';index"`
+	SourceTickID    string    `gorm:"not null;index"`
+	SourceRunID     string    `gorm:"not null;default:'';index"`
+	SnapshotJSON    JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt       time.Time `gorm:"not null"`
+}
+
+func (StoryStateVersion) TableName() string { return "story_state_versions" }
+
+type StoryTickStateRef struct {
+	TickID     string `gorm:"primaryKey;size:64"`
+	ProjectID  string `gorm:"not null;index"`
+	EntityType string `gorm:"primaryKey;size:64"`
+	EntityID   string `gorm:"primaryKey;size:128"`
+	VersionID  string `gorm:"not null;index"`
+}
+
+func (StoryTickStateRef) TableName() string { return "story_tick_state_refs" }
 
 type DialogueSession struct {
 	ID              string    `gorm:"primaryKey;size:64"`

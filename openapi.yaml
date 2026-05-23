@@ -28,6 +28,7 @@ tags:
   - name: DialogueActions
   - name: StorySessions
   - name: StoryRuns
+  - name: StoryTimeline
   - name: Chapters
   - name: Memories
 
@@ -660,6 +661,94 @@ paths:
               schema:
                 $ref: "#/components/schemas/StoryRunResponse"
 
+  /story-sessions/{session_id}/timeline:
+    get:
+      tags: [StoryTimeline]
+      summary: List story session branches and ticks
+      operationId: listStorySessionTimeline
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorySessionTimelineResponse"
+
+  /story-branches/{branch_id}/advance:
+    post:
+      tags: [StoryTimeline]
+      summary: Advance story from a branch head
+      operationId: advanceStoryBranch
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceStorySessionRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryRunResponse"
+
+  /story-ticks/{tick_id}:
+    get:
+      tags: [StoryTimeline]
+      summary: Get story tick
+      operationId: getStoryTick
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryTickResponse"
+
+  /story-ticks/{tick_id}/state:
+    get:
+      tags: [StoryTimeline]
+      summary: Resolve story tick state
+      description: Resolves state refs by walking the parent tick chain and reusing unchanged entity versions.
+      operationId: getStoryTickState
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryTickStateResponse"
+
+  /story-ticks/{tick_id}/fork:
+    post:
+      tags: [StoryTimeline]
+      summary: Fork a story branch from a tick
+      operationId: forkStoryTick
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForkStoryTickRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryBranchResponse"
+
   /story-runs/{run_id}:
     get:
       tags: [StoryRuns]
@@ -698,6 +787,11 @@ paths:
         返回 text/event-stream。事件名可能包括：
         - generation_step
         - plot_variable
+        - story_event_planned
+        - same_location_candidates
+        - interaction_analysis
+        - interaction_selected
+        - negotiation_turn
         - character_turn
         - draft_delta
         - review_required
@@ -856,6 +950,20 @@ components:
 
     RunId:
       name: run_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    BranchId:
+      name: branch_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    TickId:
+      name: tick_id
       in: path
       required: true
       schema:
@@ -1291,6 +1399,18 @@ components:
       properties:
         author_message:
           type: string
+        branch_id:
+          type: string
+        base_tick_id:
+          type: string
+
+    ForkStoryTickRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        author_message:
+          type: string
 
     CommitStoryRunRequest:
       type: object
@@ -1356,6 +1476,12 @@ components:
         session_id:
           type: string
         project_id:
+          type: string
+        branch_id:
+          type: string
+        base_tick_id:
+          type: string
+        head_tick_id:
           type: string
         status:
           type: string
@@ -1526,6 +1652,258 @@ components:
           items:
             $ref: "#/components/schemas/WorldStateUpdate"
 
+    StoryTimelineEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        time_index:
+          type: integer
+        character_id:
+          type: string
+        character_name:
+          type: string
+        location_key:
+          type: string
+        location_name:
+          type: string
+        action_type:
+          type: string
+        summary:
+          type: string
+        intent:
+          type: string
+        visibility:
+          type: string
+        target_actor_ids:
+          type: array
+          items:
+            type: string
+
+    StoryLocationGroup:
+      type: object
+      properties:
+        id:
+          type: string
+        location_key:
+          type: string
+        location_name:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+
+    StoryInteractionGroup:
+      type: object
+      properties:
+        id:
+          type: string
+        location_key:
+          type: string
+        location_name:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+        should_interact:
+          type: boolean
+        interaction_type:
+          type: string
+        stakes:
+          type: string
+        rationale:
+          type: string
+        priority:
+          type: integer
+
+    StoryInteractionAnalysis:
+      type: object
+      properties:
+        location_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryLocationGroup"
+        interaction_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryInteractionGroup"
+
+    StoryInteractionTurn:
+      type: object
+      properties:
+        turn_index:
+          type: integer
+        interaction_group_id:
+          type: string
+        actor_id:
+          type: string
+        actor_name:
+          type: string
+        action_type:
+          type: string
+        speech:
+          type: string
+        action_summary:
+          type: string
+        target_actor_ids:
+          type: array
+          items:
+            type: string
+        intent:
+          type: string
+        location_key:
+          type: string
+        location_name:
+          type: string
+
+    StoryInteractionTranscript:
+      type: object
+      properties:
+        group_id:
+          type: string
+        location_key:
+          type: string
+        location_name:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        turns:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryInteractionTurn"
+        outcome_summary:
+          type: string
+
+    StoryBranch:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        session_id:
+          type: string
+        name:
+          type: string
+        base_tick_id:
+          type: string
+        head_tick_id:
+          type: string
+        status:
+          type: string
+        created_from_run_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StoryTick:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        session_id:
+          type: string
+        branch_id:
+          type: string
+        parent_tick_id:
+          type: string
+        source_run_id:
+          type: string
+        sequence:
+          type: integer
+        kind:
+          type: string
+        summary:
+          type: string
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    StoryStateVersion:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+        parent_version_id:
+          type: string
+        source_tick_id:
+          type: string
+        source_run_id:
+          type: string
+        snapshot:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    StoryTickStateRef:
+      type: object
+      properties:
+        tick_id:
+          type: string
+        project_id:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+        version_id:
+          type: string
+
+    StoryTickState:
+      type: object
+      properties:
+        tick:
+          $ref: "#/components/schemas/StoryTick"
+        refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryTickStateRef"
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryStateVersion"
+
+    StorySessionTimeline:
+      type: object
+      properties:
+        session_id:
+          type: string
+        branches:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryBranch"
+        ticks:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryTick"
+
     StoryRunResult:
       type: object
       description: Candidate story output. It must be reviewed and committed before it becomes canon.
@@ -1536,8 +1914,24 @@ components:
           type: string
         status:
           type: string
+        branch_id:
+          type: string
+        base_tick_id:
+          type: string
+        head_tick_id:
+          type: string
         plot_variable:
           $ref: "#/components/schemas/StoryPlotVariable"
+        event_timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryTimelineEvent"
+        interaction_analysis:
+          $ref: "#/components/schemas/StoryInteractionAnalysis"
+        interaction_transcripts:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryInteractionTranscript"
         draft:
           $ref: "#/components/schemas/StoryDraft"
         review:
@@ -1660,6 +2054,38 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/StoryRunResult"
+
+    StoryBranchResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StoryBranch"
+
+    StoryTickResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StoryTick"
+
+    StoryTickStateResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StoryTickState"
+
+    StorySessionTimelineResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StorySessionTimeline"
 
     RunEvent:
       type: object
