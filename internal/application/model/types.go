@@ -1,120 +1,120 @@
-// Package model 定义了应用程序的核心领域模型。
-// 这些模型是业务逻辑的核心表示，独立于任何特定的持久化或传输机制。
-// 模型分为以下几个主要类别：
-// 1. 项目管理：Project, ProjectDetail
-// 2. 世界观设定：AuthorBible, WorldStateEntry
-// 3. 角色系统：Character, CreateCharacterInput, UpdateCharacterInput
-// 4. 关系系统：Relationship, RelationshipPair, RelationshipView, RelationshipEvent
-// 5. 设置流程：SetupSession, SetupRun, SetupDraft, SetupQuestion
-// 6. 故事流程：StorySession, StoryRun, Draft, PlotVariable, ReviewReport, MemoryPatch
-// 7. 章节与记忆：Chapter, Memory
+// Package model 瀹氫箟浜嗗簲鐢ㄧ▼搴忕殑鏍稿績棰嗗煙妯″瀷銆?
+// 杩欎簺妯″瀷鏄笟鍔￠€昏緫鐨勬牳蹇冭〃绀猴紝鐙珛浜庝换浣曠壒瀹氱殑鎸佷箙鍖栨垨浼犺緭鏈哄埗銆?
+// 妯″瀷鍒嗕负浠ヤ笅鍑犱釜涓昏绫诲埆锛?
+// 1. 椤圭洰绠＄悊锛歅roject, ProjectDetail
+// 2. 涓栫晫瑙傝瀹氾細AuthorBible, WorldStateEntry
+// 3. 瑙掕壊绯荤粺锛欳haracter, CreateCharacterInput, UpdateCharacterInput
+// 4. 鍏崇郴绯荤粺锛歊elationship, RelationshipPair, RelationshipView, RelationshipEvent
+// 5. 璁剧疆娴佺▼锛歋etupSession, SetupRun, SetupDraft, SetupQuestion
+// 6. 鏁呬簨娴佺▼锛歋torySession, StoryRun, Draft, PlotVariable, ReviewReport, MemoryPatch
+// 7. 绔犺妭涓庤蹇嗭細Chapter, Memory
 package model
 
 import "time"
 
-// PageInput 定义分页查询的输入参数。
+// PageInput 瀹氫箟鍒嗛〉鏌ヨ鐨勮緭鍏ュ弬鏁般€?
 type PageInput struct {
-	Page     int // 当前页码，从 1 开始
-	PageSize int // 每页条数
+	Page     int // 褰撳墠椤电爜锛屼粠 1 寮€濮?
+	PageSize int // 姣忛〉鏉℃暟
 }
 
-// ListResult 是通用分页结果包装器。
-// 用于返回带有总数统计的分页数据。
+// ListResult 鏄€氱敤鍒嗛〉缁撴灉鍖呰鍣ㄣ€?
+// 鐢ㄤ簬杩斿洖甯︽湁鎬绘暟缁熻鐨勫垎椤垫暟鎹€?
 type ListResult[T any] struct {
-	Items []T // 当前页的数据项
-	Total int // 符合查询条件的总条数
+	Items []T // 褰撳墠椤电殑鏁版嵁椤?
+	Total int // 绗﹀悎鏌ヨ鏉′欢鐨勬€绘潯鏁?
 }
 
-// CreateProjectInput 是创建新项目的输入参数。
+// CreateProjectInput 鏄垱寤烘柊椤圭洰鐨勮緭鍏ュ弬鏁般€?
 type CreateProjectInput struct {
-	Title       string // 项目标题
-	Genre       string // 作品类型/体裁
-	Description string // 项目描述
+	Title       string // 椤圭洰鏍囬
+	Genre       string // 浣滃搧绫诲瀷/浣撹
+	Description string // 椤圭洰鎻忚堪
 }
 
-// UpdateProjectInput 是更新项目信息的输入参数。
+// UpdateProjectInput 鏄洿鏂伴」鐩俊鎭殑杈撳叆鍙傛暟銆?
 type UpdateProjectInput struct {
-	Title       string // 项目标题
-	Genre       string // 作品类型/体裁
-	Description string // 项目描述
+	Title       string // 椤圭洰鏍囬
+	Genre       string // 浣滃搧绫诲瀷/浣撹
+	Description string // 椤圭洰鎻忚堪
 }
 
-// Project 是小说的基本项目单元。
+// Project 鏄皬璇寸殑鍩烘湰椤圭洰鍗曞厓銆?
 type Project struct {
-	ID          string    `json:"id"`          // 项目唯一标识符
-	Title       string    `json:"title"`       // 项目标题
-	Genre       string    `json:"genre"`       // 作品类型/体裁
-	Description string    `json:"description"` // 项目描述
-	CreatedAt   time.Time `json:"created_at"`  // 创建时间
-	UpdatedAt   time.Time `json:"updated_at"`  // 最后更新时间
+	ID          string    `json:"id"`          // 椤圭洰鍞竴鏍囪瘑绗?
+	Title       string    `json:"title"`       // 椤圭洰鏍囬
+	Genre       string    `json:"genre"`       // 浣滃搧绫诲瀷/浣撹
+	Description string    `json:"description"` // 椤圭洰鎻忚堪
+	CreatedAt   time.Time `json:"created_at"`  // 鍒涘缓鏃堕棿
+	UpdatedAt   time.Time `json:"updated_at"`  // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// ProjectDetail 是项目的详细信息，包含关联实体的统计。
+// ProjectDetail 鏄」鐩殑璇︾粏淇℃伅锛屽寘鍚叧鑱斿疄浣撶殑缁熻銆?
 type ProjectDetail struct {
 	Project
-	CharacterCount             int `json:"character_count"`               // 项目中的角色数量
-	RelationshipCount          int `json:"relationship_count"`            // 项目中的关系数量
-	StorySessionCount          int `json:"story_session_count"`           // 项目中的故事会话数量
-	LastCommittedChapterNumber int `json:"last_committed_chapter_number"` // 最后一个已提交章节的编号
+	CharacterCount             int `json:"character_count"`               // 椤圭洰涓殑瑙掕壊鏁伴噺
+	RelationshipCount          int `json:"relationship_count"`            // 椤圭洰涓殑鍏崇郴鏁伴噺
+	StorySessionCount          int `json:"story_session_count"`           // 椤圭洰涓殑鏁呬簨浼氳瘽鏁伴噺
+	LastCommittedChapterNumber int `json:"last_committed_chapter_number"` // 鏈€鍚庝竴涓凡鎻愪氦绔犺妭鐨勭紪鍙?
 }
 
-// WorldStateEntry 代表世界状态中的一个条目，用于跟踪故事世界中的关键信息。
-// 世界状态是 AI 在生成内容时需要参考的背景知识库。
+// WorldStateEntry 浠ｈ〃涓栫晫鐘舵€佷腑鐨勪竴涓潯鐩紝鐢ㄤ簬璺熻釜鏁呬簨涓栫晫涓殑鍏抽敭淇℃伅銆?
+// 涓栫晫鐘舵€佹槸 AI 鍦ㄧ敓鎴愬唴瀹规椂闇€瑕佸弬鑰冪殑鑳屾櫙鐭ヨ瘑搴撱€?
 type WorldStateEntry struct {
-	ID         string    `json:"id"`         // 条目唯一标识符
-	ProjectID  string    `json:"project_id"` // 所属项目 ID
-	Key        string    `json:"key"`        // 状态键（如 "king_name", "current_year"）
-	Value      any       `json:"value"`      // 状态值（可以是任意类型）
-	Note       string    `json:"note"`       // 备注说明
-	Status     string    `json:"status"`     // 状态标识
-	Importance int       `json:"importance"` // 重要性等级（影响 AI 生成时的权重）
-	Volatility int       `json:"volatility"` // 变化频率（高 volatility 表示该状态可能频繁变化）
-	UpdatedAt  time.Time `json:"updated_at"` // 最后更新时间
+	ID         string    `json:"id"`         // 鏉＄洰鍞竴鏍囪瘑绗?
+	ProjectID  string    `json:"project_id"` // 鎵€灞為」鐩?ID
+	Key        string    `json:"key"`        // 鐘舵€侀敭锛堝 "king_name", "current_year"锛?
+	Value      any       `json:"value"`      // 鐘舵€佸€硷紙鍙互鏄换鎰忕被鍨嬶級
+	Note       string    `json:"note"`       // 澶囨敞璇存槑
+	Status     string    `json:"status"`     // 鐘舵€佹爣璇?
+	Importance int       `json:"importance"` // 閲嶈鎬х瓑绾э紙褰卞搷 AI 鐢熸垚鏃剁殑鏉冮噸锛?
+	Volatility int       `json:"volatility"` // 鍙樺寲棰戠巼锛堥珮 volatility 琛ㄧず璇ョ姸鎬佸彲鑳介绻佸彉鍖栵級
+	UpdatedAt  time.Time `json:"updated_at"` // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// UpdateAuthorBibleInput 是更新作者圣经的输入参数。
-// 作者圣经是指导 AI 生成风格和规则的元数据集合。
+// UpdateAuthorBibleInput 鏄洿鏂颁綔鑰呭湥缁忕殑杈撳叆鍙傛暟銆?
+// 浣滆€呭湥缁忔槸鎸囧 AI 鐢熸垚椋庢牸鍜岃鍒欑殑鍏冩暟鎹泦鍚堛€?
 type UpdateAuthorBibleInput struct {
-	Theme               string            // 作品主题
-	StyleGuide          string            // 风格指南
-	WorldRules          []string          // 世界规则列表
-	AestheticPrinciples []string          // 审美原则列表
-	HardConstraints     []string          // 硬性约束（必须遵守的规则）
-	SoftPreferences     []string          // 软性偏好（尽量遵守的规则）
-	ForbiddenMoves      []string          // 禁止行为
-	InitialWorldState   []WorldStateEntry // 初始世界状态
+	Theme               string            // 浣滃搧涓婚
+	StyleGuide          string            // 椋庢牸鎸囧崡
+	WorldRules          []string          // 涓栫晫瑙勫垯鍒楄〃
+	AestheticPrinciples []string          // 瀹＄編鍘熷垯鍒楄〃
+	HardConstraints     []string          // 纭€х害鏉燂紙蹇呴』閬靛畧鐨勮鍒欙級
+	SoftPreferences     []string          // 杞€у亸濂斤紙灏介噺閬靛畧鐨勮鍒欙級
+	ForbiddenMoves      []string          // 绂佹琛屼负
+	InitialWorldState   []WorldStateEntry // 鍒濆涓栫晫鐘舵€?
 }
 
-// AuthorBible 是作者圣经的完整模型，包含指导 AI 创作的元数据。
+// AuthorBible 鏄綔鑰呭湥缁忕殑瀹屾暣妯″瀷锛屽寘鍚寚瀵?AI 鍒涗綔鐨勫厓鏁版嵁銆?
 type AuthorBible struct {
-	ID                  string            `json:"id"`                   // 圣经唯一标识符
-	ProjectID           string            `json:"project_id"`           // 所属项目 ID
-	Theme               string            `json:"theme"`                // 作品主题
-	StyleGuide          string            `json:"style_guide"`          // 风格指南
-	WorldRules          []string          `json:"world_rules"`          // 世界规则列表
-	AestheticPrinciples []string          `json:"aesthetic_principles"` // 审美原则列表
-	HardConstraints     []string          `json:"hard_constraints"`     // 硬性约束
-	SoftPreferences     []string          `json:"soft_preferences"`     // 软性偏好
-	ForbiddenMoves      []string          `json:"forbidden_moves"`      // 禁止行为
-	InitialWorldState   []WorldStateEntry `json:"initial_world_state"`  // 初始世界状态
-	Status              string            `json:"status"`               // 状态标识
-	UpdatedAt           time.Time         `json:"updated_at"`           // 最后更新时间
+	ID                  string            `json:"id"`                   // 鍦ｇ粡鍞竴鏍囪瘑绗?
+	ProjectID           string            `json:"project_id"`           // 鎵€灞為」鐩?ID
+	Theme               string            `json:"theme"`                // 浣滃搧涓婚
+	StyleGuide          string            `json:"style_guide"`          // 椋庢牸鎸囧崡
+	WorldRules          []string          `json:"world_rules"`          // 涓栫晫瑙勫垯鍒楄〃
+	AestheticPrinciples []string          `json:"aesthetic_principles"` // 瀹＄編鍘熷垯鍒楄〃
+	HardConstraints     []string          `json:"hard_constraints"`     // 纭€х害鏉?
+	SoftPreferences     []string          `json:"soft_preferences"`     // 杞€у亸濂?
+	ForbiddenMoves      []string          `json:"forbidden_moves"`      // 绂佹琛屼负
+	InitialWorldState   []WorldStateEntry `json:"initial_world_state"`  // 鍒濆涓栫晫鐘舵€?
+	Status              string            `json:"status"`               // 鐘舵€佹爣璇?
+	UpdatedAt           time.Time         `json:"updated_at"`           // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// CreateCharacterInput 是创建新角色的输入参数。
+// CreateCharacterInput 鏄垱寤烘柊瑙掕壊鐨勮緭鍏ュ弬鏁般€?
 type CreateCharacterInput struct {
-	Name        string   // 角色名称
-	Role        string   // 角色定位（如 protagonist, antagonist, supporting）
-	Profile     string   // 角色简介
-	Personality string   // 性格特征描述
-	VoiceStyle  string   // 说话风格
-	Goals       []string // 角色目标列表
-	Fears       []string // 角色恐惧列表
-	Secrets     []string // 角色秘密列表
-	Constraints []string // 角色行为约束列表
+	Name        string   // 瑙掕壊鍚嶇О
+	Role        string   // 瑙掕壊瀹氫綅锛堝 protagonist, antagonist, supporting锛?
+	Profile     string   // 瑙掕壊绠€浠?
+	Personality string   // 鎬ф牸鐗瑰緛鎻忚堪
+	VoiceStyle  string   // 璇磋瘽椋庢牸
+	Goals       []string // 瑙掕壊鐩爣鍒楄〃
+	Fears       []string // 瑙掕壊鎭愭儳鍒楄〃
+	Secrets     []string // 瑙掕壊绉樺瘑鍒楄〃
+	Constraints []string // 瑙掕壊琛屼负绾︽潫鍒楄〃
 }
 
-// UpdateCharacterInput 是更新角色信息的输入参数。
+// UpdateCharacterInput 鏄洿鏂拌鑹蹭俊鎭殑杈撳叆鍙傛暟銆?
 type UpdateCharacterInput struct {
 	Name        string
 	Role        string
@@ -127,180 +127,180 @@ type UpdateCharacterInput struct {
 	Constraints []string
 }
 
-// Character 是故事中的角色实体。
-// 角色是故事生成的核心要素，AI 会根据角色的目标、恐惧和约束来生成符合角色特点的对话和行为。
+// Character 鏄晠浜嬩腑鐨勮鑹插疄浣撱€?
+// 瑙掕壊鏄晠浜嬬敓鎴愮殑鏍稿績瑕佺礌锛孉I 浼氭牴鎹鑹茬殑鐩爣銆佹亹鎯у拰绾︽潫鏉ョ敓鎴愮鍚堣鑹茬壒鐐圭殑瀵硅瘽鍜岃涓恒€?
 type Character struct {
-	ID                  string    `json:"id"`                    // 角色唯一标识符
-	ProjectID           string    `json:"project_id"`            // 所属项目 ID
-	Name                string    `json:"name"`                  // 角色名称
-	Role                string    `json:"role"`                  // 角色定位
-	Profile             string    `json:"profile"`               // 角色简介
-	Personality         string    `json:"personality"`           // 性格特征描述
-	VoiceStyle          string    `json:"voice_style"`           // 说话风格
-	Goals               []string  `json:"goals"`                 // 角色目标列表
-	Fears               []string  `json:"fears"`                 // 角色恐惧列表
-	Secrets             []string  `json:"secrets"`               // 角色秘密列表
-	Constraints         []string  `json:"constraints"`           // 角色行为约束列表
-	RecentMemorySummary string    `json:"recent_memory_summary"` // 近期记忆摘要（用于 AI 生成时的上下文）
-	Status              string    `json:"status"`                // 状态标识
-	CreatedAt           time.Time `json:"created_at"`            // 创建时间
-	UpdatedAt           time.Time `json:"updated_at"`            // 最后更新时间
+	ID                  string    `json:"id"`                    // 瑙掕壊鍞竴鏍囪瘑绗?
+	ProjectID           string    `json:"project_id"`            // 鎵€灞為」鐩?ID
+	Name                string    `json:"name"`                  // 瑙掕壊鍚嶇О
+	Role                string    `json:"role"`                  // 瑙掕壊瀹氫綅
+	Profile             string    `json:"profile"`               // 瑙掕壊绠€浠?
+	Personality         string    `json:"personality"`           // 鎬ф牸鐗瑰緛鎻忚堪
+	VoiceStyle          string    `json:"voice_style"`           // 璇磋瘽椋庢牸
+	Goals               []string  `json:"goals"`                 // 瑙掕壊鐩爣鍒楄〃
+	Fears               []string  `json:"fears"`                 // 瑙掕壊鎭愭儳鍒楄〃
+	Secrets             []string  `json:"secrets"`               // 瑙掕壊绉樺瘑鍒楄〃
+	Constraints         []string  `json:"constraints"`           // 瑙掕壊琛屼负绾︽潫鍒楄〃
+	RecentMemorySummary string    `json:"recent_memory_summary"` // 杩戞湡璁板繂鎽樿锛堢敤浜?AI 鐢熸垚鏃剁殑涓婁笅鏂囷級
+	Status              string    `json:"status"`                // 鐘舵€佹爣璇?
+	CreatedAt           time.Time `json:"created_at"`            // 鍒涘缓鏃堕棿
+	UpdatedAt           time.Time `json:"updated_at"`            // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// CreateRelationshipInput 是创建角色关系的输入参数。
-// 关系描述了两个角色之间的互动模式和历史。
+// CreateRelationshipInput 鏄垱寤鸿鑹插叧绯荤殑杈撳叆鍙傛暟銆?
+// 鍏崇郴鎻忚堪浜嗕袱涓鑹蹭箣闂寸殑浜掑姩妯″紡鍜屽巻鍙层€?
 type CreateRelationshipInput struct {
-	CharacterAID   string                // 角色 A 的 ID
-	CharacterBID   string                // 角色 B 的 ID
-	Summary        string                // 关系概要描述
-	Anchors        []string              // 关系锚点（关系中的关键事件）
-	TensionPoints  []string              // 紧张点（可能导致冲突的因素）
-	SharedHistory  []string              // 共同经历
-	Volatility     int                   // 关系变化程度
-	CharacterAView RelationshipViewInput // 角色 A 对关系的看法
-	CharacterBView RelationshipViewInput // 角色 B 对关系的看法
+	CharacterAID   string                // 瑙掕壊 A 鐨?ID
+	CharacterBID   string                // 瑙掕壊 B 鐨?ID
+	Summary        string                // 鍏崇郴姒傝鎻忚堪
+	Anchors        []string              // 鍏崇郴閿氱偣锛堝叧绯讳腑鐨勫叧閿簨浠讹級
+	TensionPoints  []string              // 绱у紶鐐癸紙鍙兘瀵艰嚧鍐茬獊鐨勫洜绱狅級
+	SharedHistory  []string              // 鍏卞悓缁忓巻
+	Volatility     int                   // 鍏崇郴鍙樺寲绋嬪害
+	CharacterAView RelationshipViewInput // 瑙掕壊 A 瀵瑰叧绯荤殑鐪嬫硶
+	CharacterBView RelationshipViewInput // 瑙掕壊 B 瀵瑰叧绯荤殑鐪嬫硶
 }
 
-// UpdateRelationshipInput 是更新关系信息的输入参数。
+// UpdateRelationshipInput 鏄洿鏂板叧绯讳俊鎭殑杈撳叆鍙傛暟銆?
 type UpdateRelationshipInput struct {
-	Summary       string   // 关系概要描述
-	Anchors       []string // 关系锚点
-	TensionPoints []string // 紧张点
-	SharedHistory []string // 共同经历
-	Volatility    int      // 关系变化程度
+	Summary       string   // 鍏崇郴姒傝鎻忚堪
+	Anchors       []string // 鍏崇郴閿氱偣
+	TensionPoints []string // 绱у紶鐐?
+	SharedHistory []string // 鍏卞悓缁忓巻
+	Volatility    int      // 鍏崇郴鍙樺寲绋嬪害
 }
 
-// RelationshipViewInput 是关系视角的输入参数，描述单方对关系的认知。
+// RelationshipViewInput 鏄叧绯昏瑙掔殑杈撳叆鍙傛暟锛屾弿杩板崟鏂瑰鍏崇郴鐨勮鐭ャ€?
 type RelationshipViewInput struct {
-	PublicAttitude         string // 公开态度（他人可见的态度）
-	PrivateAttitude        string // 私下态度（真实态度）
-	BelievedTargetAttitude string // 以为对方的态度
-	MaskingStrategy        string // 掩饰策略
+	PublicAttitude         string // 鍏紑鎬佸害锛堜粬浜哄彲瑙佺殑鎬佸害锛?
+	PrivateAttitude        string // 绉佷笅鎬佸害锛堢湡瀹炴€佸害锛?
+	BelievedTargetAttitude string // 浠ヤ负瀵规柟鐨勬€佸害
+	MaskingStrategy        string // 鎺╅グ绛栫暐
 }
 
-// RelationshipPair 代表两个角色之间的关系对。
-// 关系对是关系的基础实体，存储双方共同的信息。
+// RelationshipPair 浠ｈ〃涓や釜瑙掕壊涔嬮棿鐨勫叧绯诲銆?
+// 鍏崇郴瀵规槸鍏崇郴鐨勫熀纭€瀹炰綋锛屽瓨鍌ㄥ弻鏂瑰叡鍚岀殑淇℃伅銆?
 type RelationshipPair struct {
-	ID               string    `json:"id"`                 // 关系对唯一标识符
-	ProjectID        string    `json:"project_id"`         // 所属项目 ID
-	LeftCharacterID  string    `json:"left_character_id"`  // 左侧角色 ID（角色 A）
-	RightCharacterID string    `json:"right_character_id"` // 右侧角色 ID（角色 B）
-	Summary          string    `json:"summary"`            // 关系概要描述
-	Anchors          []string  `json:"anchors"`            // 关系锚点
-	TensionPoints    []string  `json:"tension_points"`     // 紧张点
-	SharedHistory    []string  `json:"shared_history"`     // 共同经历
-	Volatility       int       `json:"volatility"`         // 关系变化程度
-	Status           string    `json:"status"`             // 状态标识
-	CreatedAt        time.Time `json:"created_at"`         // 创建时间
-	UpdatedAt        time.Time `json:"updated_at"`         // 最后更新时间
+	ID               string    `json:"id"`                 // 鍏崇郴瀵瑰敮涓€鏍囪瘑绗?
+	ProjectID        string    `json:"project_id"`         // 鎵€灞為」鐩?ID
+	LeftCharacterID  string    `json:"left_character_id"`  // 宸︿晶瑙掕壊 ID锛堣鑹?A锛?
+	RightCharacterID string    `json:"right_character_id"` // 鍙充晶瑙掕壊 ID锛堣鑹?B锛?
+	Summary          string    `json:"summary"`            // 鍏崇郴姒傝鎻忚堪
+	Anchors          []string  `json:"anchors"`            // 鍏崇郴閿氱偣
+	TensionPoints    []string  `json:"tension_points"`     // 绱у紶鐐?
+	SharedHistory    []string  `json:"shared_history"`     // 鍏卞悓缁忓巻
+	Volatility       int       `json:"volatility"`         // 鍏崇郴鍙樺寲绋嬪害
+	Status           string    `json:"status"`             // 鐘舵€佹爣璇?
+	CreatedAt        time.Time `json:"created_at"`         // 鍒涘缓鏃堕棿
+	UpdatedAt        time.Time `json:"updated_at"`         // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// RelationshipView 代表角色对关系的单方视角。
-// 每个 RelationshipPair 会有两个 RelationshipView，分别描述两个角色对这段关系的认知。
+// RelationshipView 浠ｈ〃瑙掕壊瀵瑰叧绯荤殑鍗曟柟瑙嗚銆?
+// 姣忎釜 RelationshipPair 浼氭湁涓や釜 RelationshipView锛屽垎鍒弿杩颁袱涓鑹插杩欐鍏崇郴鐨勮鐭ャ€?
 type RelationshipView struct {
-	ID                     string    `json:"id"`                       // 视角唯一标识符
-	ProjectID              string    `json:"project_id"`               // 所属项目 ID
-	PairID                 string    `json:"pair_id"`                  // 所属关系对 ID
-	SourceCharacterID      string    `json:"source_character_id"`      // 视角来源角色 ID
-	TargetCharacterID      string    `json:"target_character_id"`      // 视角目标角色 ID
-	PublicAttitude         string    `json:"public_attitude"`          // 公开态度
-	PrivateAttitude        string    `json:"private_attitude"`         // 私下态度
-	BelievedTargetAttitude string    `json:"believed_target_attitude"` // 以为对方的态度
-	MaskingStrategy        string    `json:"masking_strategy"`         // 掩饰策略
-	Status                 string    `json:"status"`                   // 状态标识
-	CreatedAt              time.Time `json:"created_at"`               // 创建时间
-	UpdatedAt              time.Time `json:"updated_at"`               // 最后更新时间
+	ID                     string    `json:"id"`                       // 瑙嗚鍞竴鏍囪瘑绗?
+	ProjectID              string    `json:"project_id"`               // 鎵€灞為」鐩?ID
+	PairID                 string    `json:"pair_id"`                  // 鎵€灞炲叧绯诲 ID
+	SourceCharacterID      string    `json:"source_character_id"`      // 瑙嗚鏉ユ簮瑙掕壊 ID
+	TargetCharacterID      string    `json:"target_character_id"`      // 瑙嗚鐩爣瑙掕壊 ID
+	PublicAttitude         string    `json:"public_attitude"`          // 鍏紑鎬佸害
+	PrivateAttitude        string    `json:"private_attitude"`         // 绉佷笅鎬佸害
+	BelievedTargetAttitude string    `json:"believed_target_attitude"` // 浠ヤ负瀵规柟鐨勬€佸害
+	MaskingStrategy        string    `json:"masking_strategy"`         // 鎺╅グ绛栫暐
+	Status                 string    `json:"status"`                   // 鐘舵€佹爣璇?
+	CreatedAt              time.Time `json:"created_at"`               // 鍒涘缓鏃堕棿
+	UpdatedAt              time.Time `json:"updated_at"`               // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// RelationshipEvent 代表关系中发生的事件，用于跟踪关系的变化历史。
+// RelationshipEvent 浠ｈ〃鍏崇郴涓彂鐢熺殑浜嬩欢锛岀敤浜庤窡韪叧绯荤殑鍙樺寲鍘嗗彶銆?
 type RelationshipEvent struct {
-	ID        string         `json:"id"`         // 事件唯一标识符
-	ProjectID string         `json:"project_id"` // 所属项目 ID
-	PairID    string         `json:"pair_id"`    // 所属关系对 ID
-	EventType string         `json:"event_type"` // 事件类型
-	Summary   string         `json:"summary"`    // 事件摘要
-	Payload   map[string]any `json:"payload"`    // 事件附加数据
-	CreatedAt time.Time      `json:"created_at"` // 事件发生时间
+	ID        string         `json:"id"`         // 浜嬩欢鍞竴鏍囪瘑绗?
+	ProjectID string         `json:"project_id"` // 鎵€灞為」鐩?ID
+	PairID    string         `json:"pair_id"`    // 鎵€灞炲叧绯诲 ID
+	EventType string         `json:"event_type"` // 浜嬩欢绫诲瀷
+	Summary   string         `json:"summary"`    // 浜嬩欢鎽樿
+	Payload   map[string]any `json:"payload"`    // 浜嬩欢闄勫姞鏁版嵁
+	CreatedAt time.Time      `json:"created_at"` // 浜嬩欢鍙戠敓鏃堕棿
 }
 
-// Relationship 是关系的完整聚合，包含关系对、双方视角和最近事件。
+// Relationship 鏄叧绯荤殑瀹屾暣鑱氬悎锛屽寘鍚叧绯诲銆佸弻鏂硅瑙掑拰鏈€杩戜簨浠躲€?
 type Relationship struct {
-	Pair           RelationshipPair    `json:"pair"`             // 关系对基础信息
-	Views          []RelationshipView  `json:"views"`            // 所有相关视角
-	RecentEvents   []RelationshipEvent `json:"recent_events"`    // 最近发生的事件
-	CharacterAView *RelationshipView   `json:"character_a_view"` // 角色 A 的视角
-	CharacterBView *RelationshipView   `json:"character_b_view"` // 角色 B 的视角
+	Pair           RelationshipPair    `json:"pair"`             // 鍏崇郴瀵瑰熀纭€淇℃伅
+	Views          []RelationshipView  `json:"views"`            // 鎵€鏈夌浉鍏宠瑙?
+	RecentEvents   []RelationshipEvent `json:"recent_events"`    // 鏈€杩戝彂鐢熺殑浜嬩欢
+	CharacterAView *RelationshipView   `json:"character_a_view"` // 瑙掕壊 A 鐨勮瑙?
+	CharacterBView *RelationshipView   `json:"character_b_view"` // 瑙掕壊 B 鐨勮瑙?
 }
 
-// CreateSetupSessionInput 是创建设置会话的输入参数。
-// 设置会话用于通过 AI 辅助将粗略想法转化为结构化项目状态。
+// CreateSetupSessionInput 鏄垱寤鸿缃細璇濈殑杈撳叆鍙傛暟銆?
+// 璁剧疆浼氳瘽鐢ㄤ簬閫氳繃 AI 杈呭姪灏嗙矖鐣ユ兂娉曡浆鍖栦负缁撴瀯鍖栭」鐩姸鎬併€?
 type CreateSetupSessionInput struct {
-	SeedIdea string // 种子想法/初始概念
+	SeedIdea string // 绉嶅瓙鎯虫硶/鍒濆姒傚康
 }
 
-// AdvanceSetupSessionInput 是推进设置会话的输入参数。
+// AdvanceSetupSessionInput 鏄帹杩涜缃細璇濈殑杈撳叆鍙傛暟銆?
 type AdvanceSetupSessionInput struct {
-	UserMessage string // 用户输入的消息
+	UserMessage string // 鐢ㄦ埛杈撳叆鐨勬秷鎭?
 }
 
-// ApplySetupRunInput 是应用设置运行结果的输入参数。
-// 用户可以选择性地接受生成的各项内容。
+// ApplySetupRunInput 鏄簲鐢ㄨ缃繍琛岀粨鏋滅殑杈撳叆鍙傛暟銆?
+// 鐢ㄦ埛鍙互閫夋嫨鎬у湴鎺ュ彈鐢熸垚鐨勫悇椤瑰唴瀹广€?
 type ApplySetupRunInput struct {
-	RunID               string `json:"run_id"`               // 要应用的运行 ID
-	AcceptAuthorBible   bool   `json:"accept_author_bible"`  // 是否接受作者圣经
-	AcceptCharacters    bool   `json:"accept_characters"`    // 是否接受角色
-	AcceptRelationships bool   `json:"accept_relationships"` // 是否接受关系
-	AcceptWorldState    bool   `json:"accept_world_state"`   // 是否接受世界状态
-	AuthorNote          string `json:"author_note"`          // 作者备注
+	RunID               string `json:"run_id"`               // 瑕佸簲鐢ㄧ殑杩愯 ID
+	AcceptAuthorBible   bool   `json:"accept_author_bible"`  // 鏄惁鎺ュ彈浣滆€呭湥缁?
+	AcceptCharacters    bool   `json:"accept_characters"`    // 鏄惁鎺ュ彈瑙掕壊
+	AcceptRelationships bool   `json:"accept_relationships"` // 鏄惁鎺ュ彈鍏崇郴
+	AcceptWorldState    bool   `json:"accept_world_state"`   // 鏄惁鎺ュ彈涓栫晫鐘舵€?
+	AuthorNote          string `json:"author_note"`          // 浣滆€呭娉?
 }
 
-// SetupQuestion 是设置过程中 AI 提出的问题。
+// SetupQuestion 鏄缃繃绋嬩腑 AI 鎻愬嚭鐨勯棶棰樸€?
 type SetupQuestion struct {
-	Key          string `json:"key"`            // 问题标识键
-	Question     string `json:"question"`       // 问题内容
-	WhyItMatters string `json:"why_it_matters"` // 为什么这个问题重要
+	Key          string `json:"key"`            // 闂鏍囪瘑閿?
+	Question     string `json:"question"`       // 闂鍐呭
+	WhyItMatters string `json:"why_it_matters"` // 涓轰粈涔堣繖涓棶棰橀噸瑕?
 }
 
-// ConversationMessage 是会话消息的模型。
+// ConversationMessage 鏄細璇濇秷鎭殑妯″瀷銆?
 type ConversationMessage struct {
-	ID        string    `json:"id"`         // 消息唯一标识符
-	SessionID string    `json:"session_id"` // 所属会话 ID
-	Role      string    `json:"role"`       // 消息角色（user/assistant）
-	Content   string    `json:"content"`    // 消息内容
-	CreatedAt time.Time `json:"created_at"` // 创建时间
+	ID        string    `json:"id"`         // 娑堟伅鍞竴鏍囪瘑绗?
+	SessionID string    `json:"session_id"` // 鎵€灞炰細璇?ID
+	Role      string    `json:"role"`       // 娑堟伅瑙掕壊锛坲ser/assistant锛?
+	Content   string    `json:"content"`    // 娑堟伅鍐呭
+	CreatedAt time.Time `json:"created_at"` // 鍒涘缓鏃堕棿
 }
 
-// SetupSession 是设置会话的模型。
-// 设置会话是作者与 AI 之间的多轮对话，用于逐步构建项目的基础设定。
+// SetupSession 鏄缃細璇濈殑妯″瀷銆?
+// 璁剧疆浼氳瘽鏄綔鑰呬笌 AI 涔嬮棿鐨勫杞璇濓紝鐢ㄤ簬閫愭鏋勫缓椤圭洰鐨勫熀纭€璁惧畾銆?
 type SetupSession struct {
-	ID              string                `json:"id"`                          // 会话唯一标识符
-	ProjectID       string                `json:"project_id"`                  // 所属项目 ID
-	SeedIdea        string                `json:"seed_idea"`                   // 种子想法
-	LastUserMessage string                `json:"last_user_message"`           // 最后一条用户消息
-	Status          string                `json:"status"`                      // 会话状态
-	LatestRunID     string                `json:"latest_run_id,omitempty"`     // 最近一次运行 ID
-	LatestRunStatus string                `json:"latest_run_status,omitempty"` // 最近一次运行状态
-	LatestRunError  string                `json:"latest_run_error,omitempty"`  // 最近一次运行错误
-	Messages        []ConversationMessage `json:"messages"`                    // 会话消息历史
-	CreatedAt       time.Time             `json:"created_at"`                  // 创建时间
-	UpdatedAt       time.Time             `json:"updated_at"`                  // 最后更新时间
+	ID              string                `json:"id"`                          // 浼氳瘽鍞竴鏍囪瘑绗?
+	ProjectID       string                `json:"project_id"`                  // 鎵€灞為」鐩?ID
+	SeedIdea        string                `json:"seed_idea"`                   // 绉嶅瓙鎯虫硶
+	LastUserMessage string                `json:"last_user_message"`           // 鏈€鍚庝竴鏉＄敤鎴锋秷鎭?
+	Status          string                `json:"status"`                      // 浼氳瘽鐘舵€?
+	LatestRunID     string                `json:"latest_run_id,omitempty"`     // 鏈€杩戜竴娆¤繍琛?ID
+	LatestRunStatus string                `json:"latest_run_status,omitempty"` // 鏈€杩戜竴娆¤繍琛岀姸鎬?
+	LatestRunError  string                `json:"latest_run_error,omitempty"`  // 鏈€杩戜竴娆¤繍琛岄敊璇?
+	Messages        []ConversationMessage `json:"messages"`                    // 浼氳瘽娑堟伅鍘嗗彶
+	CreatedAt       time.Time             `json:"created_at"`                  // 鍒涘缓鏃堕棿
+	UpdatedAt       time.Time             `json:"updated_at"`                  // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// SetupRun 是设置运行的模型。
-// 每次用户推进设置会话时创建一个运行，跟踪 AI 处理进度。
+// SetupRun 鏄缃繍琛岀殑妯″瀷銆?
+// 姣忔鐢ㄦ埛鎺ㄨ繘璁剧疆浼氳瘽鏃跺垱寤轰竴涓繍琛岋紝璺熻釜 AI 澶勭悊杩涘害銆?
 type SetupRun struct {
-	RunID       string    `json:"run_id"`       // 运行唯一标识符
-	SessionID   string    `json:"session_id"`   // 所属会话 ID
-	ProjectID   string    `json:"project_id"`   // 所属项目 ID
-	Status      string    `json:"status"`       // 运行状态
-	CurrentStep string    `json:"current_step"` // 当前步骤
-	Progress    int       `json:"progress"`     // 进度百分比
+	RunID       string    `json:"run_id"`       // 杩愯鍞竴鏍囪瘑绗?
+	SessionID   string    `json:"session_id"`   // 鎵€灞炰細璇?ID
+	ProjectID   string    `json:"project_id"`   // 鎵€灞為」鐩?ID
+	Status      string    `json:"status"`       // 杩愯鐘舵€?
+	CurrentStep string    `json:"current_step"` // 褰撳墠姝ラ
+	Progress    int       `json:"progress"`     // 杩涘害鐧惧垎姣?
 	Error       string    `json:"error,omitempty"`
-	CreatedAt   time.Time `json:"created_at"` // 创建时间
-	UpdatedAt   time.Time `json:"updated_at"` // 最后更新时间
+	CreatedAt   time.Time `json:"created_at"` // 鍒涘缓鏃堕棿
+	UpdatedAt   time.Time `json:"updated_at"` // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// SetupVisualWorldPressureCard 是 Setup 草案中用于展示世界压力的卡片。
+// SetupVisualWorldPressureCard 鏄?Setup 鑽夋涓敤浜庡睍绀轰笘鐣屽帇鍔涚殑鍗＄墖銆?
 type SetupVisualWorldPressureCard struct {
 	Title                 string   `json:"title"`
 	Detail                string   `json:"detail"`
@@ -308,7 +308,7 @@ type SetupVisualWorldPressureCard struct {
 	RelatedWorldStateKeys []string `json:"related_world_state_keys"`
 }
 
-// SetupVisualCharacterCard 是 Setup 草案中用于展示角色功能位的卡片。
+// SetupVisualCharacterCard 鏄?Setup 鑽夋涓敤浜庡睍绀鸿鑹插姛鑳戒綅鐨勫崱鐗囥€?
 type SetupVisualCharacterCard struct {
 	CharacterKey string `json:"character_key"`
 	Name         string `json:"name"`
@@ -319,7 +319,7 @@ type SetupVisualCharacterCard struct {
 	Secret       string `json:"secret"`
 }
 
-// SetupVisualRelationshipEdge 是 Setup 草案中用于展示关系图的边。
+// SetupVisualRelationshipEdge 鏄?Setup 鑽夋涓敤浜庡睍绀哄叧绯诲浘鐨勮竟銆?
 type SetupVisualRelationshipEdge struct {
 	FromCharacterKey string `json:"from_character_key"`
 	ToCharacterKey   string `json:"to_character_key"`
@@ -328,14 +328,14 @@ type SetupVisualRelationshipEdge struct {
 	Misreading       string `json:"misreading"`
 }
 
-// SetupNextAgentSuggestion 是 Setup 完成后建议进入的下一步 agent。
+// SetupNextAgentSuggestion 鏄?Setup 瀹屾垚鍚庡缓璁繘鍏ョ殑涓嬩竴姝?agent銆?
 type SetupNextAgentSuggestion struct {
 	Key    string `json:"key"`
 	Label  string `json:"label"`
 	Reason string `json:"reason"`
 }
 
-// SetupVisualDraft 是面向用户确认的可视化 Setup 草案视图。
+// SetupVisualDraft 鏄潰鍚戠敤鎴风‘璁ょ殑鍙鍖?Setup 鑽夋瑙嗗浘銆?
 type SetupVisualDraft struct {
 	Logline              string                         `json:"logline"`
 	StyleTags            []string                       `json:"style_tags"`
@@ -349,46 +349,46 @@ type SetupVisualDraft struct {
 	NextAgentSuggestions []SetupNextAgentSuggestion     `json:"next_agent_suggestions,omitempty"`
 }
 
-// SetupDraft 是设置生成的草稿。
-// 包含 AI 生成的完整项目设定。
+// SetupDraft 鏄缃敓鎴愮殑鑽夌銆?
+// 鍖呭惈 AI 鐢熸垚鐨勫畬鏁撮」鐩瀹氥€?
 type SetupDraft struct {
-	AuthorBible      AuthorBible       `json:"author_bible"`           // 作者圣经
-	Characters       []Character       `json:"characters"`             // 角色列表
-	Relationships    []Relationship    `json:"relationships"`          // 关系列表
-	WorldState       []WorldStateEntry `json:"world_state"`            // 世界状态
-	OpenQuestions    []SetupQuestion   `json:"open_questions"`         // 待解答问题
-	AssistantSummary string            `json:"assistant_summary"`      // AI 总结
-	VisualDraft      *SetupVisualDraft `json:"visual_draft,omitempty"` // 可视化草案
+	AuthorBible      AuthorBible       `json:"author_bible"`           // 浣滆€呭湥缁?
+	Characters       []Character       `json:"characters"`             // 瑙掕壊鍒楄〃
+	Relationships    []Relationship    `json:"relationships"`          // 鍏崇郴鍒楄〃
+	WorldState       []WorldStateEntry `json:"world_state"`            // 涓栫晫鐘舵€?
+	OpenQuestions    []SetupQuestion   `json:"open_questions"`         // 寰呰В绛旈棶棰?
+	AssistantSummary string            `json:"assistant_summary"`      // AI 鎬荤粨
+	VisualDraft      *SetupVisualDraft `json:"visual_draft,omitempty"` // 鍙鍖栬崏妗?
 }
 
-// SetupRunResult 是设置运行结果的模型。
+// SetupRunResult 鏄缃繍琛岀粨鏋滅殑妯″瀷銆?
 type SetupRunResult struct {
-	RunID      string     `json:"run_id"`      // 运行 ID
-	SessionID  string     `json:"session_id"`  // 会话 ID
-	Status     string     `json:"status"`      // 结果状态
-	SetupDraft SetupDraft `json:"setup_draft"` // 设置草稿
+	RunID      string     `json:"run_id"`      // 杩愯 ID
+	SessionID  string     `json:"session_id"`  // 浼氳瘽 ID
+	Status     string     `json:"status"`      // 缁撴灉鐘舵€?
+	SetupDraft SetupDraft `json:"setup_draft"` // 璁剧疆鑽夌
 }
 
-// ApplySetupRunResult 是应用设置运行后的结果。
+// ApplySetupRunResult 鏄簲鐢ㄨ缃繍琛屽悗鐨勭粨鏋溿€?
 type ApplySetupRunResult struct {
-	ProjectID string `json:"project_id"` // 项目 ID
-	RunID     string `json:"run_id"`     // 运行 ID
-	Status    string `json:"status"`     // 结果状态
+	ProjectID string `json:"project_id"` // 椤圭洰 ID
+	RunID     string `json:"run_id"`     // 杩愯 ID
+	Status    string `json:"status"`     // 缁撴灉鐘舵€?
 }
 
-// CreateStorySessionInput 是创建故事会话的输入参数。
-// 故事会话用于 AI 辅助生成故事内容。
+// CreateStorySessionInput 鏄垱寤烘晠浜嬩細璇濈殑杈撳叆鍙傛暟銆?
+// 鏁呬簨浼氳瘽鐢ㄤ簬 AI 杈呭姪鐢熸垚鏁呬簨鍐呭銆?
 type CreateStorySessionInput struct {
-	Title            string // 章节/故事标题
-	OpeningSituation string // 开局情境
-	AuthorIntent     string // 作者意图
+	Title            string // 绔犺妭/鏁呬簨鏍囬
+	OpeningSituation string // 寮€灞€鎯呭
+	AuthorIntent     string // 浣滆€呮剰鍥?
 }
 
-// AdvanceStorySessionInput 是推进故事会话的输入参数。
+// AdvanceStorySessionInput 鏄帹杩涙晠浜嬩細璇濈殑杈撳叆鍙傛暟銆?
 type AdvanceStorySessionInput struct {
-	AuthorMessage string // 作者输入的消息
-	BranchID      string // 继续推进的时间线分支 ID
-	BaseTickID    string // 继续推进的基础 tick ID
+	AuthorMessage string // 浣滆€呰緭鍏ョ殑娑堟伅
+	BranchID      string // 缁х画鎺ㄨ繘鐨勬椂闂寸嚎鍒嗘敮 ID
+	BaseTickID    string // 缁х画鎺ㄨ繘鐨勫熀纭€ tick ID
 }
 
 type ForkStoryTickInput struct {
@@ -396,71 +396,71 @@ type ForkStoryTickInput struct {
 	AuthorMessage string `json:"author_message,omitempty"`
 }
 
-// CommitStoryRunInput 是提交故事运行的输入参数。
+// CommitStoryRunInput 鏄彁浜ゆ晠浜嬭繍琛岀殑杈撳叆鍙傛暟銆?
 type CommitStoryRunInput struct {
-	DraftID       string // 草稿 ID
-	MemoryPatchID string // 记忆补丁 ID
-	AuthorNote    string // 作者备注
+	DraftID       string // 鑽夌 ID
+	MemoryPatchID string // 璁板繂琛ヤ竵 ID
+	AuthorNote    string // 浣滆€呭娉?
 }
 
-// StorySession 是故事会话的模型。
-// 故事会话是单个故事生成周期的上下文容器。
+// StorySession 鏄晠浜嬩細璇濈殑妯″瀷銆?
+// 鏁呬簨浼氳瘽鏄崟涓晠浜嬬敓鎴愬懆鏈熺殑涓婁笅鏂囧鍣ㄣ€?
 type StorySession struct {
-	ID                         string                `json:"id"`                            // 会话唯一标识符
-	ProjectID                  string                `json:"project_id"`                    // 所属项目 ID
-	Title                      string                `json:"title"`                         // 会话标题
-	OpeningSituation           string                `json:"opening_situation"`             // 开局情境
-	AuthorIntent               string                `json:"author_intent"`                 // 作者意图
-	LastAuthorMessage          string                `json:"last_author_message"`           // 最后一条作者消息
-	Status                     string                `json:"status"`                        // 会话状态
-	CurrentPlotVariableSummary string                `json:"current_plot_variable_summary"` // 当前剧情变量摘要
-	Messages                   []ConversationMessage `json:"messages"`                      // 会话消息历史
-	CreatedAt                  time.Time             `json:"created_at"`                    // 创建时间
-	UpdatedAt                  time.Time             `json:"updated_at"`                    // 最后更新时间
+	ID                         string                `json:"id"`                            // 浼氳瘽鍞竴鏍囪瘑绗?
+	ProjectID                  string                `json:"project_id"`                    // 鎵€灞為」鐩?ID
+	Title                      string                `json:"title"`                         // 浼氳瘽鏍囬
+	OpeningSituation           string                `json:"opening_situation"`             // 寮€灞€鎯呭
+	AuthorIntent               string                `json:"author_intent"`                 // 浣滆€呮剰鍥?
+	LastAuthorMessage          string                `json:"last_author_message"`           // 鏈€鍚庝竴鏉′綔鑰呮秷鎭?
+	Status                     string                `json:"status"`                        // 浼氳瘽鐘舵€?
+	CurrentPlotVariableSummary string                `json:"current_plot_variable_summary"` // 褰撳墠鍓ф儏鍙橀噺鎽樿
+	Messages                   []ConversationMessage `json:"messages"`                      // 浼氳瘽娑堟伅鍘嗗彶
+	CreatedAt                  time.Time             `json:"created_at"`                    // 鍒涘缓鏃堕棿
+	UpdatedAt                  time.Time             `json:"updated_at"`                    // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// StoryRun 是故事运行的模型。
-// 每次用户推进故事会话时创建一个运行，跟踪 AI 内容生成进度。
+// StoryRun 鏄晠浜嬭繍琛岀殑妯″瀷銆?
+// 姣忔鐢ㄦ埛鎺ㄨ繘鏁呬簨浼氳瘽鏃跺垱寤轰竴涓繍琛岋紝璺熻釜 AI 鍐呭鐢熸垚杩涘害銆?
 type StoryRun struct {
-	RunID       string     `json:"run_id"`     // 运行唯一标识符
-	SessionID   string     `json:"session_id"` // 所属会话 ID
-	ProjectID   string     `json:"project_id"` // 所属项目 ID
+	RunID       string     `json:"run_id"`     // 杩愯鍞竴鏍囪瘑绗?
+	SessionID   string     `json:"session_id"` // 鎵€灞炰細璇?ID
+	ProjectID   string     `json:"project_id"` // 鎵€灞為」鐩?ID
 	BranchID    string     `json:"branch_id,omitempty"`
 	BaseTickID  string     `json:"base_tick_id,omitempty"`
 	HeadTickID  string     `json:"head_tick_id,omitempty"`
-	Status      string     `json:"status"`       // 运行状态
-	CurrentStep string     `json:"current_step"` // 当前步骤
-	Progress    int        `json:"progress"`     // 进度百分比
+	Status      string     `json:"status"`       // 杩愯鐘舵€?
+	CurrentStep string     `json:"current_step"` // 褰撳墠姝ラ
+	Progress    int        `json:"progress"`     // 杩涘害鐧惧垎姣?
 	Error       string     `json:"error,omitempty"`
-	CommittedAt *time.Time `json:"committed_at"` // 提交时间（如果有）
-	CreatedAt   time.Time  `json:"created_at"`   // 创建时间
-	UpdatedAt   time.Time  `json:"updated_at"`   // 最后更新时间
+	CommittedAt *time.Time `json:"committed_at"` // 鎻愪氦鏃堕棿锛堝鏋滄湁锛?
+	CreatedAt   time.Time  `json:"created_at"`   // 鍒涘缓鏃堕棿
+	UpdatedAt   time.Time  `json:"updated_at"`   // 鏈€鍚庢洿鏂版椂闂?
 }
 
-// Draft 是生成的章节草稿。
-// 草稿是候选数据，只有 commit 后才会变成正式章节。
+// Draft 鏄敓鎴愮殑绔犺妭鑽夌銆?
+// 鑽夌鏄€欓€夋暟鎹紝鍙湁 commit 鍚庢墠浼氬彉鎴愭寮忕珷鑺傘€?
 type Draft struct {
-	ID            string `json:"id"`             // 草稿唯一标识符
-	Title         string `json:"title"`          // 章节标题
-	ChapterNumber int    `json:"chapter_number"` // 章节编号
-	Content       string `json:"content"`        // 章节正文
-	Summary       string `json:"summary"`        // 章节摘要
-	WordCount     int    `json:"word_count"`     // 字数统计
+	ID            string `json:"id"`             // 鑽夌鍞竴鏍囪瘑绗?
+	Title         string `json:"title"`          // 绔犺妭鏍囬
+	ChapterNumber int    `json:"chapter_number"` // 绔犺妭缂栧彿
+	Content       string `json:"content"`        // 绔犺妭姝ｆ枃
+	Summary       string `json:"summary"`        // 绔犺妭鎽樿
+	WordCount     int    `json:"word_count"`     // 瀛楁暟缁熻
 }
 
-// PlotVariable 是剧情变量，定义故事中的核心戏剧性选择。
-// AI 在生成内容前会确定剧情变量，为角色提供有意义的选择。
+// PlotVariable 鏄墽鎯呭彉閲忥紝瀹氫箟鏁呬簨涓殑鏍稿績鎴忓墽鎬ч€夋嫨銆?
+// AI 鍦ㄧ敓鎴愬唴瀹瑰墠浼氱‘瀹氬墽鎯呭彉閲忥紝涓鸿鑹叉彁渚涙湁鎰忎箟鐨勯€夋嫨銆?
 type PlotVariable struct {
-	PressureSource      string   `json:"pressure_source"`       // 压力来源
-	FocalCharacterID    string   `json:"focal_character_id"`    // 核心角色 ID
-	CoreChoice          string   `json:"core_choice"`           // 核心选择描述
-	OptionA             string   `json:"option_a"`              // 选项 A
-	OptionB             string   `json:"option_b"`              // 选项 B
-	CostA               string   `json:"cost_a"`                // 选择 A 的代价
-	CostB               string   `json:"cost_b"`                // 选择 B 的代价
-	IrreversibleEffect  string   `json:"irreversible_effect"`   // 不可逆影响
-	RelatedCharacterIDs []string `json:"related_character_ids"` // 相关角色 ID 列表
-	WorldStatePressure  []string `json:"world_state_pressure"`  // 世界状态压力
+	PressureSource      string   `json:"pressure_source"`       // 鍘嬪姏鏉ユ簮
+	FocalCharacterID    string   `json:"focal_character_id"`    // 鏍稿績瑙掕壊 ID
+	CoreChoice          string   `json:"core_choice"`           // 鏍稿績閫夋嫨鎻忚堪
+	OptionA             string   `json:"option_a"`              // 閫夐」 A
+	OptionB             string   `json:"option_b"`              // 閫夐」 B
+	CostA               string   `json:"cost_a"`                // 閫夋嫨 A 鐨勪唬浠?
+	CostB               string   `json:"cost_b"`                // 閫夋嫨 B 鐨勪唬浠?
+	IrreversibleEffect  string   `json:"irreversible_effect"`   // 涓嶅彲閫嗗奖鍝?
+	RelatedCharacterIDs []string `json:"related_character_ids"` // 鐩稿叧瑙掕壊 ID 鍒楄〃
+	WorldStatePressure  []string `json:"world_state_pressure"`  // 涓栫晫鐘舵€佸帇鍔?
 }
 
 type StoryTimelineEvent struct {
@@ -755,85 +755,85 @@ type AdvanceStoryTickResult struct {
 	State    StorySimulationState `json:"state"`
 }
 
-// ReviewReport 是审阅报告，包含 AI 对生成内容的质量评估。
+// ReviewReport 鏄闃呮姤鍛婏紝鍖呭惈 AI 瀵圭敓鎴愬唴瀹圭殑璐ㄩ噺璇勪及銆?
 type ReviewReport struct {
-	Pass             bool     `json:"pass"`              // 是否通过
-	HardViolations   []string `json:"hard_violations"`   // 硬性违规（必须修复的问题）
-	ContinuityIssues []string `json:"continuity_issues"` // 连续性问题
-	StyleIssues      []string `json:"style_issues"`      // 风格问题
-	SuggestedFixes   []string `json:"suggested_fixes"`   // 建议修复
+	Pass             bool     `json:"pass"`              // 鏄惁閫氳繃
+	HardViolations   []string `json:"hard_violations"`   // 纭€ц繚瑙勶紙蹇呴』淇鐨勯棶棰橈級
+	ContinuityIssues []string `json:"continuity_issues"` // 杩炵画鎬ч棶棰?
+	StyleIssues      []string `json:"style_issues"`      // 椋庢牸闂
+	SuggestedFixes   []string `json:"suggested_fixes"`   // 寤鸿淇
 }
 
-// CharacterMemoryUpdate 是角色记忆更新。
+// CharacterMemoryUpdate 鏄鑹茶蹇嗘洿鏂般€?
 type CharacterMemoryUpdate struct {
-	CharacterID string `json:"character_id"` // 角色 ID
-	Type        string `json:"type"`         // 更新类型
-	Content     string `json:"content"`      // 更新内容
-	Importance  int    `json:"importance"`   // 重要性
+	CharacterID string `json:"character_id"` // 瑙掕壊 ID
+	Type        string `json:"type"`         // 鏇存柊绫诲瀷
+	Content     string `json:"content"`      // 鏇存柊鍐呭
+	Importance  int    `json:"importance"`   // 閲嶈鎬?
 }
 
-// RelationshipViewUpdate 是关系视角更新。
+// RelationshipViewUpdate 鏄叧绯昏瑙掓洿鏂般€?
 type RelationshipViewUpdate struct {
-	ViewID                 string `json:"view_id"`                  // 视角 ID
-	PairID                 string `json:"pair_id"`                  // 关系对 ID
-	SourceCharacterID      string `json:"source_character_id"`      // 源角色 ID
-	TargetCharacterID      string `json:"target_character_id"`      // 目标角色 ID
-	PublicAttitude         string `json:"public_attitude"`          // 公开态度
-	PrivateAttitude        string `json:"private_attitude"`         // 私下态度
-	BelievedTargetAttitude string `json:"believed_target_attitude"` // 以为对方的态度
-	MaskingStrategy        string `json:"masking_strategy"`         // 掩饰策略
+	ViewID                 string `json:"view_id"`                  // 瑙嗚 ID
+	PairID                 string `json:"pair_id"`                  // 鍏崇郴瀵?ID
+	SourceCharacterID      string `json:"source_character_id"`      // 婧愯鑹?ID
+	TargetCharacterID      string `json:"target_character_id"`      // 鐩爣瑙掕壊 ID
+	PublicAttitude         string `json:"public_attitude"`          // 鍏紑鎬佸害
+	PrivateAttitude        string `json:"private_attitude"`         // 绉佷笅鎬佸害
+	BelievedTargetAttitude string `json:"believed_target_attitude"` // 浠ヤ负瀵规柟鐨勬€佸害
+	MaskingStrategy        string `json:"masking_strategy"`         // 鎺╅グ绛栫暐
 }
 
-// RelationshipUpdate 是关系更新。
+// RelationshipUpdate 鏄叧绯绘洿鏂般€?
 type RelationshipUpdate struct {
-	PairID       string                   `json:"pair_id"`       // 关系对 ID
-	Summary      string                   `json:"summary"`       // 更新后的摘要
-	TensionDelta string                   `json:"tension_delta"` // 紧张度变化
-	Pair         *RelationshipPair        `json:"pair"`          // 更新的关系对（可选）
-	Views        []RelationshipViewUpdate `json:"views"`         // 更新的视角列表
-	Events       []RelationshipEvent      `json:"events"`        // 新增的事件列表
+	PairID       string                   `json:"pair_id"`       // 鍏崇郴瀵?ID
+	Summary      string                   `json:"summary"`       // 鏇存柊鍚庣殑鎽樿
+	TensionDelta string                   `json:"tension_delta"` // 绱у紶搴﹀彉鍖?
+	Pair         *RelationshipPair        `json:"pair"`          // 鏇存柊鐨勫叧绯诲锛堝彲閫夛級
+	Views        []RelationshipViewUpdate `json:"views"`         // 鏇存柊鐨勮瑙掑垪琛?
+	Events       []RelationshipEvent      `json:"events"`        // 鏂板鐨勪簨浠跺垪琛?
 }
 
-// WorldStateUpdate 是世界状态更新。
+// WorldStateUpdate 鏄笘鐣岀姸鎬佹洿鏂般€?
 type WorldStateUpdate struct {
-	Key       string `json:"key"`       // 状态键
-	Operation string `json:"operation"` // 操作类型（set, update, delete）
-	Value     any    `json:"value"`     // 新值
-	Note      string `json:"note"`      // 备注说明
+	Key       string `json:"key"`       // 鐘舵€侀敭
+	Operation string `json:"operation"` // 鎿嶄綔绫诲瀷锛坰et, update, delete锛?
+	Value     any    `json:"value"`     // 鏂板€?
+	Note      string `json:"note"`      // 澶囨敞璇存槑
 }
 
-// MemoryPatch 是记忆补丁，封装了所有状态更新。
-// 当故事运行被提交时，相关的状态变化会通过记忆补丁统一应用。
+// MemoryPatch 鏄蹇嗚ˉ涓侊紝灏佽浜嗘墍鏈夌姸鎬佹洿鏂般€?
+// 褰撴晠浜嬭繍琛岃鎻愪氦鏃讹紝鐩稿叧鐨勭姸鎬佸彉鍖栦細閫氳繃璁板繂琛ヤ竵缁熶竴搴旂敤銆?
 type MemoryPatch struct {
-	ID                     string                  `json:"id"`                       // 补丁唯一标识符
-	Status                 string                  `json:"status"`                   // 补丁状态
-	CharacterMemoryUpdates []CharacterMemoryUpdate `json:"character_memory_updates"` // 角色记忆更新列表
-	RelationshipUpdates    []RelationshipUpdate    `json:"relationship_updates"`     // 关系更新列表
-	WorldStateUpdates      []WorldStateUpdate      `json:"world_state_updates"`      // 世界状态更新列表
+	ID                     string                  `json:"id"`                       // 琛ヤ竵鍞竴鏍囪瘑绗?
+	Status                 string                  `json:"status"`                   // 琛ヤ竵鐘舵€?
+	CharacterMemoryUpdates []CharacterMemoryUpdate `json:"character_memory_updates"` // 瑙掕壊璁板繂鏇存柊鍒楄〃
+	RelationshipUpdates    []RelationshipUpdate    `json:"relationship_updates"`     // 鍏崇郴鏇存柊鍒楄〃
+	WorldStateUpdates      []WorldStateUpdate      `json:"world_state_updates"`      // 涓栫晫鐘舵€佹洿鏂板垪琛?
 }
 
-// StoryRunResult 是故事运行结果的模型。
+// StoryRunResult 鏄晠浜嬭繍琛岀粨鏋滅殑妯″瀷銆?
 type StoryRunResult struct {
-	RunID                  string                       `json:"run_id"`     // 运行 ID
-	SessionID              string                       `json:"session_id"` // 会话 ID
-	Status                 string                       `json:"status"`     // 结果状态
+	RunID                  string                       `json:"run_id"`     // 杩愯 ID
+	SessionID              string                       `json:"session_id"` // 浼氳瘽 ID
+	Status                 string                       `json:"status"`     // 缁撴灉鐘舵€?
 	BranchID               string                       `json:"branch_id,omitempty"`
 	BaseTickID             string                       `json:"base_tick_id,omitempty"`
 	HeadTickID             string                       `json:"head_tick_id,omitempty"`
-	PlotVariable           PlotVariable                 `json:"plot_variable"`           // 剧情变量
-	EventTimeline          []StoryTimelineEvent         `json:"event_timeline"`          // 事件时间线
-	InteractionAnalysis    StoryInteractionAnalysis     `json:"interaction_analysis"`    // 交互分析
-	InteractionTranscripts []StoryInteractionTranscript `json:"interaction_transcripts"` // 交涉记录
-	Draft                  Draft                        `json:"draft"`                   // 章节草稿
-	Review                 ReviewReport                 `json:"review"`                  // 审阅报告
-	MemoryPatch            MemoryPatch                  `json:"memory_patch"`            // 记忆补丁
+	PlotVariable           PlotVariable                 `json:"plot_variable"`           // 鍓ф儏鍙橀噺
+	EventTimeline          []StoryTimelineEvent         `json:"event_timeline"`          // 浜嬩欢鏃堕棿绾?
+	InteractionAnalysis    StoryInteractionAnalysis     `json:"interaction_analysis"`    // 浜や簰鍒嗘瀽
+	InteractionTranscripts []StoryInteractionTranscript `json:"interaction_transcripts"` // 浜ゆ秹璁板綍
+	Draft                  Draft                        `json:"draft"`                   // 绔犺妭鑽夌
+	Review                 ReviewReport                 `json:"review"`                  // 瀹￠槄鎶ュ憡
+	MemoryPatch            MemoryPatch                  `json:"memory_patch"`            // 璁板繂琛ヤ竵
 }
 
-// CommitStoryRunResult 是提交故事运行后的结果。
+// CommitStoryRunResult 鏄彁浜ゆ晠浜嬭繍琛屽悗鐨勭粨鏋溿€?
 type CommitStoryRunResult struct {
-	Chapter  Chapter     `json:"chapter"`   // 提交的章节
-	Patch    MemoryPatch `json:"patch"`     // 应用的记忆补丁
-	StoryRun StoryRun    `json:"story_run"` // 关联的故事运行
+	Chapter  Chapter     `json:"chapter"`   // 鎻愪氦鐨勭珷鑺?
+	Patch    MemoryPatch `json:"patch"`     // 搴旂敤鐨勮蹇嗚ˉ涓?
+	StoryRun StoryRun    `json:"story_run"` // 鍏宠仈鐨勬晠浜嬭繍琛?
 }
 
 type CreateDialogueSessionInput struct {
@@ -932,61 +932,73 @@ type DialogueRunResult struct {
 	ToolTrace           []DialogueToolTrace    `json:"tool_trace"`
 }
 
-// Chapter 是已提交的故事章节。
-// 章节是故事的基本单位，每个提交的故事运行会产生一个新的章节。
+// Chapter 鏄凡鎻愪氦鐨勬晠浜嬬珷鑺傘€?
+// 绔犺妭鏄晠浜嬬殑鍩烘湰鍗曚綅锛屾瘡涓彁浜ょ殑鏁呬簨杩愯浼氫骇鐢熶竴涓柊鐨勭珷鑺傘€?
 type Chapter struct {
-	ID            string    `json:"id"`             // 章节唯一标识符
-	ProjectID     string    `json:"project_id"`     // 所属项目 ID
-	ChapterNumber int       `json:"chapter_number"` // 章节编号（递增）
-	Title         string    `json:"title"`          // 章节标题
-	Summary       string    `json:"summary"`        // 章节摘要
-	Content       string    `json:"content"`        // 章节正文
-	AuthorNote    string    `json:"author_note"`    // 作者备注
-	Status        string    `json:"status"`         // 章节状态
-	WordCount     int       `json:"word_count"`     // 字数统计
-	CommittedAt   time.Time `json:"committed_at"`   // 提交时间
+	ID            string    `json:"id"`             // 绔犺妭鍞竴鏍囪瘑绗?
+	ProjectID     string    `json:"project_id"`     // 鎵€灞為」鐩?ID
+	ChapterNumber int       `json:"chapter_number"` // 绔犺妭缂栧彿锛堥€掑锛?
+	Title         string    `json:"title"`          // 绔犺妭鏍囬
+	Summary       string    `json:"summary"`        // 绔犺妭鎽樿
+	Content       string    `json:"content"`        // 绔犺妭姝ｆ枃
+	AuthorNote    string    `json:"author_note"`    // 浣滆€呭娉?
+	Status        string    `json:"status"`         // 绔犺妭鐘舵€?
+	WordCount     int       `json:"word_count"`     // 瀛楁暟缁熻
+	CommittedAt   time.Time `json:"committed_at"`   // 鎻愪氦鏃堕棿
 }
 
-// CreateMemoryInput 是创建角色记忆的输入参数。
+// CreateMemoryInput 鏄垱寤鸿鑹茶蹇嗙殑杈撳叆鍙傛暟銆?
 type CreateMemoryInput struct {
-	Content    string // 记忆内容
-	Importance int    // 重要性等级
-	Note       string // 备注说明
+	Content    string // 璁板繂鍐呭
+	Importance int    // 閲嶈鎬х瓑绾?
+	Note       string // 澶囨敞璇存槑
 }
 
-// Memory 是角色的记忆条目。
-// 记忆是角色在故事中经历事件的记录，用于 AI 生成时的上下文参考。
+// Memory 鏄鑹茬殑璁板繂鏉＄洰銆?
+// 璁板繂鏄鑹插湪鏁呬簨涓粡鍘嗕簨浠剁殑璁板綍锛岀敤浜?AI 鐢熸垚鏃剁殑涓婁笅鏂囧弬鑰冦€?
 type Memory struct {
-	ID              string    `json:"id"`                // 记忆唯一标识符
-	CharacterID     string    `json:"character_id"`      // 所属角色 ID
-	Content         string    `json:"content"`           // 记忆内容
-	SourceChapterID string    `json:"source_chapter_id"` // 来源章节 ID
-	Importance      int       `json:"importance"`        // 重要性等级
-	Note            string    `json:"note"`              // 备注说明
-	Status          string    `json:"status"`            // 状态标识
-	CreatedAt       time.Time `json:"created_at"`        // 创建时间
+	ID              string    `json:"id"`                // 璁板繂鍞竴鏍囪瘑绗?
+	CharacterID     string    `json:"character_id"`      // 鎵€灞炶鑹?ID
+	Content         string    `json:"content"`           // 璁板繂鍐呭
+	SourceChapterID string    `json:"source_chapter_id"` // 鏉ユ簮绔犺妭 ID
+	Importance      int       `json:"importance"`        // 閲嶈鎬х瓑绾?
+	Note            string    `json:"note"`              // 澶囨敞璇存槑
+	Status          string    `json:"status"`            // 鐘舵€佹爣璇?
+	CreatedAt       time.Time `json:"created_at"`        // 鍒涘缓鏃堕棿
 }
 
-// RunEvent 是运行事件，用于记录 AI 生成过程中的关键事件。
-// 事件通过 SSE 实时推送给客户端，并持久化用于审计。
+// RunEvent 鏄繍琛屼簨浠讹紝鐢ㄤ簬璁板綍 AI 鐢熸垚杩囩▼涓殑鍏抽敭浜嬩欢銆?
+// 浜嬩欢閫氳繃 SSE 瀹炴椂鎺ㄩ€佺粰瀹㈡埛绔紝骞舵寔涔呭寲鐢ㄤ簬瀹¤銆?
+
+// RunExecutionWork 是可恢复运行执行器从持久存储扫描到的待处理工作项。
+// 该类型属于 run execution 边界；当前保留在 types.go，后续模型拆分时可迁移到执行模型文件。
+type RunExecutionWork struct {
+	RunKind   string    `json:"run_kind"`
+	RunID     string    `json:"run_id"`
+	SessionID string    `json:"session_id"`
+	ProjectID string    `json:"project_id"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type RunEvent struct {
-	ID        string         `json:"id"`         // 事件唯一标识符
-	RunKind   string         `json:"run_kind"`   // 运行类型（setup/story）
-	RunID     string         `json:"run_id"`     // 所属运行 ID
-	EventName string         `json:"event_name"` // 事件名称
-	Sequence  int            `json:"sequence"`   // 事件序号
-	Payload   map[string]any `json:"payload"`    // 事件附加数据
-	CreatedAt time.Time      `json:"created_at"` // 事件发生时间
+	ID        string         `json:"id"`         // 浜嬩欢鍞竴鏍囪瘑绗?
+	RunKind   string         `json:"run_kind"`   // 杩愯绫诲瀷锛坰etup/story锛?
+	RunID     string         `json:"run_id"`     // 鎵€灞炶繍琛?ID
+	EventName string         `json:"event_name"` // 浜嬩欢鍚嶇О
+	Sequence  int            `json:"sequence"`   // 浜嬩欢搴忓彿
+	Payload   map[string]any `json:"payload"`    // 浜嬩欢闄勫姞鏁版嵁
+	CreatedAt time.Time      `json:"created_at"` // 浜嬩欢鍙戠敓鏃堕棿
 }
 
-// StateRevision 是状态修订快照。
-// 在重要状态变更前保存快照，用于回滚或审计。
+// StateRevision 鏄姸鎬佷慨璁㈠揩鐓с€?
+// 鍦ㄩ噸瑕佺姸鎬佸彉鏇村墠淇濆瓨蹇収锛岀敤浜庡洖婊氭垨瀹¤銆?
 type StateRevision struct {
-	ID          string         // 修订唯一标识符
-	ProjectID   string         // 所属项目 ID
-	EntityType  string         // 实体类型（如 character, relationship）
-	EntityID    string         // 实体 ID
-	SourceRunID string         // 来源运行 ID
-	Snapshot    map[string]any // 状态快照数据
-	CreatedAt   time.Time      // 修订时间
+	ID          string         // 淇鍞竴鏍囪瘑绗?
+	ProjectID   string         // 鎵€灞為」鐩?ID
+	EntityType  string         // 瀹炰綋绫诲瀷锛堝 character, relationship锛?
+	EntityID    string         // 瀹炰綋 ID
+	SourceRunID string         // 鏉ユ簮杩愯 ID
+	Snapshot    map[string]any // 鐘舵€佸揩鐓ф暟鎹?
+	CreatedAt   time.Time      // 淇鏃堕棿
 }

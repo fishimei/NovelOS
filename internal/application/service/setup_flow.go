@@ -67,13 +67,11 @@ func (s *SetupSessionAdvancer) Advance(ctx context.Context, sessionID string, in
 	if err != nil {
 		return model.SetupRun{}, err
 	}
-	if s.generator != nil {
-		go s.generate(context.Background(), run.RunID)
-	}
+	s.appendAuditEvent(ctx, run.RunID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusQueued, "progress": 0})
 	return run, nil
 }
 
-func (s *SetupSessionAdvancer) generate(ctx context.Context, runID string) {
+func (s *SetupSessionAdvancer) Generate(ctx context.Context, runID string) {
 	run, err := s.sessions.GetRunByID(ctx, runID)
 	if err != nil {
 		log.Printf("setup run %s failed before load: %v", runID, err)
@@ -86,6 +84,7 @@ func (s *SetupSessionAdvancer) generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
+	s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, map[string]any{"step": "inferring_setup", "progress": 20})
 	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": "inferring_setup", "progress": 20})
 	if err := s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusLoadingState, "inferring_setup", 20); err != nil {
 		s.failRun(ctx, runID, session, err)
@@ -105,6 +104,7 @@ func (s *SetupSessionAdvancer) generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
+	s.appendAuditEvent(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true})
 	s.publish(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true})
 }
 

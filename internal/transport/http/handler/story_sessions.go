@@ -15,12 +15,12 @@ import (
 )
 
 type StorySessionsHandler struct {
-	sessions  port.StorySessionRepository
-	audit     port.AuditRepository
-	events    port.GenerationEventStream
-	advancer  *service.StorySessionAdvancer
-	committer *service.StoryRunCommitter
-	timeline  *service.StoryTimelineService
+	sessions          port.StorySessionRepository
+	audit             port.AuditRepository
+	events            port.GenerationEventStream
+	advancer          *service.StorySessionAdvancer
+	committer         *service.StoryRunCommitter
+	narrativeTimeline *service.StoryTimelineService
 }
 
 func NewStorySessionsHandler(
@@ -29,15 +29,15 @@ func NewStorySessionsHandler(
 	events port.GenerationEventStream,
 	advancer *service.StorySessionAdvancer,
 	committer *service.StoryRunCommitter,
-	timeline *service.StoryTimelineService,
+	narrativeTimeline *service.StoryTimelineService,
 ) StorySessionsHandler {
 	return StorySessionsHandler{
-		sessions:  sessions,
-		audit:     audit,
-		events:    events,
-		advancer:  advancer,
-		committer: committer,
-		timeline:  timeline,
+		sessions:          sessions,
+		audit:             audit,
+		events:            events,
+		advancer:          advancer,
+		committer:         committer,
+		narrativeTimeline: narrativeTimeline,
 	}
 }
 
@@ -137,7 +137,11 @@ func (h StorySessionsHandler) Advance(c *gin.Context) {
 }
 
 func (h StorySessionsHandler) GetTimeline(c *gin.Context) {
-	result, err := h.timeline.ListSessionTimeline(c.Request.Context(), c.Param("session_id"))
+	h.GetNarrativeTimeline(c)
+}
+
+func (h StorySessionsHandler) GetNarrativeTimeline(c *gin.Context) {
+	result, err := h.narrativeTimeline.ListSessionTimeline(c.Request.Context(), c.Param("session_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
@@ -147,7 +151,11 @@ func (h StorySessionsHandler) GetTimeline(c *gin.Context) {
 }
 
 func (h StorySessionsHandler) GetTick(c *gin.Context) {
-	result, err := h.timeline.GetTick(c.Request.Context(), c.Param("tick_id"))
+	h.GetNarrativeTick(c)
+}
+
+func (h StorySessionsHandler) GetNarrativeTick(c *gin.Context) {
+	result, err := h.narrativeTimeline.GetTick(c.Request.Context(), c.Param("tick_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
@@ -157,7 +165,11 @@ func (h StorySessionsHandler) GetTick(c *gin.Context) {
 }
 
 func (h StorySessionsHandler) GetTickState(c *gin.Context) {
-	result, err := h.timeline.GetTickState(c.Request.Context(), c.Param("tick_id"))
+	h.GetNarrativeTickState(c)
+}
+
+func (h StorySessionsHandler) GetNarrativeTickState(c *gin.Context) {
+	result, err := h.narrativeTimeline.GetTickState(c.Request.Context(), c.Param("tick_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
@@ -167,12 +179,16 @@ func (h StorySessionsHandler) GetTickState(c *gin.Context) {
 }
 
 func (h StorySessionsHandler) ForkTick(c *gin.Context) {
+	h.ForkNarrativeTick(c)
+}
+
+func (h StorySessionsHandler) ForkNarrativeTick(c *gin.Context) {
 	var req dto.ForkStoryTickRequest
 	if !bindJSON(c, &req) {
 		return
 	}
 
-	result, err := h.timeline.ForkTick(c.Request.Context(), c.Param("tick_id"), model.ForkStoryTickInput{
+	result, err := h.narrativeTimeline.ForkTick(c.Request.Context(), c.Param("tick_id"), model.ForkStoryTickInput{
 		Name:          req.Name,
 		AuthorMessage: req.AuthorMessage,
 	})
@@ -185,12 +201,16 @@ func (h StorySessionsHandler) ForkTick(c *gin.Context) {
 }
 
 func (h StorySessionsHandler) AdvanceBranch(c *gin.Context) {
+	h.AdvanceNarrativeBranch(c)
+}
+
+func (h StorySessionsHandler) AdvanceNarrativeBranch(c *gin.Context) {
 	var req dto.AdvanceStorySessionRequest
 	if !bindJSON(c, &req) {
 		return
 	}
 
-	result, err := h.timeline.AdvanceBranch(c.Request.Context(), c.Param("branch_id"), model.AdvanceStorySessionInput{
+	result, err := h.narrativeTimeline.AdvanceBranch(c.Request.Context(), c.Param("branch_id"), model.AdvanceStorySessionInput{
 		AuthorMessage: req.AuthorMessage,
 	})
 	if err != nil {

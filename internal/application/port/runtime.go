@@ -14,8 +14,20 @@ import (
 
 // GenerationEvent 是 AI 生成过程中的事件。
 type GenerationEvent struct {
-	Name string // 事件名称
-	Data any    // 事件数据
+	ID       string // 可选的事件 ID；持久化 run_events 驱动 SSE 时可作为 SSE id
+	Name     string // 事件名称
+	Sequence int    // 可选的事件序号；对应持久化 RunEvent.Sequence
+	Data     any    // 事件数据
+}
+
+// GenerationEventCursor 描述订阅生成事件时的恢复游标。
+type GenerationEventCursor struct {
+	AfterSequence int    // 只读取该序号之后的事件；0 表示从实时事件开始
+	LastEventID   string // 原始 SSE Last-Event-ID，供适配层转换或透传
+}
+
+func (c GenerationEventCursor) IsZero() bool {
+	return c.AfterSequence == 0 && c.LastEventID == ""
 }
 
 // GenerationEventStream 是生成事件流的接口，支持发布和订阅。
@@ -25,6 +37,20 @@ type GenerationEventStream interface {
 	Publish(ctx context.Context, runID string, event GenerationEvent) error
 	// Subscribe 订阅指定运行的事件流，返回事件通道和取消函数
 	Subscribe(ctx context.Context, runID string) (<-chan GenerationEvent, func(), error)
+}
+
+// GenerationEventStreamWithCursor 是可感知恢复游标的事件流扩展。
+type GenerationEventStreamWithCursor interface {
+	SubscribeAfter(ctx context.Context, runID string, cursor GenerationEventCursor) (<-chan GenerationEvent, func(), error)
+}
+
+func SubscribeGenerationEvents(ctx context.Context, stream GenerationEventStream, runID string, cursor GenerationEventCursor) (<-chan GenerationEvent, func(), error) {
+	if !cursor.IsZero() {
+		if cursorStream, ok := stream.(GenerationEventStreamWithCursor); ok {
+			return cursorStream.SubscribeAfter(ctx, runID, cursor)
+		}
+	}
+	return stream.Subscribe(ctx, runID)
 }
 
 type SetupRunGenerator interface {

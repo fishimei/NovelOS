@@ -42,7 +42,11 @@ func (h StoryTicksHandler) CurrentState(c *gin.Context) {
 }
 
 func (h StoryTicksHandler) Events(c *gin.Context) {
-	result, err := h.advancer.Events(c.Request.Context(), c.Param("tick_id"))
+	tickRunID := c.Param("tick_run_id")
+	if tickRunID == "" {
+		tickRunID = c.Param("tick_id")
+	}
+	result, err := h.advancer.Events(c.Request.Context(), tickRunID)
 	if err != nil {
 		presenter.Error(c, err)
 		return
@@ -51,7 +55,11 @@ func (h StoryTicksHandler) Events(c *gin.Context) {
 }
 
 func (h StoryTicksHandler) Snapshot(c *gin.Context) {
-	result, err := h.advancer.Snapshot(c.Request.Context(), c.Param("tick_id"))
+	tickRunID := c.Param("tick_run_id")
+	if tickRunID == "" {
+		tickRunID = c.Param("tick_id")
+	}
+	result, err := h.advancer.Snapshot(c.Request.Context(), tickRunID)
 	if err != nil {
 		presenter.Error(c, err)
 		return

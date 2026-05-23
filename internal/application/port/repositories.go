@@ -157,6 +157,7 @@ type MemoryRepository interface {
 type AuditRepository interface {
 	AppendRunEvent(ctx context.Context, event model.RunEvent) (model.RunEvent, error)
 	ListRunEvents(ctx context.Context, runKind string, runID string) ([]model.RunEvent, error)
+	ListRunEventsAfter(ctx context.Context, runKind string, runID string, afterSequence int) ([]model.RunEvent, error)
 	CreateRevision(ctx context.Context, revision model.StateRevision) (model.StateRevision, error)
 }
 

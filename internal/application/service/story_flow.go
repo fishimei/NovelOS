@@ -72,9 +72,7 @@ func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, in
 	if err != nil {
 		return model.StoryRun{}, err
 	}
-	if s.generator != nil {
-		go s.generate(context.Background(), run.RunID)
-	}
+	s.appendAuditEvent(ctx, run.RunID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusQueued, "progress": 0})
 	return run, nil
 }
 
@@ -114,7 +112,7 @@ func (s *StorySessionAdvancer) ensureStoryBranch(ctx context.Context, session mo
 	})
 }
 
-func (s *StorySessionAdvancer) generate(ctx context.Context, runID string) {
+func (s *StorySessionAdvancer) Generate(ctx context.Context, runID string) {
 	run, err := s.sessions.GetRunByID(ctx, runID)
 	if err != nil {
 		log.Printf("story run %s failed before load: %v", runID, err)
@@ -127,6 +125,7 @@ func (s *StorySessionAdvancer) generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
+	s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusLoadingState, "progress": 10})
 	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusLoadingState, "progress": 10})
 	if err := s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusLoadingState, domain.RunStatusLoadingState, 10); err != nil {
 		s.failRun(ctx, runID, session, err)
@@ -154,6 +153,7 @@ func (s *StorySessionAdvancer) generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
+	s.appendAuditEvent(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true})
 	s.publish(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true})
 }
 

@@ -35,7 +35,11 @@ func (s *inMemoryEventStream) Publish(_ context.Context, runID string, event por
 	return nil
 }
 
-func (s *inMemoryEventStream) Subscribe(_ context.Context, runID string) (<-chan port.GenerationEvent, func(), error) {
+func (s *inMemoryEventStream) Subscribe(ctx context.Context, runID string) (<-chan port.GenerationEvent, func(), error) {
+	return s.SubscribeAfter(ctx, runID, port.GenerationEventCursor{})
+}
+
+func (s *inMemoryEventStream) SubscribeAfter(_ context.Context, runID string, _ port.GenerationEventCursor) (<-chan port.GenerationEvent, func(), error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ch := make(chan port.GenerationEvent, 16)

@@ -28,8 +28,9 @@ import (
 // App 是应用程序的主结构体，包含配置和 HTTP 服务器实例。
 // 不持有任何业务逻辑，仅负责生命周期管理和请求路由。
 type App struct {
-	config config.Config
-	server *http.Server
+	config      config.Config
+	server      *http.Server
+	runExecutor *service.RunExecutor
 }
 
 // New 创建并初始化一个新的 App 实例。
@@ -174,6 +175,19 @@ func New(cfg config.Config) *App {
 	}
 	dialogueStarter := service.NewDialogueSessionStarter(repos.DialogueSessions)
 	dialogueAdvancer := service.NewDialogueSessionAdvancer(repos.DialogueSessions, repos.Audit, dialogueGenerator, eventStream)
+	runExecutor := service.NewRunExecutor(
+		repos,
+		setupAdvancer,
+		storyAdvancer,
+		service.RunExecutorSettings{
+			Enabled:             cfg.RunExecutor.Enabled,
+			PollIntervalSeconds: cfg.RunExecutor.PollIntervalSeconds,
+			StaleAfterSeconds:   cfg.RunExecutor.StaleAfterSeconds,
+			BatchSize:           cfg.RunExecutor.BatchSize,
+			RunTimeoutSeconds:   cfg.RunExecutor.RunTimeoutSeconds,
+		},
+		clock,
+	)
 
 	handlers := transporthttp.Handlers{
 		Projects:         handler.NewProjectsHandler(repos.Projects),
@@ -190,7 +204,8 @@ func New(cfg config.Config) *App {
 	router := transporthttp.NewRouter(handlers)
 
 	return &App{
-		config: cfg,
+		config:      cfg,
+		runExecutor: runExecutor,
 		server: &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.App.Port),
 			Handler:           router,
@@ -231,6 +246,10 @@ func (serviceClock) Now() time.Time {
 // Run 启动 HTTP 服务器并阻塞，直到收到上下文取消信号或发生错误。
 // 支持优雅关闭：收到信号后会在 5 秒内完成正在处理的请求。
 func (a *App) Run(ctx context.Context) error {
+	if a.runExecutor != nil {
+		a.runExecutor.Start(ctx)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		log.Printf("NovelOS listening on %s", a.server.Addr)

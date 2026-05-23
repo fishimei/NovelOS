@@ -1102,8 +1102,12 @@ func (r *auditRepository) AppendRunEvent(ctx context.Context, event model.RunEve
 }
 
 func (r *auditRepository) ListRunEvents(ctx context.Context, runKind string, runID string) ([]model.RunEvent, error) {
+	return r.ListRunEventsAfter(ctx, runKind, runID, 0)
+}
+
+func (r *auditRepository) ListRunEventsAfter(ctx context.Context, runKind string, runID string, afterSequence int) ([]model.RunEvent, error) {
 	var rows []persistencemodels.RunEvent
-	if err := r.dbFor(ctx).Where("run_kind = ? AND run_id = ?", runKind, runID).Order("sequence asc").Find(&rows).Error; err != nil {
+	if err := r.dbFor(ctx).Where("run_kind = ? AND run_id = ? AND sequence > ?", runKind, runID, afterSequence).Order("sequence asc").Find(&rows).Error; err != nil {
 		return nil, mapDBError(err, "run event not found")
 	}
 	items := make([]model.RunEvent, 0, len(rows))

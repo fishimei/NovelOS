@@ -8,8 +8,8 @@ info:
 
     它分成三层：
     - 设定采集层：用户先说一句模糊想法，助手拆解成作者圣经、角色、关系、世界变量，并在必要时追问。
-    - 世界模拟层：simulation tick 独立推进项目时间线，让角色基于当前位置和地点势力影响产生行动、事件与状态快照。
-    - 故事推进层：story run 生成候选正文、交互记录和状态 patch，并可在任意叙事 tick 上浏览、分叉、继续推进。
+    - 世界模拟层：simulation tick 独立推进 Simulation Timeline，让角色基于当前位置和地点势力影响产生行动、事件与状态快照。
+    - 故事推进层：story run 生成候选正文、交互记录和状态 patch，并可在任意 Narrative Timeline tick 上浏览、分叉、继续推进。
 
     当前规范描述后端资源边界与流程语义。
 
@@ -30,7 +30,13 @@ tags:
   - name: StorySessions
   - name: StoryRuns
   - name: StoryTimeline
+    description: Backward-compatible tag for Narrative Timeline endpoints.
+  - name: NarrativeTimeline
+    description: Branchable narrative timeline for story runs, ticks, and state refs.
   - name: StoryTicks
+    description: Backward-compatible tag for Simulation Timeline endpoints.
+  - name: SimulationTimeline
+    description: Project-level world simulation timeline, tick runs, events, and snapshots.
   - name: Chapters
   - name: Memories
 
@@ -666,8 +672,24 @@ paths:
   /story-sessions/{session_id}/timeline:
     get:
       tags: [StoryTimeline]
-      summary: List story session branches and ticks
+      summary: List story session Narrative Timeline branches and ticks
+      description: Backward-compatible story path for the branchable Narrative Timeline. Prefer /story-sessions/{session_id}/narrative-timeline in new clients.
       operationId: listStorySessionTimeline
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorySessionTimelineResponse"
+
+  /story-sessions/{session_id}/narrative-timeline:
+    get:
+      tags: [NarrativeTimeline]
+      summary: List Narrative Timeline branches and ticks
+      operationId: listNarrativeTimeline
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
@@ -681,8 +703,30 @@ paths:
   /story-branches/{branch_id}/advance:
     post:
       tags: [StoryTimeline]
-      summary: Advance story from a branch head
+      summary: Advance Narrative Timeline from a story branch head
+      description: Backward-compatible story path for branchable Narrative Timeline advance. Prefer /narrative-branches/{branch_id}/advance in new clients.
       operationId: advanceStoryBranch
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceStorySessionRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryRunResponse"
+
+  /narrative-branches/{branch_id}/advance:
+    post:
+      tags: [NarrativeTimeline]
+      summary: Advance Narrative Timeline from a branch head
+      operationId: advanceNarrativeBranch
       parameters:
         - $ref: "#/components/parameters/BranchId"
       requestBody:
@@ -702,8 +746,24 @@ paths:
   /story-ticks/{tick_id}:
     get:
       tags: [StoryTimeline]
-      summary: Get story tick
+      summary: Get Narrative Timeline tick
+      description: Backward-compatible story path for a Narrative Timeline tick. Prefer /narrative-ticks/{tick_id} in new clients.
       operationId: getStoryTick
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryTickResponse"
+
+  /narrative-ticks/{tick_id}:
+    get:
+      tags: [NarrativeTimeline]
+      summary: Get Narrative Timeline tick
+      operationId: getNarrativeTick
       parameters:
         - $ref: "#/components/parameters/TickId"
       responses:
@@ -717,9 +777,25 @@ paths:
   /story-ticks/{tick_id}/state:
     get:
       tags: [StoryTimeline]
-      summary: Resolve story tick state
-      description: Resolves state refs by walking the parent tick chain and reusing unchanged entity versions.
+      summary: Resolve Narrative Timeline tick state
+      description: Backward-compatible story path. Resolves state refs by walking the parent narrative tick chain and reusing unchanged entity versions.
       operationId: getStoryTickState
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryTickStateResponse"
+
+  /narrative-ticks/{tick_id}/state:
+    get:
+      tags: [NarrativeTimeline]
+      summary: Resolve Narrative Timeline tick state
+      description: Resolves state refs by walking the parent narrative tick chain and reusing unchanged entity versions.
+      operationId: getNarrativeTickState
       parameters:
         - $ref: "#/components/parameters/TickId"
       responses:
@@ -733,8 +809,30 @@ paths:
   /story-ticks/{tick_id}/fork:
     post:
       tags: [StoryTimeline]
-      summary: Fork a story branch from a tick
+      summary: Fork a Narrative Timeline branch from a tick
+      description: Backward-compatible story path for a Narrative Timeline fork. Prefer /narrative-ticks/{tick_id}/fork in new clients.
       operationId: forkStoryTick
+      parameters:
+        - $ref: "#/components/parameters/TickId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForkStoryTickRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryBranchResponse"
+
+  /narrative-ticks/{tick_id}/fork:
+    post:
+      tags: [NarrativeTimeline]
+      summary: Fork a Narrative Timeline branch from a tick
+      operationId: forkNarrativeTick
       parameters:
         - $ref: "#/components/parameters/TickId"
       requestBody:
@@ -849,10 +947,11 @@ paths:
   /projects/{project_id}/story-ticks/advance:
     post:
       tags: [StoryTicks]
-      summary: Advance story simulation tick
+      summary: Advance Simulation Timeline tick
       description: |
-        推进项目世界模拟时间线。每次 tick 会：
-        - 读取或初始化 timeline、地点、角色模拟状态
+        Backward-compatible story path for advancing the project Simulation Timeline. Prefer /projects/{project_id}/simulation-ticks/advance in new clients.
+        每次 tick 会：
+        - 读取或初始化 Simulation Timeline、地点、角色模拟状态
         - 先结算到期 ongoing action
         - 对未完成行动的角色记录 skip event
         - 对空闲角色调用行动裁决器决定下一步行动与持续时间
@@ -874,11 +973,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdvanceStoryTickResponse"
 
+  /projects/{project_id}/simulation-ticks/advance:
+    post:
+      tags: [SimulationTimeline]
+      summary: Advance Simulation Timeline tick
+      description: |
+        推进项目世界模拟时间线。每次 tick 会：
+        - 读取或初始化 Simulation Timeline、地点、角色模拟状态
+        - 先结算到期 ongoing action
+        - 对未完成行动的角色记录 skip event
+        - 对空闲角色调用行动裁决器决定下一步行动与持续时间
+        - 保存 simulation events 与 tick 后 snapshot
+      operationId: advanceSimulationTick
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceStoryTickRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdvanceStoryTickResponse"
+
   /projects/{project_id}/story-state:
     get:
       tags: [StoryTicks]
-      summary: Get current story simulation state
+      summary: Get current Simulation Timeline state
+      description: Backward-compatible story path for current simulation state. Prefer /projects/{project_id}/simulation-state in new clients.
       operationId: getStorySimulationState
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorySimulationStateResponse"
+
+  /projects/{project_id}/simulation-state:
+    get:
+      tags: [SimulationTimeline]
+      summary: Get current Simulation Timeline state
+      operationId: getSimulationState
       parameters:
         - $ref: "#/components/parameters/ProjectId"
       responses:
@@ -892,7 +1035,8 @@ paths:
   /story-ticks/{tick_id}/events:
     get:
       tags: [StoryTicks]
-      summary: List story tick simulation events
+      summary: List Simulation Timeline tick-run events
+      description: Backward-compatible story path. The tick_id path parameter identifies a simulation tick run, not a Narrative Timeline tick. Prefer /simulation-tick-runs/{tick_run_id}/events in new clients.
       operationId: listStoryTickEvents
       parameters:
         - $ref: "#/components/parameters/TickId"
@@ -904,13 +1048,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/SimulationEventListResponse"
 
+  /simulation-tick-runs/{tick_run_id}/events:
+    get:
+      tags: [SimulationTimeline]
+      summary: List Simulation Timeline tick-run events
+      operationId: listSimulationTickRunEvents
+      parameters:
+        - $ref: "#/components/parameters/TickRunId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationEventListResponse"
+
   /story-ticks/{tick_id}/snapshot:
     get:
       tags: [StoryTicks]
-      summary: Get story tick simulation snapshot
+      summary: Get Simulation Timeline tick-run snapshot
+      description: Backward-compatible story path. The tick_id path parameter identifies a simulation tick run, not a Narrative Timeline tick. Prefer /simulation-tick-runs/{tick_run_id}/snapshot in new clients.
       operationId: getStoryTickSnapshot
       parameters:
         - $ref: "#/components/parameters/TickId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationSnapshotResponse"
+
+  /simulation-tick-runs/{tick_run_id}/snapshot:
+    get:
+      tags: [SimulationTimeline]
+      summary: Get Simulation Timeline tick-run snapshot
+      operationId: getSimulationTickRunSnapshot
+      parameters:
+        - $ref: "#/components/parameters/TickRunId"
       responses:
         "200":
           description: OK
@@ -1039,6 +1214,13 @@ components:
 
     TickId:
       name: tick_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+    TickRunId:
+      name: tick_run_id
       in: path
       required: true
       schema:
@@ -1781,6 +1963,7 @@ components:
 
     StoryTimelineEvent:
       type: object
+      description: Narrative Timeline event generated while planning story-run interactions; distinct from SimulationEvent.
       properties:
         id:
           type: string
@@ -1915,6 +2098,7 @@ components:
 
     StoryBranch:
       type: object
+      description: Branch in the Narrative Timeline. Legacy story naming is kept for compatibility.
       properties:
         id:
           type: string
@@ -1941,6 +2125,7 @@ components:
 
     StoryTick:
       type: object
+      description: Tick in the branchable Narrative Timeline. It is distinct from Simulation Timeline tick runs.
       properties:
         id:
           type: string
@@ -2019,6 +2204,7 @@ components:
 
     StorySessionTimeline:
       type: object
+      description: Branches and ticks for a session's Narrative Timeline.
       properties:
         session_id:
           type: string
@@ -2033,6 +2219,7 @@ components:
 
     SimulationTimeline:
       type: object
+      description: Project-level world simulation timeline advanced by simulation tick runs; distinct from the branchable Narrative Timeline.
       properties:
         id:
           type: string
@@ -2052,6 +2239,7 @@ components:
 
     StoryTickRun:
       type: object
+      description: Simulation Timeline tick run. Legacy story naming is kept for compatibility.
       properties:
         id:
           type: string
@@ -2248,6 +2436,7 @@ components:
 
     SimulationEvent:
       type: object
+      description: Event emitted by a Simulation Timeline tick run.
       properties:
         id:
           type: string
@@ -2283,6 +2472,7 @@ components:
 
     StorySimulationState:
       type: object
+      description: Current Simulation Timeline state plus world map, locations, factions, character states, and latest events.
       properties:
         timeline:
           $ref: "#/components/schemas/SimulationTimeline"
@@ -2316,6 +2506,7 @@ components:
 
     SimulationSnapshot:
       type: object
+      description: Snapshot captured after a Simulation Timeline tick run.
       properties:
         id:
           type: string

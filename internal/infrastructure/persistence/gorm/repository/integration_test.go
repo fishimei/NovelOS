@@ -275,6 +275,13 @@ func TestRunEventHistoryOrdersBySequence(t *testing.T) {
 	if events[0].Sequence != 1 || events[1].Sequence != 2 {
 		t.Fatalf("events not ordered by sequence: %+v", events)
 	}
+	after, err := repos.Audit.ListRunEventsAfter(context.Background(), "story", run.RunID, 1)
+	if err != nil {
+		t.Fatalf("list run events after sequence: %v", err)
+	}
+	if len(after) != 1 || after[0].Sequence != 2 {
+		t.Fatalf("expected only sequence 2 after cursor, got %+v", after)
+	}
 }
 
 func TestStoryRunResultRoundTripsSimulationFields(t *testing.T) {

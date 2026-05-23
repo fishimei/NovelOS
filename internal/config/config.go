@@ -14,12 +14,13 @@ import (
 // Config 是应用程序的根配置结构，聚合了所有子配置块。
 // 使用 mapstructure 标签以便从 YAML/JSON/环境变量等来源反序列化。
 type Config struct {
-	App      AppConfig      `mapstructure:"app"`
-	Postgres PostgresConfig `mapstructure:"postgres"`
-	AI       AIConfig       `mapstructure:"ai"`
-	Memory   MemoryConfig   `mapstructure:"memory"`
-	World    WorldConfig    `mapstructure:"world"`
-	SSE      SSEConfig      `mapstructure:"sse"`
+	App         AppConfig         `mapstructure:"app"`
+	Postgres    PostgresConfig    `mapstructure:"postgres"`
+	AI          AIConfig          `mapstructure:"ai"`
+	Memory      MemoryConfig      `mapstructure:"memory"`
+	World       WorldConfig       `mapstructure:"world"`
+	SSE         SSEConfig         `mapstructure:"sse"`
+	RunExecutor RunExecutorConfig `mapstructure:"run_executor"`
 }
 
 // AppConfig 包含应用运行时的基本配置。
@@ -110,6 +111,14 @@ type SSEConfig struct {
 	HeartbeatSeconds int `mapstructure:"heartbeat_seconds"`
 }
 
+type RunExecutorConfig struct {
+	Enabled             bool `mapstructure:"enabled"`
+	PollIntervalSeconds int  `mapstructure:"poll_interval_seconds"`
+	StaleAfterSeconds   int  `mapstructure:"stale_after_seconds"`
+	BatchSize           int  `mapstructure:"batch_size"`
+	RunTimeoutSeconds   int  `mapstructure:"run_timeout_seconds"`
+}
+
 const defaultSetupAgentPrompt = `你是 NovelOS 的 Setup 编剧 agent。用户只需要说想创作哪类小说或给出粗略灵感，你要主动推理类型约定、世界压力、人物功能位、关系张力和初始状态。不要把 setup 做成问卷；只有无法合理推断且会改变主方向的信息，才放进 open_questions。输出必须是 JSON 对象。`
 
 const defaultStoryAgentControllerPrompt = `你是 NovelOS 的故事回合裁决 agent。你的职责是围绕当前故事状态判断演绎是否应该停止，以及下一轮应该由谁发言或产生动作。每次需要推进时调用 choose_next_story_actor；需要停止时调用 decide_story_stop 并 finalize_story_plan。最多 25 个业务回合。`
@@ -187,6 +196,11 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("world.map_width", 1024)
 	v.SetDefault("world.map_height", 1024)
 	v.SetDefault("sse.heartbeat_seconds", 15)
+	v.SetDefault("run_executor.enabled", true)
+	v.SetDefault("run_executor.poll_interval_seconds", 2)
+	v.SetDefault("run_executor.stale_after_seconds", 600)
+	v.SetDefault("run_executor.batch_size", 10)
+	v.SetDefault("run_executor.run_timeout_seconds", 600)
 
 	if configFile != "" {
 		v.SetConfigFile(configFile)

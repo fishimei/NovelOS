@@ -57,16 +57,16 @@ func (a *StoryTickAdvancer) Advance(ctx context.Context, projectID string, input
 
 	var result model.AdvanceStoryTickResult
 	err := a.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		timeline, err := a.loadOrCreateTimeline(txCtx, projectID)
+		simulationTimeline, err := a.loadOrCreateSimulationTimeline(txCtx, projectID)
 		if err != nil {
 			return err
 		}
-		fromTime := timeline.CurrentTime
+		fromTime := simulationTimeline.CurrentTime
 		toTime := fromTime.Add(time.Duration(input.TickHours) * time.Hour)
 		run, err := a.simulation.CreateTickRun(txCtx, model.StoryTickRun{
 			ID:          generatedID(a.ids, a.clock, "tick"),
 			ProjectID:   projectID,
-			Tick:        timeline.Tick + 1,
+			Tick:        simulationTimeline.Tick + 1,
 			FromTime:    fromTime,
 			ToTime:      toTime,
 			Status:      domain.StoryTickStatusRunning,
@@ -79,7 +79,7 @@ func (a *StoryTickAdvancer) Advance(ctx context.Context, projectID string, input
 		}
 
 		events := make([]model.SimulationEvent, 0)
-		event, err := a.appendEvent(txCtx, run, domain.EventStoryTickStarted, "时间线开始推进", "", "", map[string]any{"from_time": fromTime, "to_time": toTime})
+		event, err := a.appendEvent(txCtx, run, domain.EventStoryTickStarted, "模拟时间线开始推进", "", "", map[string]any{"from_time": fromTime, "to_time": toTime})
 		if err != nil {
 			return err
 		}
@@ -160,7 +160,7 @@ func (a *StoryTickAdvancer) Advance(ctx context.Context, projectID string, input
 				state.Y = location.Y
 			}
 			decision, err := a.decider.Decide(txCtx, model.CharacterActionDecisionInput{
-				Timeline:          timeline,
+				Timeline:          simulationTimeline,
 				Character:         character,
 				CharacterState:    state,
 				Location:          location,
@@ -192,10 +192,10 @@ func (a *StoryTickAdvancer) Advance(ctx context.Context, projectID string, input
 		if err := a.simulation.UpsertCharacterStates(txCtx, projectID, updatedStates); err != nil {
 			return err
 		}
-		timeline.CurrentTime = toTime
-		timeline.Tick++
-		timeline.UpdatedAt = currentTime(a.clock)
-		timeline, err = a.simulation.UpsertTimeline(txCtx, timeline)
+		simulationTimeline.CurrentTime = toTime
+		simulationTimeline.Tick++
+		simulationTimeline.UpdatedAt = currentTime(a.clock)
+		simulationTimeline, err = a.simulation.UpsertTimeline(txCtx, simulationTimeline)
 		if err != nil {
 			return err
 		}
@@ -206,14 +206,14 @@ func (a *StoryTickAdvancer) Advance(ctx context.Context, projectID string, input
 		if err != nil {
 			return err
 		}
-		event, err = a.appendEvent(txCtx, run, domain.EventStoryTickCompleted, "时间线推进完成", "", "", map[string]any{"tick": timeline.Tick, "current_time": timeline.CurrentTime})
+		event, err = a.appendEvent(txCtx, run, domain.EventStoryTickCompleted, "模拟时间线推进完成", "", "", map[string]any{"tick": simulationTimeline.Tick, "current_time": simulationTimeline.CurrentTime})
 		if err != nil {
 			return err
 		}
 		events = append(events, event)
 
 		state := model.StorySimulationState{
-			Timeline:        timeline,
+			Timeline:        simulationTimeline,
 			Map:             worldMap,
 			Tiles:           tiles,
 			Locations:       locations,
@@ -226,7 +226,7 @@ func (a *StoryTickAdvancer) Advance(ctx context.Context, projectID string, input
 			ID:        generatedID(a.ids, a.clock, "snapshot"),
 			ProjectID: projectID,
 			TickRunID: run.ID,
-			Tick:      timeline.Tick,
+			Tick:      simulationTimeline.Tick,
 			Snapshot:  state,
 			CreatedAt: currentTime(a.clock),
 		})
@@ -243,7 +243,7 @@ func (a *StoryTickAdvancer) Advance(ctx context.Context, projectID string, input
 }
 
 func (a *StoryTickAdvancer) CurrentState(ctx context.Context, projectID string) (model.StorySimulationState, error) {
-	timeline, err := a.loadOrCreateTimeline(ctx, projectID)
+	simulationTimeline, err := a.loadOrCreateSimulationTimeline(ctx, projectID)
 	if err != nil {
 		return model.StorySimulationState{}, err
 	}
@@ -271,13 +271,13 @@ func (a *StoryTickAdvancer) CurrentState(ctx context.Context, projectID string) 
 	if err != nil {
 		return model.StorySimulationState{}, err
 	}
-	return model.StorySimulationState{Timeline: timeline, Map: worldMap, Tiles: tiles, Locations: locations, Factions: factions, CharacterStates: states, Characters: characters}, nil
+	return model.StorySimulationState{Timeline: simulationTimeline, Map: worldMap, Tiles: tiles, Locations: locations, Factions: factions, CharacterStates: states, Characters: characters}, nil
 }
 
-func (a *StoryTickAdvancer) loadOrCreateTimeline(ctx context.Context, projectID string) (model.StoryTimeline, error) {
-	timeline, err := a.simulation.GetTimelineByProjectID(ctx, projectID)
+func (a *StoryTickAdvancer) loadOrCreateSimulationTimeline(ctx context.Context, projectID string) (model.StoryTimeline, error) {
+	simulationTimeline, err := a.simulation.GetTimelineByProjectID(ctx, projectID)
 	if err == nil {
-		return timeline, nil
+		return simulationTimeline, nil
 	}
 	if !isNotFound(err) {
 		return model.StoryTimeline{}, err
@@ -433,14 +433,14 @@ func isNotFound(err error) bool {
 	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeNotFound
 }
 
-func (a *StoryTickAdvancer) Events(ctx context.Context, tickRunID string) ([]model.SimulationEvent, error) {
-	return a.simulation.ListEventsByTickRunID(ctx, tickRunID)
+func (a *StoryTickAdvancer) Events(ctx context.Context, simulationTickRunID string) ([]model.SimulationEvent, error) {
+	return a.simulation.ListEventsByTickRunID(ctx, simulationTickRunID)
 }
 
-func (a *StoryTickAdvancer) Snapshot(ctx context.Context, tickRunID string) (model.SimulationSnapshot, error) {
-	return a.simulation.GetSnapshotByTickRunID(ctx, tickRunID)
+func (a *StoryTickAdvancer) Snapshot(ctx context.Context, simulationTickRunID string) (model.SimulationSnapshot, error) {
+	return a.simulation.GetSnapshotByTickRunID(ctx, simulationTickRunID)
 }
 
-func (a *StoryTickAdvancer) TickRun(ctx context.Context, tickRunID string) (model.StoryTickRun, error) {
-	return a.simulation.GetTickRunByID(ctx, tickRunID)
+func (a *StoryTickAdvancer) TickRun(ctx context.Context, simulationTickRunID string) (model.StoryTickRun, error) {
+	return a.simulation.GetTickRunByID(ctx, simulationTickRunID)
 }

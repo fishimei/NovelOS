@@ -27,6 +27,8 @@ vendor/
 .docker-tmp/
 
 # Local environment files
+worktrees/
+.trae
 .env
 .env.*
 !.env.example

@@ -9,30 +9,30 @@ import (
 )
 
 type StoryTimelineService struct {
-	sessions port.StorySessionRepository
-	timeline port.StoryTimelineRepository
-	advancer *StorySessionAdvancer
-	clock    port.Clock
+	sessions          port.StorySessionRepository
+	narrativeTimeline port.StoryTimelineRepository
+	advancer          *StorySessionAdvancer
+	clock             port.Clock
 }
 
-func NewStoryTimelineService(sessions port.StorySessionRepository, timeline port.StoryTimelineRepository, advancer *StorySessionAdvancer, clock port.Clock) *StoryTimelineService {
-	return &StoryTimelineService{sessions: sessions, timeline: timeline, advancer: advancer, clock: clock}
+func NewStoryTimelineService(sessions port.StorySessionRepository, narrativeTimeline port.StoryTimelineRepository, advancer *StorySessionAdvancer, clock port.Clock) *StoryTimelineService {
+	return &StoryTimelineService{sessions: sessions, narrativeTimeline: narrativeTimeline, advancer: advancer, clock: clock}
 }
 
 func (s *StoryTimelineService) ListSessionTimeline(ctx context.Context, sessionID string) (model.StorySessionTimeline, error) {
-	if s.timeline == nil {
-		return model.StorySessionTimeline{}, pkgerr.Internal("story timeline repository is required", nil)
+	if s.narrativeTimeline == nil {
+		return model.StorySessionTimeline{}, pkgerr.Internal("narrative timeline repository is required", nil)
 	}
 	if _, err := s.sessions.GetSessionByID(ctx, sessionID); err != nil {
 		return model.StorySessionTimeline{}, err
 	}
-	branches, err := s.timeline.ListBranchesBySessionID(ctx, sessionID)
+	branches, err := s.narrativeTimeline.ListBranchesBySessionID(ctx, sessionID)
 	if err != nil {
 		return model.StorySessionTimeline{}, err
 	}
 	ticks := []model.StoryTick{}
 	for _, branch := range branches {
-		branchTicks, err := s.timeline.ListTicksByBranchID(ctx, branch.ID)
+		branchTicks, err := s.narrativeTimeline.ListTicksByBranchID(ctx, branch.ID)
 		if err != nil {
 			return model.StorySessionTimeline{}, err
 		}
@@ -42,24 +42,24 @@ func (s *StoryTimelineService) ListSessionTimeline(ctx context.Context, sessionI
 }
 
 func (s *StoryTimelineService) GetTick(ctx context.Context, tickID string) (model.StoryTick, error) {
-	if s.timeline == nil {
-		return model.StoryTick{}, pkgerr.Internal("story timeline repository is required", nil)
+	if s.narrativeTimeline == nil {
+		return model.StoryTick{}, pkgerr.Internal("narrative timeline repository is required", nil)
 	}
-	return s.timeline.GetTickByID(ctx, tickID)
+	return s.narrativeTimeline.GetTickByID(ctx, tickID)
 }
 
 func (s *StoryTimelineService) GetTickState(ctx context.Context, tickID string) (model.StoryTickState, error) {
-	if s.timeline == nil {
-		return model.StoryTickState{}, pkgerr.Internal("story timeline repository is required", nil)
+	if s.narrativeTimeline == nil {
+		return model.StoryTickState{}, pkgerr.Internal("narrative timeline repository is required", nil)
 	}
-	return s.timeline.ResolveTickState(ctx, tickID)
+	return s.narrativeTimeline.ResolveTickState(ctx, tickID)
 }
 
 func (s *StoryTimelineService) ForkTick(ctx context.Context, tickID string, input model.ForkStoryTickInput) (model.StoryBranch, error) {
-	if s.timeline == nil {
-		return model.StoryBranch{}, pkgerr.Internal("story timeline repository is required", nil)
+	if s.narrativeTimeline == nil {
+		return model.StoryBranch{}, pkgerr.Internal("narrative timeline repository is required", nil)
 	}
-	tick, err := s.timeline.GetTickByID(ctx, tickID)
+	tick, err := s.narrativeTimeline.GetTickByID(ctx, tickID)
 	if err != nil {
 		return model.StoryBranch{}, err
 	}
@@ -67,7 +67,7 @@ func (s *StoryTimelineService) ForkTick(ctx context.Context, tickID string, inpu
 	if name == "" {
 		name = "fork"
 	}
-	return s.timeline.CreateBranch(ctx, model.StoryBranch{
+	return s.narrativeTimeline.CreateBranch(ctx, model.StoryBranch{
 		ProjectID:        tick.ProjectID,
 		SessionID:        tick.SessionID,
 		Name:             name,
@@ -81,13 +81,13 @@ func (s *StoryTimelineService) ForkTick(ctx context.Context, tickID string, inpu
 }
 
 func (s *StoryTimelineService) AdvanceBranch(ctx context.Context, branchID string, input model.AdvanceStorySessionInput) (model.StoryRun, error) {
-	if s.timeline == nil {
-		return model.StoryRun{}, pkgerr.Internal("story timeline repository is required", nil)
+	if s.narrativeTimeline == nil {
+		return model.StoryRun{}, pkgerr.Internal("narrative timeline repository is required", nil)
 	}
 	if s.advancer == nil {
 		return model.StoryRun{}, pkgerr.Internal("story session advancer is required", nil)
 	}
-	branch, err := s.timeline.GetBranchByID(ctx, branchID)
+	branch, err := s.narrativeTimeline.GetBranchByID(ctx, branchID)
 	if err != nil {
 		return model.StoryRun{}, err
 	}
