@@ -64,7 +64,7 @@ func (g *SetupRunGenerator) Generate(ctx context.Context, input port.SetupRunGen
 	return model.SetupRunResult{
 		RunID:      input.Run.RunID,
 		SessionID:  input.Run.SessionID,
-		Status:     domain.RunStatusReviewRequired,
+		Status:     domain.RunStatusCompleted,
 		SetupDraft: draft,
 	}, nil
 }

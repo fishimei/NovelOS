@@ -72,7 +72,7 @@ func (v *DialogueActionValidator) ValidateOption(ctx context.Context, option mod
 			return pkgerr.Validation("story session does not belong to project")
 		}
 		return nil
-	case domain.DialogueActionStoryCommit:
+	case domain.DialogueActionStoryCutChapter:
 		runID := stringValue(option.Payload, "story_run_id")
 		if runID == "" {
 			return pkgerr.Validation("story run id is required")
@@ -84,18 +84,17 @@ func (v *DialogueActionValidator) ValidateOption(ctx context.Context, option mod
 		if run.ProjectID != option.ProjectID {
 			return pkgerr.Validation("story run does not belong to project")
 		}
-		if run.Status == domain.RunStatusCommitted || run.CommittedAt != nil {
-			return pkgerr.Conflict(pkgerr.CodeRunAlreadyCommitted, "story run already committed")
+		if run.Status == domain.RunStatusCut || run.CutAt != nil {
+			return pkgerr.Conflict(pkgerr.CodeConflict, "story run is already cut")
 		}
-		result, err := v.storySessions.GetRunResultByID(ctx, runID)
-		if err != nil {
-			return err
+		if stringValue(option.Payload, "branch_id") == "" && run.BranchID == "" {
+			return pkgerr.Validation("branch id is required")
 		}
-		if draftID := stringValue(option.Payload, "draft_id"); draftID != "" && draftID != result.Draft.ID {
-			return pkgerr.Validation("draft id mismatch")
+		if stringValue(option.Payload, "from_event_id") == "" && run.BaseEventID == "" {
+			return pkgerr.Validation("from event id is required")
 		}
-		if patchID := stringValue(option.Payload, "memory_patch_id"); patchID != "" && patchID != result.MemoryPatch.ID {
-			return pkgerr.Validation("memory patch id mismatch")
+		if stringValue(option.Payload, "to_event_id") == "" && run.HeadEventID == "" {
+			return pkgerr.Validation("to event id is required")
 		}
 		return nil
 	default:

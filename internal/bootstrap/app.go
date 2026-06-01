@@ -75,7 +75,7 @@ func New(cfg config.Config) *App {
 		txManager,
 		clock,
 		idGenerator,
-		repos.Simulation,
+		repos.StoryEvents,
 		worldgen.NewInitializer(idGenerator),
 		service.WorldInitializationSettings{
 			Enabled:       cfg.World.Enabled,
@@ -106,40 +106,24 @@ func New(cfg config.Config) *App {
 	storyStarter := service.NewStorySessionStarter(repos.StorySessions)
 	storyAdvancer := service.NewStorySessionAdvancer(
 		repos.StorySessions,
-		repos.StoryTimeline,
+		repos.StoryEvents,
 		repos.Audit,
 		storyGenerator,
 		eventStream,
 		clock,
 		idGenerator,
 	)
-	storyCommitter := service.NewStoryRunCommitter(
+	storyCutter := service.NewStoryChapterCutter(
 		repos.StorySessions,
-		repos.StoryTimeline,
+		repos.StoryEvents,
 		repos.Chapters,
-		repos.Memories,
-		repos.WorldState,
-		repos.Relationships,
 		repos.Audit,
 		memoryService,
 		txManager,
 		clock,
 		idGenerator,
 	)
-	storyTimeline := service.NewStoryTimelineService(repos.StorySessions, repos.StoryTimeline, storyAdvancer, clock)
-	characterActionDecider, err := einoai.NewCharacterActionDecider(context.Background(), cfg.AI)
-	if err != nil {
-		log.Fatalf("bootstrap character action decider: %v", err)
-	}
-	storyTickAdvancer := service.NewStoryTickAdvancer(
-		repos.Simulation,
-		repos.Characters,
-		characterActionDecider,
-		txManager,
-		clock,
-		idGenerator,
-		cfg.World.NearbyRadius,
-	)
+	storyEventLog := service.NewStoryEventLogService(repos.StorySessions, repos.StoryEvents, storyAdvancer, clock)
 	dialogueValidator := service.NewDialogueActionValidator(repos.SetupSessions, repos.StorySessions)
 	dialogueExecutor := service.NewDialogueActionExecutor(
 		repos.DialogueSessions,
@@ -148,7 +132,7 @@ func New(cfg config.Config) *App {
 		setupApplier,
 		storyStarter,
 		storyAdvancer,
-		storyCommitter,
+		storyCutter,
 		repos.Audit,
 		dialogueValidator,
 		clock,
@@ -196,8 +180,7 @@ func New(cfg config.Config) *App {
 		Relationships:    handler.NewRelationshipsHandler(repos.Relationships),
 		SetupSessions:    handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
 		DialogueSessions: handler.NewDialogueSessionsHandler(repos.DialogueSessions, repos.Audit, eventStream, dialogueStarter, dialogueAdvancer, dialogueExecutor),
-		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCommitter, storyTimeline),
-		StoryTicks:       handler.NewStoryTicksHandler(storyTickAdvancer),
+		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCutter, storyEventLog),
 		Chapters:         handler.NewChaptersHandler(repos.Chapters),
 		Memories:         handler.NewMemoriesHandler(repos.Memories),
 	}

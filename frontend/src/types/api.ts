@@ -284,10 +284,13 @@ export type Run = {
   run_id?: string;
   session_id?: string;
   project_id?: string;
+  branch_id?: string;
+  base_event_id?: string;
+  head_event_id?: string;
   status?: RunStatus;
   current_step?: string;
   progress?: number;
-  committed_at?: string;
+  cut_at?: string;
   error?: string | { message?: string; code?: string };
   created_at?: string;
   updated_at?: string;
@@ -480,10 +483,14 @@ export type StoryRunResult = {
   run_id?: string;
   session_id?: string;
   status?: string;
+  branch_id?: string;
+  base_event_id?: string;
+  head_event_id?: string;
   plot_variable?: StoryPlotVariable;
   draft?: StoryDraft;
   review?: StoryReviewReport;
   memory_patch?: StoryMemoryPatch;
+  events?: unknown[];
   // Legacy fallbacks kept while old mock/runtime payloads may still be in circulation.
   draft_id?: string;
   memory_patch_id?: string;
@@ -491,15 +498,17 @@ export type StoryRunResult = {
   [key: string]: unknown;
 };
 
-export type CommitStoryRunRequest = {
-  draft_id: string;
-  memory_patch_id: string;
+export type CutChapterRequest = {
+  branch_id?: string;
+  from_event_id?: string;
+  to_event_id?: string;
+  title?: string;
   author_note?: string;
 };
 
-export type CommitStoryRunResult = {
+export type CutChapterResult = {
   chapter?: Chapter;
-  patch?: StoryMemoryPatch;
+  span?: unknown;
   story_run?: Run;
 };
 

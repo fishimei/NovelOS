@@ -22,11 +22,12 @@ NovelOS is a Go HTTP backend for an AI-assisted novel writing process. The produ
    - `setup-runs/:id/result` returns a `SetupDraft`
    - `setup-sessions/:id/apply` is the point where selected draft output is accepted into persistent project state
 
-2. **Story flow**: turn author prompts into draft chapters plus state updates.
-   - Main resources: `story-sessions`, `story-runs`, `chapters`, `memories`
+2. **Story flow**: turn author prompts into event-log-backed story branches and cut chapters from event spans.
+   - Main resources: `story-sessions`, `story-runs`, `story-events`, `story-branches`, `chapters`, `memories`
    - `story-sessions/:id/advance` produces a `StoryRun`
    - `story-runs/:id/events` is the SSE stream for generation progress
-   - `story-runs/:id/commit` is the boundary where a draft becomes a committed chapter and its `MemoryPatch` is applied
+   - `story-sessions/:id/events`, `story-events/:id`, `story-events/:id/state`, and `story-events/:id/fork` expose the canonical story event log
+   - `story-runs/:id/cut-chapter` cuts a `[from_event_id, to_event_id]` span into a chapter and may flush character memories to external retrieval; it does not apply world, relationship, or memory state as a draft application step
 
 The domain model for all of these resources lives in `internal/application/model/types.go`.
 
@@ -37,7 +38,7 @@ The domain model for all of these resources lives in `internal/application/model
 - `internal/application/port/` contains the key interfaces:
   - repository interfaces for persistence
   - runtime contracts for SSE event streaming, transactions, clock, and ID generation
-- `internal/application/service/` contains concrete application use cases only. Simple CRUD flows go directly from HTTP handlers to repository ports; cross-aggregate state changes such as setup-run apply and story-run commit live here.
+- `internal/application/service/` contains concrete application use cases only. Simple CRUD flows go directly from HTTP handlers to repository ports; cross-aggregate state changes such as setup-run apply and story event-span cutting live here.
 - `internal/transport/http/` is the HTTP adapter layer:
   - `dto/` defines request binding structs
   - `handler/` maps HTTP requests into repository calls or concrete application use cases

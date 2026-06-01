@@ -10,7 +10,7 @@ import {
   listStorySessions,
   updateStorySession,
 } from '../../api/storySessions';
-import { commitStoryRun, getStoryRun, getStoryRunResult, listStoryRunEventHistory } from '../../api/storyRuns';
+import { cutStoryChapter, getStoryRun, getStoryRunResult, listStoryRunEventHistory } from '../../api/storyRuns';
 import { EmptyState } from '../../components/feedback/EmptyState';
 import { ErrorState } from '../../components/feedback/ErrorState';
 import { LoadingState } from '../../components/feedback/LoadingState';
@@ -37,11 +37,11 @@ const copy = {
   saveSessionTitle: '保存题目',
   cancelSessionEdit: '取消编辑',
   deleteSessionTitle: '删除会话',
-  deleteSessionConfirm: '删除这个写作会话？已提交章节不会删除。',
+  deleteSessionConfirm: '删除这个写作会话？已裁出的章节不会删除。',
   workspaceTitle: '剧情工作台',
-  workspaceDesc: '正文在中间阅读，运行状态和补丁审校放右侧，整个流程更接近真实写作节奏。',
+  workspaceDesc: '正文在中间阅读，运行状态和事件状态增量放右侧，整个流程更接近真实写作节奏。',
   emptyTitle: '先创建一个写作会话',
-  emptyDesc: '建立会话后，正文生成、审校和提交都会围绕这个会话展开。',
+  emptyDesc: '建立会话后，正文生成、事件账本和裁章都会围绕这个会话展开。',
   untitledDraft: '未命名草稿',
   chapterPrefix: '第',
   chapterSuffix: '章',
@@ -49,11 +49,11 @@ const copy = {
   draftEmpty: '完整正文会在角色回合完成后统一生成，运行中先查看下方实时角色回合。',
   advancePlaceholder: '输入你想推进的情节方向、冲突目标、人物选择或文风要求',
   advanceButton: '推进剧情',
-  reviewTitle: '运行与提交',
-  authorNotePlaceholder: '记录这章提交的作者批注',
-  commitButton: '提交为正式章节',
-  missingIds: '请先等待完整的 draft 和 memory patch 结果。',
-  committed: '这次运行已经提交，不需要重复 commit。',
+  reviewTitle: '运行与裁章',
+  authorNotePlaceholder: '记录这次裁章的作者批注',
+  cutButton: '裁出章节',
+  missingIds: '等待事件段生成完成。',
+  cut: '这个运行已经裁章。',
   runHistory: '运行记录',
   orchestrationStarted: '主控已接收 idea 并启动',
   liveTurnsTitle: '实时角色回合',
@@ -190,19 +190,22 @@ export function StoryWorkspacePage() {
     },
   });
 
-  const draftId = resultQuery.data?.draft?.id ?? resultQuery.data?.draft_id ?? '';
-  const memoryPatchId = resultQuery.data?.memory_patch?.id ?? resultQuery.data?.memory_patch_id ?? '';
-  const isRunCommitted = runQuery.data?.status === 'committed' || Boolean(runQuery.data?.committed_at);
-  const committedCharacterIds = useMemo(() => {
+  const branchId = runQuery.data?.branch_id ?? resultQuery.data?.branch_id ?? '';
+  const fromEventId = runQuery.data?.base_event_id ?? resultQuery.data?.base_event_id ?? '';
+  const toEventId = runQuery.data?.head_event_id ?? resultQuery.data?.head_event_id ?? '';
+  const isRunCut = runQuery.data?.status === 'cut' || Boolean(runQuery.data?.cut_at);
+  const cutCharacterIds = useMemo(() => {
     const updates = resultQuery.data?.memory_patch?.character_memory_updates ?? [];
     return Array.from(new Set(updates.map((update) => update.character_id).filter(Boolean)));
   }, [resultQuery.data?.memory_patch?.character_memory_updates]);
 
-  const commitMutation = useMutation({
+  const cutMutation = useMutation({
     mutationFn: () =>
-      commitStoryRun(activeRunId, {
-        draft_id: draftId,
-        memory_patch_id: memoryPatchId,
+      cutStoryChapter(activeRunId, {
+        branch_id: branchId,
+        from_event_id: fromEventId,
+        to_event_id: toEventId,
+        title: resultQuery.data?.draft?.title,
         author_note: authorNote.trim() || undefined,
       }),
     onSuccess: () => {
@@ -215,7 +218,7 @@ export function StoryWorkspacePage() {
       queryClient.invalidateQueries({ queryKey: ['relationships', projectId] });
       queryClient.invalidateQueries({ queryKey: ['authorBible', projectId] });
       queryClient.invalidateQueries({ queryKey: ['characters', projectId] });
-      committedCharacterIds.forEach((characterId) => {
+      cutCharacterIds.forEach((characterId) => {
         queryClient.invalidateQueries({ queryKey: ['memories', characterId] });
       });
       setAuthorNote('');
@@ -245,9 +248,9 @@ export function StoryWorkspacePage() {
       detail: runQuery.data?.current_step || '等待会话推进',
     },
     {
-      label: '记忆补丁',
-      state: memoryPatchId ? 'done' : activeRunId ? 'active' : 'idle',
-      detail: memoryPatchId ? '已可审校' : '结果生成后出现',
+      label: '事件状态增量',
+      state: toEventId ? 'done' : activeRunId ? 'active' : 'idle',
+      detail: toEventId ? '事件段已就绪' : '生成完成后可用',
     },
   ] as const;
 
@@ -424,7 +427,7 @@ export function StoryWorkspacePage() {
             <ol className="story-empty-steps">
               <li>创建写作会话，给这次推进一个标题。</li>
               <li>输入推进语，说明你要推动的情节、冲突或人物决断。</li>
-              <li>审校草稿与记忆补丁，确认后再提交为正式章节。</li>
+              <li>检查草稿与事件状态增量，确认后从事件段裁出正式章节。</li>
             </ol>
           </div>
         ) : (
@@ -489,7 +492,7 @@ export function StoryWorkspacePage() {
 
         {resultQuery.data ? <StoryResultPreview result={resultQuery.data} /> : null}
 
-        <div className="commit-box">
+        <div className="chapter-cut-box">
           <textarea
             value={authorNote}
             onChange={(event) => setAuthorNote(event.target.value)}
@@ -498,16 +501,16 @@ export function StoryWorkspacePage() {
           />
           <button
             className="button"
-            disabled={!activeRunId || !draftId || !memoryPatchId || isRunCommitted || commitMutation.isPending}
-            onClick={() => commitMutation.mutate()}
+            disabled={!activeRunId || !branchId || !fromEventId || !toEventId || isRunCut || cutMutation.isPending}
+            onClick={() => cutMutation.mutate()}
             type="button"
           >
             <Check size={17} />
-            {copy.commitButton}
+            {copy.cutButton}
           </button>
-          {!draftId || !memoryPatchId ? <small className="muted">{copy.missingIds}</small> : null}
-          {isRunCommitted ? <small className="muted">{copy.committed}</small> : null}
-          {commitMutation.isError ? <ErrorState message={(commitMutation.error as Error).message} /> : null}
+          {!branchId || !fromEventId || !toEventId ? <small className="muted">{copy.missingIds}</small> : null}
+          {isRunCut ? <small className="muted">{copy.cut}</small> : null}
+          {cutMutation.isError ? <ErrorState message={(cutMutation.error as Error).message} /> : null}
         </div>
 
         <details className="event-disclosure">
@@ -550,8 +553,8 @@ export function StoryWorkspacePage() {
                 <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
               ))}
             </InspectorSection>
-            <InspectorSection emptyText="暂无审校事件。" title="审校触发">
-              {eventState.reviewItems.map((item, index) => (
+            <InspectorSection emptyText="暂无事件规划数据。" title="事件规划">
+              {eventState.planningEvents.map((item, index) => (
                 <pre key={index}>{JSON.stringify(item, null, 2)}</pre>
               ))}
             </InspectorSection>

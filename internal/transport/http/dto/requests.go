@@ -131,23 +131,20 @@ type UpdateStorySessionRequest struct {
 type AdvanceStorySessionRequest struct {
 	AuthorMessage string `json:"author_message" binding:"required"`
 	BranchID      string `json:"branch_id"`
-	BaseTickID    string `json:"base_tick_id"`
+	BaseEventID   string `json:"base_event_id"`
 }
 
-type ForkStoryTickRequest struct {
+type ForkStoryEventRequest struct {
 	Name          string `json:"name"`
 	AuthorMessage string `json:"author_message"`
 }
 
-type AdvanceStoryTickRequest struct {
-	TickHours int `json:"tick_hours"`
-}
-
-// CommitStoryRunRequest 是提交故事运行的请求参数。
-type CommitStoryRunRequest struct {
-	DraftID       string `json:"draft_id" binding:"required"`
-	MemoryPatchID string `json:"memory_patch_id" binding:"required"`
-	AuthorNote    string `json:"author_note"`
+type CutChapterRequest struct {
+	BranchID    string `json:"branch_id"`
+	FromEventID string `json:"from_event_id"`
+	ToEventID   string `json:"to_event_id"`
+	Title       string `json:"title"`
+	AuthorNote  string `json:"author_note"`
 }
 
 type CreateDialogueSessionRequest struct {

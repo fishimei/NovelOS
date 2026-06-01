@@ -57,13 +57,13 @@ type StoryPlanResult struct {
 	Summary                string                             `json:"summary"`
 	StopReason             string                             `json:"stop_reason"`
 	Turns                  []StoryTurnPlan                    `json:"turns"`
-	EventTimeline          []model.StoryTimelineEvent         `json:"event_timeline,omitempty"`
+	EventPlan              []model.StoryEventPlan             `json:"event_plan,omitempty"`
 	InteractionAnalysis    model.StoryInteractionAnalysis     `json:"interaction_analysis,omitempty"`
 	InteractionTranscripts []model.StoryInteractionTranscript `json:"interaction_transcripts,omitempty"`
 }
 
 type StoryEventRecordResult struct {
-	Event                  model.StoryTimelineEvent       `json:"event"`
+	Event                  model.StoryEventPlan           `json:"event"`
 	SameLocationCandidates []model.StoryLocationGroup     `json:"same_location_candidates"`
 	InteractionAnalysis    model.StoryInteractionAnalysis `json:"interaction_analysis"`
 }

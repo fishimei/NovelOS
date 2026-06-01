@@ -37,7 +37,7 @@ type storyRunState struct {
 	maxTurns               int
 	characters             []model.Character
 	turns                  []StoryTurnPlan
-	events                 []model.StoryTimelineEvent
+	events                 []model.StoryEventPlan
 	locationGroups         []model.StoryLocationGroup
 	interactionGroups      []model.StoryInteractionGroup
 	interactionTranscripts []model.StoryInteractionTranscript
@@ -215,7 +215,7 @@ func recordStoryEvent(ctx context.Context, deps storyGeneratorDeps, state *story
 	if timeIndex <= 0 {
 		timeIndex = len(state.events) + 1
 	}
-	event := model.StoryTimelineEvent{
+	event := model.StoryEventPlan{
 		ID:             fmt.Sprintf("story_event_%d", len(state.events)+1),
 		TimeIndex:      timeIndex,
 		CharacterID:    actorID,
@@ -494,7 +494,7 @@ func isNotFound(err error) bool {
 	return ok && appErr.Code == pkgerr.CodeNotFound
 }
 
-func buildStoryLocationGroups(events []model.StoryTimelineEvent) []model.StoryLocationGroup {
+func buildStoryLocationGroups(events []model.StoryEventPlan) []model.StoryLocationGroup {
 	byLocation := map[string]*model.StoryLocationGroup{}
 	for _, event := range events {
 		if event.LocationKey == "" || event.CharacterID == "" {
@@ -656,7 +656,7 @@ func (s *storyRunState) planResult() StoryPlanResult {
 	defer s.mu.Unlock()
 	turns := make([]StoryTurnPlan, len(s.turns))
 	copy(turns, s.turns)
-	events := make([]model.StoryTimelineEvent, len(s.events))
+	events := make([]model.StoryEventPlan, len(s.events))
 	copy(events, s.events)
 	locationGroups := copyStoryLocationGroups(s.locationGroups)
 	interactionGroups := copyStoryInteractionGroups(s.interactionGroups)
@@ -669,5 +669,5 @@ func (s *storyRunState) planResult() StoryPlanResult {
 	if stopReason == "" {
 		stopReason = "回合裁决结束"
 	}
-	return StoryPlanResult{Summary: summary, StopReason: stopReason, Turns: turns, EventTimeline: events, InteractionAnalysis: model.StoryInteractionAnalysis{LocationGroups: locationGroups, InteractionGroups: interactionGroups}, InteractionTranscripts: transcripts}
+	return StoryPlanResult{Summary: summary, StopReason: stopReason, Turns: turns, EventPlan: events, InteractionAnalysis: model.StoryInteractionAnalysis{LocationGroups: locationGroups, InteractionGroups: interactionGroups}, InteractionTranscripts: transcripts}
 }

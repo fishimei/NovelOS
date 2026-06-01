@@ -1,15 +1,14 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 
 info:
   title: NovelOS API
   version: 0.3.0
   description: |
-    NovelOS 是一个“助手建模 + 世界模拟 + 可分叉故事推进”的小说创作后端。
+    NovelOS 是一个“助手建模 + 事件驱动故事账本 + 可分叉故事推进”的小说创作后端。
 
     它分成三层：
     - 设定采集层：用户先说一句模糊想法，助手拆解成作者圣经、角色、关系、世界变量，并在必要时追问。
-    - 世界模拟层：simulation tick 独立推进 Simulation Timeline，让角色基于当前位置和地点势力影响产生行动、事件与状态快照。
-    - 故事推进层：story run 生成候选正文、交互记录和状态 patch，并可在任意 Narrative Timeline tick 上浏览、分叉、继续推进。
+    - 故事推进层：story run 写入可回放的 StoryEvent 账本，支持分支、事件状态解析、事件分叉和事件段裁章。
 
     当前规范描述后端资源边界与流程语义。
 
@@ -29,14 +28,8 @@ tags:
   - name: DialogueActions
   - name: StorySessions
   - name: StoryRuns
-  - name: StoryTimeline
-    description: Backward-compatible tag for Narrative Timeline endpoints.
-  - name: NarrativeTimeline
-    description: Branchable narrative timeline for story runs, ticks, and state refs.
-  - name: StoryTicks
-    description: Backward-compatible tag for Simulation Timeline endpoints.
-  - name: SimulationTimeline
-    description: Project-level world simulation timeline, tick runs, events, and snapshots.
+  - name: StoryEvents
+    description: Event-log endpoints for branches, events, resolved state, forks, and chapter cuts.
   - name: Chapters
   - name: Memories
 
@@ -669,12 +662,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/StoryRunResponse"
 
-  /story-sessions/{session_id}/timeline:
+  /story-sessions/{session_id}/events:
     get:
-      tags: [StoryTimeline]
-      summary: List story session Narrative Timeline branches and ticks
-      description: Backward-compatible story path for the branchable Narrative Timeline. Prefer /story-sessions/{session_id}/narrative-timeline in new clients.
-      operationId: listStorySessionTimeline
+      tags: [StoryEvents]
+      summary: List story session event log
+      description: Returns branches and events for a story session. This is the canonical story history surface.
+      operationId: listStorySessionEvents
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
@@ -683,28 +676,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StorySessionTimelineResponse"
-
-  /story-sessions/{session_id}/narrative-timeline:
-    get:
-      tags: [NarrativeTimeline]
-      summary: List Narrative Timeline branches and ticks
-      operationId: listNarrativeTimeline
-      parameters:
-        - $ref: "#/components/parameters/SessionId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StorySessionTimelineResponse"
+                $ref: "#/components/schemas/StoryEventLogResponse"
 
   /story-branches/{branch_id}/advance:
     post:
-      tags: [StoryTimeline]
-      summary: Advance Narrative Timeline from a story branch head
-      description: Backward-compatible story path for branchable Narrative Timeline advance. Prefer /narrative-branches/{branch_id}/advance in new clients.
+      tags: [StoryEvents]
+      summary: Advance a story branch from its head event
       operationId: advanceStoryBranch
       parameters:
         - $ref: "#/components/parameters/BranchId"
@@ -722,125 +699,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/StoryRunResponse"
 
-  /narrative-branches/{branch_id}/advance:
-    post:
-      tags: [NarrativeTimeline]
-      summary: Advance Narrative Timeline from a branch head
-      operationId: advanceNarrativeBranch
+  /story-events/{event_id}:
+    get:
+      tags: [StoryEvents]
+      summary: Get story event
+      operationId: getStoryEvent
       parameters:
-        - $ref: "#/components/parameters/BranchId"
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryEventResponse"
+
+  /story-events/{event_id}/state:
+    get:
+      tags: [StoryEvents]
+      summary: Resolve story state at an event
+      description: Replays the branch event chain and returns the resolved world snapshot at the requested event.
+      operationId: getStoryEventState
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryEventStateResponse"
+
+  /story-events/{event_id}/fork:
+    post:
+      tags: [StoryEvents]
+      summary: Fork a story branch from an event
+      operationId: forkStoryEvent
+      parameters:
+        - $ref: "#/components/parameters/EventId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdvanceStorySessionRequest"
-      responses:
-        "202":
-          description: Accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoryRunResponse"
-
-  /story-ticks/{tick_id}:
-    get:
-      tags: [StoryTimeline]
-      summary: Get Narrative Timeline tick
-      description: Backward-compatible story path for a Narrative Timeline tick. Prefer /narrative-ticks/{tick_id} in new clients.
-      operationId: getStoryTick
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoryTickResponse"
-
-  /narrative-ticks/{tick_id}:
-    get:
-      tags: [NarrativeTimeline]
-      summary: Get Narrative Timeline tick
-      operationId: getNarrativeTick
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoryTickResponse"
-
-  /story-ticks/{tick_id}/state:
-    get:
-      tags: [StoryTimeline]
-      summary: Resolve Narrative Timeline tick state
-      description: Backward-compatible story path. Resolves state refs by walking the parent narrative tick chain and reusing unchanged entity versions.
-      operationId: getStoryTickState
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoryTickStateResponse"
-
-  /narrative-ticks/{tick_id}/state:
-    get:
-      tags: [NarrativeTimeline]
-      summary: Resolve Narrative Timeline tick state
-      description: Resolves state refs by walking the parent narrative tick chain and reusing unchanged entity versions.
-      operationId: getNarrativeTickState
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoryTickStateResponse"
-
-  /story-ticks/{tick_id}/fork:
-    post:
-      tags: [StoryTimeline]
-      summary: Fork a Narrative Timeline branch from a tick
-      description: Backward-compatible story path for a Narrative Timeline fork. Prefer /narrative-ticks/{tick_id}/fork in new clients.
-      operationId: forkStoryTick
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ForkStoryTickRequest"
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoryBranchResponse"
-
-  /narrative-ticks/{tick_id}/fork:
-    post:
-      tags: [NarrativeTimeline]
-      summary: Fork a Narrative Timeline branch from a tick
-      operationId: forkNarrativeTick
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ForkStoryTickRequest"
+              $ref: "#/components/schemas/ForkStoryEventRequest"
       responses:
         "201":
           description: Created
@@ -884,18 +786,10 @@ paths:
       tags: [StoryRuns]
       summary: Subscribe to story run SSE
       description: |
-        返回 text/event-stream。事件名可能包括：
-        - generation_step
-        - plot_variable
-        - story_event_planned
-        - same_location_candidates
-        - interaction_analysis
-        - interaction_selected
-        - negotiation_turn
-        - character_turn
-        - draft_delta
-        - review_required
-        其中 story run result、memory patch 和 review report 都是候选数据；只有 commit 成功后才会写入正式章节、记忆、关系和世界状态。
+        Returns text/event-stream. Event names include generation_step, story_orchestration_started,
+        plot_variable, story_event_planned, same_location_candidates, interaction_analysis,
+        interaction_selected, negotiation_turn, character_turn, and draft_delta.
+        SSE is live progress only; canon is reconstructed from StoryEvent records.
       operationId: subscribeStoryRunEvents
       parameters:
         - $ref: "#/components/parameters/RunId"
@@ -910,8 +804,8 @@ paths:
   /story-runs/{run_id}/event-history:
     get:
       tags: [StoryRuns]
-      summary: List persisted story run events
-      description: 持久化 RunEvent 历史用于回看和审计；SSE 仍是实时运行态事件，chapter/memory 只由 commit 写入正史。
+      summary: List persisted story run audit events
+      description: Runtime audit history for a story run. Consumers must not reconstruct canon from these payloads.
       operationId: listStoryRunEventHistory
       parameters:
         - $ref: "#/components/parameters/RunId"
@@ -923,11 +817,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/RunEventListResponse"
 
-  /story-runs/{run_id}/commit:
+  /story-runs/{run_id}/cut-chapter:
     post:
       tags: [StoryRuns]
-      summary: Commit story run into canon
-      operationId: commitStoryRun
+      summary: Cut a chapter from a story event span
+      description: Creates a chapter and ChapterEventSpan from a branch event range. It may flush character memories to external retrieval, but it does not apply world, relationship, or memory state through a draft application step.
+      operationId: cutStoryChapter
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -935,169 +830,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CommitStoryRunRequest"
+              $ref: "#/components/schemas/CutChapterRequest"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CommitStoryRunResponse"
-
-  /projects/{project_id}/story-ticks/advance:
-    post:
-      tags: [StoryTicks]
-      summary: Advance Simulation Timeline tick
-      description: |
-        Backward-compatible story path for advancing the project Simulation Timeline. Prefer /projects/{project_id}/simulation-ticks/advance in new clients.
-        每次 tick 会：
-        - 读取或初始化 Simulation Timeline、地点、角色模拟状态
-        - 先结算到期 ongoing action
-        - 对未完成行动的角色记录 skip event
-        - 对空闲角色调用行动裁决器决定下一步行动与持续时间
-        - 保存 simulation events 与 tick 后 snapshot
-      operationId: advanceStoryTick
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdvanceStoryTickRequest"
-      responses:
-        "202":
-          description: Accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdvanceStoryTickResponse"
-
-  /projects/{project_id}/simulation-ticks/advance:
-    post:
-      tags: [SimulationTimeline]
-      summary: Advance Simulation Timeline tick
-      description: |
-        推进项目世界模拟时间线。每次 tick 会：
-        - 读取或初始化 Simulation Timeline、地点、角色模拟状态
-        - 先结算到期 ongoing action
-        - 对未完成行动的角色记录 skip event
-        - 对空闲角色调用行动裁决器决定下一步行动与持续时间
-        - 保存 simulation events 与 tick 后 snapshot
-      operationId: advanceSimulationTick
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdvanceStoryTickRequest"
-      responses:
-        "202":
-          description: Accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdvanceStoryTickResponse"
-
-  /projects/{project_id}/story-state:
-    get:
-      tags: [StoryTicks]
-      summary: Get current Simulation Timeline state
-      description: Backward-compatible story path for current simulation state. Prefer /projects/{project_id}/simulation-state in new clients.
-      operationId: getStorySimulationState
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StorySimulationStateResponse"
-
-  /projects/{project_id}/simulation-state:
-    get:
-      tags: [SimulationTimeline]
-      summary: Get current Simulation Timeline state
-      operationId: getSimulationState
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StorySimulationStateResponse"
-
-  /story-ticks/{tick_id}/events:
-    get:
-      tags: [StoryTicks]
-      summary: List Simulation Timeline tick-run events
-      description: Backward-compatible story path. The tick_id path parameter identifies a simulation tick run, not a Narrative Timeline tick. Prefer /simulation-tick-runs/{tick_run_id}/events in new clients.
-      operationId: listStoryTickEvents
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SimulationEventListResponse"
-
-  /simulation-tick-runs/{tick_run_id}/events:
-    get:
-      tags: [SimulationTimeline]
-      summary: List Simulation Timeline tick-run events
-      operationId: listSimulationTickRunEvents
-      parameters:
-        - $ref: "#/components/parameters/TickRunId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SimulationEventListResponse"
-
-  /story-ticks/{tick_id}/snapshot:
-    get:
-      tags: [StoryTicks]
-      summary: Get Simulation Timeline tick-run snapshot
-      description: Backward-compatible story path. The tick_id path parameter identifies a simulation tick run, not a Narrative Timeline tick. Prefer /simulation-tick-runs/{tick_run_id}/snapshot in new clients.
-      operationId: getStoryTickSnapshot
-      parameters:
-        - $ref: "#/components/parameters/TickId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SimulationSnapshotResponse"
-
-  /simulation-tick-runs/{tick_run_id}/snapshot:
-    get:
-      tags: [SimulationTimeline]
-      summary: Get Simulation Timeline tick-run snapshot
-      operationId: getSimulationTickRunSnapshot
-      parameters:
-        - $ref: "#/components/parameters/TickRunId"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SimulationSnapshotResponse"
-
+                $ref: "#/components/schemas/CutChapterResponse"
   /projects/{project_id}/chapters:
     get:
       tags: [Chapters]
-      summary: List committed chapters
+      summary: List published chapters
       operationId: listChapters
       parameters:
         - $ref: "#/components/parameters/ProjectId"
@@ -1114,7 +858,7 @@ paths:
   /chapters/{chapter_id}:
     get:
       tags: [Chapters]
-      summary: Get committed chapter
+      summary: Get published chapter
       operationId: getChapter
       parameters:
         - $ref: "#/components/parameters/ChapterId"
@@ -1212,15 +956,8 @@ components:
       schema:
         type: string
 
-    TickId:
-      name: tick_id
-      in: path
-      required: true
-      schema:
-        type: string
-
-    TickRunId:
-      name: tick_run_id
+    EventId:
+      name: event_id
       in: path
       required: true
       schema:
@@ -1658,10 +1395,10 @@ components:
           type: string
         branch_id:
           type: string
-        base_tick_id:
+        base_event_id:
           type: string
 
-    ForkStoryTickRequest:
+    ForkStoryEventRequest:
       type: object
       properties:
         name:
@@ -1669,21 +1406,16 @@ components:
         author_message:
           type: string
 
-    AdvanceStoryTickRequest:
+    CutChapterRequest:
       type: object
       properties:
-        tick_hours:
-          type: integer
-          default: 1
-          minimum: 1
-
-    CommitStoryRunRequest:
-      type: object
-      required: [draft_id, memory_patch_id]
-      properties:
-        draft_id:
+        branch_id:
           type: string
-        memory_patch_id:
+        from_event_id:
+          type: string
+        to_event_id:
+          type: string
+        title:
           type: string
         author_note:
           type: string
@@ -1788,9 +1520,9 @@ components:
           type: string
         branch_id:
           type: string
-        base_tick_id:
+        base_event_id:
           type: string
-        head_tick_id:
+        head_event_id:
           type: string
         status:
           type: string
@@ -1798,7 +1530,9 @@ components:
           type: string
         progress:
           type: integer
-        committed_at:
+        error:
+          type: string
+        cut_at:
           type: string
           format: date-time
           nullable: true
@@ -1811,7 +1545,7 @@ components:
 
     StoryDraft:
       type: object
-      description: Candidate chapter draft. It is not canon until commit succeeds.
+      description: Rendered chapter draft carried by a resolved story event. It becomes a chapter only when an event span is cut.
       properties:
         id:
           type: string
@@ -1856,7 +1590,7 @@ components:
 
     StoryReviewReport:
       type: object
-      description: Candidate review report. It is advisory until the author commits or discards the result.
+      description: Advisory review report included in the generated story result.
       properties:
         pass:
           type: boolean
@@ -1920,6 +1654,7 @@ components:
           type: string
         pair:
           type: object
+          additionalProperties: true
         views:
           type: array
           items:
@@ -1928,6 +1663,7 @@ components:
           type: array
           items:
             type: object
+            additionalProperties: true
 
     WorldStateUpdate:
       type: object
@@ -1942,7 +1678,7 @@ components:
 
     MemoryPatch:
       type: object
-      description: Candidate state patch. It is applied to canon only by POST /story-runs/{run_id}/commit.
+      description: Memory, relationship, and world-state portion of an EventStateDelta. Canon state is replayed from StoryEvent records.
       properties:
         id:
           type: string
@@ -1961,9 +1697,9 @@ components:
           items:
             $ref: "#/components/schemas/WorldStateUpdate"
 
-    StoryTimelineEvent:
+    StoryEventPlan:
       type: object
-      description: Narrative Timeline event generated while planning story-run interactions; distinct from SimulationEvent.
+      description: Planned story action material used while generating a story run.
       properties:
         id:
           type: string
@@ -2096,176 +1832,111 @@ components:
         outcome_summary:
           type: string
 
-    StoryBranch:
+    CharacterMove:
       type: object
-      description: Branch in the Narrative Timeline. Legacy story naming is kept for compatibility.
       properties:
-        id:
+        character_id:
           type: string
-        project_id:
+        location_key:
           type: string
-        session_id:
+        x:
+          type: integer
+        y:
+          type: integer
+
+    FactionDelta:
+      type: object
+      properties:
+        location_id:
           type: string
-        name:
+        faction_name:
           type: string
-        base_tick_id:
+        influence:
+          type: integer
+        attitude:
           type: string
-        head_tick_id:
+        description:
+          type: string
+
+    LocationDelta:
+      type: object
+      properties:
+        location_key:
           type: string
         status:
           type: string
-        created_from_run_id:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    StoryTick:
-      type: object
-      description: Tick in the branchable Narrative Timeline. It is distinct from Simulation Timeline tick runs.
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        session_id:
-          type: string
-        branch_id:
-          type: string
-        parent_tick_id:
-          type: string
-        source_run_id:
-          type: string
-        sequence:
-          type: integer
-        kind:
-          type: string
-        summary:
-          type: string
-        payload:
+        properties:
           type: object
-        created_at:
+          additionalProperties: true
+
+    EventStateDelta:
+      allOf:
+        - $ref: "#/components/schemas/MemoryPatch"
+        - type: object
+          properties:
+            character_moves:
+              type: array
+              items:
+                $ref: "#/components/schemas/CharacterMove"
+            faction_deltas:
+              type: array
+              items:
+                $ref: "#/components/schemas/FactionDelta"
+            location_deltas:
+              type: array
+              items:
+                $ref: "#/components/schemas/LocationDelta"
+
+    OngoingAction:
+      type: object
+      properties:
+        character_id:
+          type: string
+        action_type:
+          type: string
+        description:
+          type: string
+        target_location_key:
+          type: string
+        start_at:
           type: string
           format: date-time
-
-    StoryStateVersion:
-      type: object
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        entity_type:
-          type: string
-        entity_id:
-          type: string
-        parent_version_id:
-          type: string
-        source_tick_id:
-          type: string
-        source_run_id:
-          type: string
-        snapshot:
-          type: object
-        created_at:
+        arrive_at:
           type: string
           format: date-time
-
-    StoryTickStateRef:
-      type: object
-      properties:
-        tick_id:
+        effect_at:
           type: string
-        project_id:
+          format: date-time
+        ends_at:
           type: string
-        entity_type:
-          type: string
-        entity_id:
-          type: string
-        version_id:
-          type: string
-
-    StoryTickState:
-      type: object
-      properties:
-        tick:
-          $ref: "#/components/schemas/StoryTick"
-        refs:
+          format: date-time
+        resource_keys:
           type: array
           items:
-            $ref: "#/components/schemas/StoryTickStateRef"
-        versions:
-          type: array
-          items:
-            $ref: "#/components/schemas/StoryStateVersion"
-
-    StorySessionTimeline:
-      type: object
-      description: Branches and ticks for a session's Narrative Timeline.
-      properties:
-        session_id:
-          type: string
-        branches:
-          type: array
-          items:
-            $ref: "#/components/schemas/StoryBranch"
-        ticks:
-          type: array
-          items:
-            $ref: "#/components/schemas/StoryTick"
-
-    SimulationTimeline:
-      type: object
-      description: Project-level world simulation timeline advanced by simulation tick runs; distinct from the branchable Narrative Timeline.
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        current_time:
-          type: string
-          format: date-time
-        tick:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    StoryTickRun:
-      type: object
-      description: Simulation Timeline tick run. Legacy story naming is kept for compatibility.
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        tick:
-          type: integer
-        from_time:
-          type: string
-          format: date-time
-        to_time:
-          type: string
-          format: date-time
+            type: string
         status:
           type: string
-          enum: [running, completed, failed]
-        current_step:
+        rationale:
           type: string
-        error:
+
+    CharacterRuntimeState:
+      type: object
+      properties:
+        character_id:
           type: string
-        created_at:
+        tier:
           type: string
-          format: date-time
-        updated_at:
+        location_key:
           type: string
-          format: date-time
+        x:
+          type: integer
+        y:
+          type: integer
+        status:
+          type: string
+        ongoing_action:
+          nullable: true
+          $ref: "#/components/schemas/OngoingAction"
 
     WorldMap:
       type: object
@@ -2283,39 +1954,6 @@ components:
         height:
           type: integer
         status:
-          type: string
-        properties:
-          type: object
-          additionalProperties: true
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    MapTile:
-      type: object
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        map_id:
-          type: string
-        x:
-          type: integer
-        y:
-          type: integer
-        altitude:
-          type: integer
-        temperature:
-          type: integer
-        humidity:
-          type: integer
-        is_ocean:
-          type: boolean
-        terrain:
           type: string
         properties:
           type: object
@@ -2388,45 +2026,98 @@ components:
           type: string
           format: date-time
 
-    CharacterOngoingAction:
+    WorldSnapshot:
       type: object
       properties:
-        action_type:
+        at_event_id:
           type: string
-        description:
-          type: string
-        started_at:
+        story_time:
           type: string
           format: date-time
-        ends_at:
-          type: string
-          format: date-time
-        status:
-          type: string
-          enum: [ongoing, completed]
-        rationale:
-          type: string
+        world_state:
+          type: object
+          additionalProperties: true
+        characters:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CharacterRuntimeState"
+        relationships:
+          type: object
+          additionalProperties: true
+        factions:
+          type: array
+          items:
+            $ref: "#/components/schemas/FactionInfluence"
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocationState"
 
-    CharacterSimulationState:
+    StoryEvent:
       type: object
+      description: The append-only event-log unit from which story canon is replayed.
       properties:
         id:
           type: string
         project_id:
           type: string
-        character_id:
+        session_id:
           type: string
-        location_id:
+        branch_id:
           type: string
-        x:
+        parent_event_id:
+          type: string
+        sequence:
           type: integer
-        y:
-          type: integer
+        story_time:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: [genesis, action_scheduled, scene_resolved, variable_injected, promotion]
+        actor_ids:
+          type: array
+          items:
+            type: string
+        location_key:
+          type: string
+        resource_keys:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        state_delta:
+          $ref: "#/components/schemas/EventStateDelta"
+        published:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    StoryBranch:
+      type: object
+      description: Branch in the story event log.
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        session_id:
+          type: string
+        name:
+          type: string
+        base_event_id:
+          type: string
+        head_event_id:
+          type: string
+        published_frontier_event_id:
+          type: string
         status:
           type: string
-        ongoing_action:
-          nullable: true
-          $ref: "#/components/schemas/CharacterOngoingAction"
         created_at:
           type: string
           format: date-time
@@ -2434,111 +2125,42 @@ components:
           type: string
           format: date-time
 
-    SimulationEvent:
-      type: object
-      description: Event emitted by a Simulation Timeline tick run.
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        tick_run_id:
-          type: string
-        event_name:
-          type: string
-          enum:
-            - story_tick_started
-            - character_action_started
-            - character_skipped_ongoing_action
-            - character_action_completed
-            - story_tick_completed
-        sequence:
-          type: integer
-        character_id:
-          type: string
-        location_id:
-          type: string
-        summary:
-          type: string
-        payload:
-          type: object
-          additionalProperties: true
-        occurred_at:
-          type: string
-          format: date-time
-        created_at:
-          type: string
-          format: date-time
-
-    StorySimulationState:
-      type: object
-      description: Current Simulation Timeline state plus world map, locations, factions, character states, and latest events.
-      properties:
-        timeline:
-          $ref: "#/components/schemas/SimulationTimeline"
-        map:
-          nullable: true
-          $ref: "#/components/schemas/WorldMap"
-        tiles:
-          type: array
-          items:
-            $ref: "#/components/schemas/MapTile"
-        locations:
-          type: array
-          items:
-            $ref: "#/components/schemas/LocationState"
-        factions:
-          type: array
-          items:
-            $ref: "#/components/schemas/FactionInfluence"
-        character_states:
-          type: array
-          items:
-            $ref: "#/components/schemas/CharacterSimulationState"
-        characters:
-          type: array
-          items:
-            $ref: "#/components/schemas/Character"
-        latest_events:
-          type: array
-          items:
-            $ref: "#/components/schemas/SimulationEvent"
-
-    SimulationSnapshot:
-      type: object
-      description: Snapshot captured after a Simulation Timeline tick run.
-      properties:
-        id:
-          type: string
-        project_id:
-          type: string
-        tick_run_id:
-          type: string
-        tick:
-          type: integer
-        snapshot:
-          $ref: "#/components/schemas/StorySimulationState"
-        created_at:
-          type: string
-          format: date-time
-
-    AdvanceStoryTickResult:
+    StoryEventLog:
       type: object
       properties:
-        run:
-          $ref: "#/components/schemas/StoryTickRun"
+        session_id:
+          type: string
+        branches:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryBranch"
         events:
           type: array
           items:
-            $ref: "#/components/schemas/SimulationEvent"
-        snapshot:
-          $ref: "#/components/schemas/SimulationSnapshot"
-        state:
-          $ref: "#/components/schemas/StorySimulationState"
+            $ref: "#/components/schemas/StoryEvent"
+
+    ChapterEventSpan:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        chapter_id:
+          type: string
+        branch_id:
+          type: string
+        from_event_id:
+          type: string
+        to_event_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
     StoryRunResult:
       type: object
-      description: Candidate story output. It must be reviewed and committed before it becomes canon.
+      description: Story output for a run, including written events and draft projection material.
       properties:
         run_id:
           type: string
@@ -2548,16 +2170,16 @@ components:
           type: string
         branch_id:
           type: string
-        base_tick_id:
+        base_event_id:
           type: string
-        head_tick_id:
+        head_event_id:
           type: string
         plot_variable:
           $ref: "#/components/schemas/StoryPlotVariable"
-        event_timeline:
+        event_plan:
           type: array
           items:
-            $ref: "#/components/schemas/StoryTimelineEvent"
+            $ref: "#/components/schemas/StoryEventPlan"
         interaction_analysis:
           $ref: "#/components/schemas/StoryInteractionAnalysis"
         interaction_transcripts:
@@ -2570,7 +2192,10 @@ components:
           $ref: "#/components/schemas/StoryReviewReport"
         memory_patch:
           $ref: "#/components/schemas/MemoryPatch"
-
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryEvent"
     Chapter:
       type: object
       properties:
@@ -2687,40 +2312,6 @@ components:
             data:
               $ref: "#/components/schemas/StoryRunResult"
 
-    AdvanceStoryTickResponse:
-      allOf:
-        - $ref: "#/components/schemas/StandardResponse"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/AdvanceStoryTickResult"
-
-    StorySimulationStateResponse:
-      allOf:
-        - $ref: "#/components/schemas/StandardResponse"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/StorySimulationState"
-
-    SimulationEventListResponse:
-      allOf:
-        - $ref: "#/components/schemas/StandardResponse"
-        - type: object
-          properties:
-            data:
-              type: array
-              items:
-                $ref: "#/components/schemas/SimulationEvent"
-
-    SimulationSnapshotResponse:
-      allOf:
-        - $ref: "#/components/schemas/StandardResponse"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/SimulationSnapshot"
-
     StoryBranchResponse:
       allOf:
         - $ref: "#/components/schemas/StandardResponse"
@@ -2729,30 +2320,47 @@ components:
             data:
               $ref: "#/components/schemas/StoryBranch"
 
-    StoryTickResponse:
+    StoryEventResponse:
       allOf:
         - $ref: "#/components/schemas/StandardResponse"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/StoryTick"
+              $ref: "#/components/schemas/StoryEvent"
 
-    StoryTickStateResponse:
+    StoryEventStateResponse:
       allOf:
         - $ref: "#/components/schemas/StandardResponse"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/StoryTickState"
+              $ref: "#/components/schemas/WorldSnapshot"
 
-    StorySessionTimelineResponse:
+    StoryEventLogResponse:
       allOf:
         - $ref: "#/components/schemas/StandardResponse"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/StorySessionTimeline"
+              $ref: "#/components/schemas/StoryEventLog"
 
+    CutChapterResult:
+      type: object
+      properties:
+        chapter:
+          $ref: "#/components/schemas/Chapter"
+        span:
+          $ref: "#/components/schemas/ChapterEventSpan"
+        story_run:
+          $ref: "#/components/schemas/StoryRun"
+
+    CutChapterResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/CutChapterResult"
     RunEvent:
       type: object
       description: Runtime audit event. Consumers must not reconstruct canon from RunEvent payloads.
@@ -2784,24 +2392,6 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/RunEvent"
-
-    CommitStoryRunResult:
-      type: object
-      properties:
-        chapter:
-          $ref: "#/components/schemas/Chapter"
-        patch:
-          $ref: "#/components/schemas/MemoryPatch"
-        story_run:
-          $ref: "#/components/schemas/StoryRun"
-
-    CommitStoryRunResponse:
-      allOf:
-        - $ref: "#/components/schemas/StandardResponse"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/CommitStoryRunResult"
 
     CreateMemoryRequest:
       type: object

@@ -153,32 +153,40 @@ func (i *Initializer) Initialize(ctx context.Context, input port.WorldInitializa
 			UpdatedAt:   input.CurrentTime,
 		})
 	}
-	states := make([]model.CharacterSimulationState, 0, len(input.Characters))
+	states := make([]model.CharacterRuntimeState, 0, len(input.Characters))
 	if len(locations) > 0 {
 		for idx, character := range input.Characters {
 			location := locations[idx%len(locations)]
-			states = append(states, model.CharacterSimulationState{
-				ID:          i.newID("cstate"),
-				ProjectID:   input.ProjectID,
+			states = append(states, model.CharacterRuntimeState{
 				CharacterID: character.ID,
-				LocationID:  location.ID,
+				Tier:        "main",
+				LocationKey: location.ID,
 				X:           location.X,
 				Y:           location.Y,
 				Status:      "active",
-				CreatedAt:   input.CurrentTime,
-				UpdatedAt:   input.CurrentTime,
 			})
 		}
 	}
-	timeline := model.StoryTimeline{
-		ID:          i.newID("timeline"),
-		ProjectID:   input.ProjectID,
-		CurrentTime: input.CurrentTime,
-		Tick:        0,
-		CreatedAt:   input.CurrentTime,
-		UpdatedAt:   input.CurrentTime,
+	stateByCharacter := make(map[string]model.CharacterRuntimeState, len(states))
+	for _, state := range states {
+		stateByCharacter[state.CharacterID] = state
 	}
-	return port.WorldInitializationResult{Map: worldMap, Tiles: tiles, Locations: locations, Factions: factions, CharacterStates: states, Timeline: timeline}, nil
+	worldState := make(map[string]model.WorldStateEntry, len(input.SetupDraft.WorldState))
+	for _, entry := range input.SetupDraft.WorldState {
+		if entry.Key == "" {
+			continue
+		}
+		worldState[entry.Key] = entry
+	}
+	snapshot := model.WorldSnapshot{
+		StoryTime:     input.CurrentTime,
+		WorldState:    worldState,
+		Characters:    stateByCharacter,
+		Relationships: map[string]model.Relationship{},
+		Factions:      factions,
+		Locations:     locations,
+	}
+	return port.WorldInitializationResult{Map: worldMap, Tiles: tiles, Locations: locations, Factions: factions, CharacterStates: states, Snapshot: snapshot}, nil
 }
 
 func (i *Initializer) newID(prefix string) string {

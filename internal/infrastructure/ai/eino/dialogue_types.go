@@ -44,16 +44,17 @@ type InspectStoryRunResultInput struct {
 }
 
 type StoryRunResultInspection struct {
-	RunID         string `json:"run_id"`
-	SessionID     string `json:"session_id"`
-	ProjectID     string `json:"project_id"`
-	Status        string `json:"status"`
-	DraftID       string `json:"draft_id"`
-	MemoryPatchID string `json:"memory_patch_id"`
-	Title         string `json:"title"`
-	Summary       string `json:"summary"`
-	WordCount     int    `json:"word_count"`
-	Committed     bool   `json:"committed"`
+	RunID       string `json:"run_id"`
+	SessionID   string `json:"session_id"`
+	ProjectID   string `json:"project_id"`
+	Status      string `json:"status"`
+	BranchID    string `json:"branch_id"`
+	FromEventID string `json:"from_event_id"`
+	ToEventID   string `json:"to_event_id"`
+	Title       string `json:"title"`
+	Summary     string `json:"summary"`
+	WordCount   int    `json:"word_count"`
+	Cut         bool   `json:"cut"`
 }
 
 type ListPendingDialogueOptionsInput struct {
@@ -107,14 +108,16 @@ type ProposeStoryAdvanceInput struct {
 	Rationale      string `json:"rationale"`
 }
 
-type ProposeStoryCommitInput struct {
-	StoryRunID    string `json:"story_run_id"`
-	DraftID       string `json:"draft_id"`
-	MemoryPatchID string `json:"memory_patch_id"`
-	AuthorNote    string `json:"author_note"`
-	Label         string `json:"label"`
-	Description   string `json:"description"`
-	Rationale     string `json:"rationale"`
+type ProposeStoryCutChapterInput struct {
+	StoryRunID  string `json:"story_run_id"`
+	BranchID    string `json:"branch_id"`
+	FromEventID string `json:"from_event_id"`
+	ToEventID   string `json:"to_event_id"`
+	Title       string `json:"title"`
+	AuthorNote  string `json:"author_note"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Rationale   string `json:"rationale"`
 }
 
 type ExecuteConfirmedDialogueActionInput struct {

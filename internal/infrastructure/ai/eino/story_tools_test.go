@@ -162,7 +162,7 @@ func TestSelectStoryInteractionValidatesSameLocation(t *testing.T) {
 			{ID: "character_2", Name: "沈砚"},
 			{ID: "character_3", Name: "顾白"},
 		},
-		events: []model.StoryTimelineEvent{
+		events: []model.StoryEventPlan{
 			{ID: "event_1", CharacterID: "character_1", LocationKey: "old_dock"},
 			{ID: "event_2", CharacterID: "character_2", LocationKey: "old_dock"},
 			{ID: "event_3", CharacterID: "character_3", LocationKey: "inn"},

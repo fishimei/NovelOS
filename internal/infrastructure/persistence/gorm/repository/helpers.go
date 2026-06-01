@@ -88,6 +88,11 @@ func mapDBError(err error, notFoundMessage string) error {
 	return pkgerr.Internal("", err)
 }
 
+func isNotFound(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeNotFound
+}
+
 func toProject(row persistencemodels.Project) model.Project {
 	return model.Project{
 		ID:          row.ID,

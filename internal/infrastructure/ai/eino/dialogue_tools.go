@@ -54,7 +54,7 @@ func newDialogueTools(deps dialogueGeneratorDeps, state *dialogueRunState) ([]to
 	if err != nil {
 		return nil, err
 	}
-	inspectStory, err := utils.InferTool("inspect_story_run_result", "读取 story run result 摘要、draft_id 和 memory_patch_id，用于提出 story.commit 选项。", func(ctx context.Context, input InspectStoryRunResultInput) (StoryRunResultInspection, error) {
+	inspectStory, err := utils.InferTool("inspect_story_run_result", "Read story run result summary and event span ids for proposing story_cut_chapter.", func(ctx context.Context, input InspectStoryRunResultInput) (StoryRunResultInspection, error) {
 		return inspectStoryRunResult(ctx, deps, state, input)
 	})
 	if err != nil {
@@ -96,8 +96,8 @@ func newDialogueTools(deps dialogueGeneratorDeps, state *dialogueRunState) ([]to
 	if err != nil {
 		return nil, err
 	}
-	proposeStoryCommit, err := utils.InferTool("propose_story_commit", "提出提交 story run 草稿的待确认选项。只创建 option，不执行。", func(ctx context.Context, input ProposeStoryCommitInput) (dialogueToolResult, error) {
-		return proposeDialogueAction(ctx, deps, state, domain.DialogueActionStoryCommit, input.Label, input.Description, input.Rationale, map[string]any{"story_run_id": input.StoryRunID, "draft_id": input.DraftID, "memory_patch_id": input.MemoryPatchID, "author_note": input.AuthorNote})
+	proposeStoryCut, err := utils.InferTool("propose_story_cut_chapter", "Propose cutting an event span into a chapter. Creates an option only.", func(ctx context.Context, input ProposeStoryCutChapterInput) (dialogueToolResult, error) {
+		return proposeDialogueAction(ctx, deps, state, domain.DialogueActionStoryCutChapter, input.Label, input.Description, input.Rationale, map[string]any{"story_run_id": input.StoryRunID, "branch_id": input.BranchID, "from_event_id": input.FromEventID, "to_event_id": input.ToEventID, "title": input.Title, "author_note": input.AuthorNote})
 	})
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func newDialogueTools(deps dialogueGeneratorDeps, state *dialogueRunState) ([]to
 	if err != nil {
 		return nil, err
 	}
-	return []tool.BaseTool{loadContext, inspectSetup, inspectStory, listPending, proposeSetupStart, proposeSetupAdvance, proposeSetupApply, proposeStoryCreate, proposeStoryAdvance, proposeStoryCommit, executeConfirmed, finalizeResponse}, nil
+	return []tool.BaseTool{loadContext, inspectSetup, inspectStory, listPending, proposeSetupStart, proposeSetupAdvance, proposeSetupApply, proposeStoryCreate, proposeStoryAdvance, proposeStoryCut, executeConfirmed, finalizeResponse}, nil
 }
 
 func loadDialogueContext(ctx context.Context, deps dialogueGeneratorDeps, state *dialogueRunState, input DialogueContextInput) (DialogueContextSnapshot, error) {
@@ -214,16 +214,17 @@ func inspectStoryRunResult(ctx context.Context, deps dialogueGeneratorDeps, stat
 		return StoryRunResultInspection{}, err
 	}
 	inspection := StoryRunResultInspection{
-		RunID:         run.RunID,
-		SessionID:     run.SessionID,
-		ProjectID:     run.ProjectID,
-		Status:        run.Status,
-		DraftID:       result.Draft.ID,
-		MemoryPatchID: result.MemoryPatch.ID,
-		Title:         result.Draft.Title,
-		Summary:       result.Draft.Summary,
-		WordCount:     result.Draft.WordCount,
-		Committed:     run.Status == domain.RunStatusCommitted || run.CommittedAt != nil,
+		RunID:       run.RunID,
+		SessionID:   run.SessionID,
+		ProjectID:   run.ProjectID,
+		Status:      run.Status,
+		BranchID:    run.BranchID,
+		FromEventID: run.BaseEventID,
+		ToEventID:   run.HeadEventID,
+		Title:       result.Draft.Title,
+		Summary:     result.Draft.Summary,
+		WordCount:   result.Draft.WordCount,
+		Cut:         run.Status == domain.RunStatusCut || run.CutAt != nil,
 	}
 	state.mu.Lock()
 	state.addTraceLocked("inspect_story_run_result", "读取 story run result", true)
@@ -308,9 +309,6 @@ func (s *dialogueRunState) result() model.DialogueRunResult {
 	trace := make([]model.DialogueToolTrace, len(s.toolTrace))
 	copy(trace, s.toolTrace)
 	status := domain.RunStatusCompleted
-	if len(options) > 0 {
-		status = domain.RunStatusReviewRequired
-	}
 	return model.DialogueRunResult{
 		RunID:               s.run.RunID,
 		SessionID:           s.session.ID,
@@ -340,7 +338,7 @@ func defaultDialogueActionLabel(actionType string) string {
 		return "开始剧情编排"
 	case domain.DialogueActionStoryAdvance:
 		return "继续剧情编排"
-	case domain.DialogueActionStoryCommit:
+	case domain.DialogueActionStoryCutChapter:
 		return "提交章节草稿"
 	default:
 		return "执行下一步"

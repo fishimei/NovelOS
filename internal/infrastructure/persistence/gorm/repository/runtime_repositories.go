@@ -18,15 +18,16 @@ type setupRunResultPayload struct {
 
 type storyRunResultPayload struct {
 	BranchID               string                             `json:"branch_id,omitempty"`
-	BaseTickID             string                             `json:"base_tick_id,omitempty"`
-	HeadTickID             string                             `json:"head_tick_id,omitempty"`
+	BaseEventID            string                             `json:"base_event_id,omitempty"`
+	HeadEventID            string                             `json:"head_event_id,omitempty"`
 	PlotVariable           model.PlotVariable                 `json:"plot_variable"`
-	EventTimeline          []model.StoryTimelineEvent         `json:"event_timeline"`
+	EventPlan              []model.StoryEventPlan             `json:"event_plan"`
 	InteractionAnalysis    model.StoryInteractionAnalysis     `json:"interaction_analysis"`
 	InteractionTranscripts []model.StoryInteractionTranscript `json:"interaction_transcripts"`
 	Draft                  model.Draft                        `json:"draft"`
 	Review                 model.ReviewReport                 `json:"review"`
 	MemoryPatch            model.MemoryPatch                  `json:"memory_patch"`
+	Events                 []model.StoryEvent                 `json:"events,omitempty"`
 }
 
 type dialogueRunResultPayload struct {
@@ -925,7 +926,7 @@ func (r *storySessionRepository) CreateRun(ctx context.Context, sessionID string
 		SessionID:   sessionID,
 		ProjectID:   session.ProjectID,
 		BranchID:    input.BranchID,
-		BaseTickID:  input.BaseTickID,
+		BaseEventID: input.BaseEventID,
 		Status:      "queued",
 		CurrentStep: "loading_state",
 		Progress:    0,
@@ -940,8 +941,8 @@ func (r *storySessionRepository) CreateRun(ctx context.Context, sessionID string
 		SessionID:   row.SessionID,
 		ProjectID:   row.ProjectID,
 		BranchID:    row.BranchID,
-		BaseTickID:  row.BaseTickID,
-		HeadTickID:  row.HeadTickID,
+		BaseEventID: row.BaseEventID,
+		HeadEventID: row.HeadEventID,
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
@@ -961,13 +962,13 @@ func (r *storySessionRepository) GetRunByID(ctx context.Context, runID string) (
 		SessionID:   row.SessionID,
 		ProjectID:   row.ProjectID,
 		BranchID:    row.BranchID,
-		BaseTickID:  row.BaseTickID,
-		HeadTickID:  row.HeadTickID,
+		BaseEventID: row.BaseEventID,
+		HeadEventID: row.HeadEventID,
 		Status:      row.Status,
 		CurrentStep: row.CurrentStep,
 		Progress:    row.Progress,
 		Error:       row.Error,
-		CommittedAt: row.CommittedAt,
+		CutAt:       row.CutAt,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}, nil
@@ -987,30 +988,32 @@ func (r *storySessionRepository) GetRunResultByID(ctx context.Context, runID str
 		SessionID:              row.SessionID,
 		Status:                 row.Status,
 		BranchID:               payload.BranchID,
-		BaseTickID:             payload.BaseTickID,
-		HeadTickID:             payload.HeadTickID,
+		BaseEventID:            payload.BaseEventID,
+		HeadEventID:            payload.HeadEventID,
 		PlotVariable:           payload.PlotVariable,
-		EventTimeline:          payload.EventTimeline,
+		EventPlan:              payload.EventPlan,
 		InteractionAnalysis:    payload.InteractionAnalysis,
 		InteractionTranscripts: payload.InteractionTranscripts,
 		Draft:                  payload.Draft,
 		Review:                 payload.Review,
 		MemoryPatch:            payload.MemoryPatch,
+		Events:                 payload.Events,
 	}, nil
 }
 
 func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string, result model.StoryRunResult) error {
 	payloadJSON, err := encodeJSON(storyRunResultPayload{
 		BranchID:               result.BranchID,
-		BaseTickID:             result.BaseTickID,
-		HeadTickID:             result.HeadTickID,
+		BaseEventID:            result.BaseEventID,
+		HeadEventID:            result.HeadEventID,
 		PlotVariable:           result.PlotVariable,
-		EventTimeline:          result.EventTimeline,
+		EventPlan:              result.EventPlan,
 		InteractionAnalysis:    result.InteractionAnalysis,
 		InteractionTranscripts: result.InteractionTranscripts,
 		Draft:                  result.Draft,
 		Review:                 result.Review,
 		MemoryPatch:            result.MemoryPatch,
+		Events:                 result.Events,
 	})
 	if err != nil {
 		return payloadError("story run result", err)
@@ -1026,12 +1029,12 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 		UpdatedAt:   now,
 	}
 	if err := r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
-		"status":       result.Status,
-		"current_step": "review_required",
-		"progress":     100,
-		"error":        "",
-		"head_tick_id": result.HeadTickID,
-		"updated_at":   now,
+		"status":        result.Status,
+		"current_step":  "completed",
+		"progress":      100,
+		"error":         "",
+		"head_event_id": result.HeadEventID,
+		"updated_at":    now,
 	}).Error; err != nil {
 		return mapDBError(err, "story run not found")
 	}
@@ -1054,21 +1057,21 @@ func (r *storySessionRepository) UpdateRunStatus(ctx context.Context, runID stri
 	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(updates).Error, "story run not found")
 }
 
-func (r *storySessionRepository) UpdateRunTimeline(ctx context.Context, runID string, headTickID string) error {
+func (r *storySessionRepository) UpdateRunHead(ctx context.Context, runID string, headEventID string) error {
 	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
-		"head_tick_id": headTickID,
-		"updated_at":   r.now(),
+		"head_event_id": headEventID,
+		"updated_at":    r.now(),
 	}).Error, "story run not found")
 }
 
-func (r *storySessionRepository) MarkCommitted(ctx context.Context, runID string) error {
+func (r *storySessionRepository) MarkCut(ctx context.Context, runID string) error {
 	now := r.now()
 	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
-		"status":       "committed",
-		"current_step": "committed",
+		"status":       "cut",
+		"current_step": "cut",
 		"progress":     100,
 		"error":        "",
-		"committed_at": now,
+		"cut_at":       now,
 		"updated_at":   now,
 	}).Error, "story run not found")
 }

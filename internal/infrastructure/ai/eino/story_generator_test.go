@@ -57,7 +57,7 @@ func TestBuildResultUsesNarrativeOutput(t *testing.T) {
 		Turns: []StoryTurnPlan{
 			{TurnIndex: 1, ActorID: "character_1", ActorName: "林澈", ActionType: "speak", Intent: "试探对方"},
 		},
-		EventTimeline: []model.StoryTimelineEvent{
+		EventPlan: []model.StoryEventPlan{
 			{ID: "event_1", CharacterID: "character_1", CharacterName: "林澈", LocationKey: "old_dock", LocationName: "旧码头", ActionType: "action", Summary: "林澈抵达旧码头"},
 		},
 		InteractionAnalysis: model.StoryInteractionAnalysis{
@@ -87,7 +87,7 @@ func TestBuildResultUsesNarrativeOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildResult returned error: %v", err)
 	}
-	if result.Status != "review_required" {
+	if result.Status != "completed" {
 		t.Fatalf("unexpected status %q", result.Status)
 	}
 	if result.Draft.ChapterNumber != 3 {
@@ -105,8 +105,8 @@ func TestBuildResultUsesNarrativeOutput(t *testing.T) {
 	if len(result.PlotVariable.RelatedCharacterIDs) != 1 || result.PlotVariable.RelatedCharacterIDs[0] != "character_1" {
 		t.Fatalf("unexpected related character ids: %#v", result.PlotVariable.RelatedCharacterIDs)
 	}
-	if len(result.EventTimeline) != 1 || result.EventTimeline[0].LocationKey != "old_dock" {
-		t.Fatalf("unexpected event timeline: %#v", result.EventTimeline)
+	if len(result.EventPlan) != 1 || result.EventPlan[0].LocationKey != "old_dock" {
+		t.Fatalf("unexpected event timeline: %#v", result.EventPlan)
 	}
 	if len(result.InteractionAnalysis.InteractionGroups) != 1 || result.InteractionAnalysis.InteractionGroups[0].ID != "interaction_1" {
 		t.Fatalf("unexpected interaction analysis: %#v", result.InteractionAnalysis)

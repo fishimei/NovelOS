@@ -89,11 +89,7 @@ func (s *DialogueSessionAdvancer) generate(ctx context.Context, runID string) {
 		return
 	}
 	if result.Status == "" {
-		if len(result.ActionOptions) > 0 {
-			result.Status = domain.RunStatusReviewRequired
-		} else {
-			result.Status = domain.RunStatusCompleted
-		}
+		result.Status = domain.RunStatusCompleted
 	}
 	if result.AssistantMessage != "" {
 		if _, err := s.sessions.AppendMessage(ctx, session.ID, "assistant", result.AssistantMessage, map[string]any{"run_id": runID}); err != nil {
@@ -120,7 +116,7 @@ func (s *DialogueSessionAdvancer) generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
-	s.publish(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true, "action_options": len(result.ActionOptions)})
+	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusCompleted, "run_id": runID, "result_available": true, "action_options": len(result.ActionOptions)})
 }
 
 func (s *DialogueSessionAdvancer) failRun(ctx context.Context, runID string, session model.DialogueSession, err error) {

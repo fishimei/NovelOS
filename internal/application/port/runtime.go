@@ -92,8 +92,8 @@ type WorldInitializationResult struct {
 	Tiles           []model.MapTile
 	Locations       []model.LocationState
 	Factions        []model.FactionInfluence
-	CharacterStates []model.CharacterSimulationState
-	Timeline        model.StoryTimeline
+	CharacterStates []model.CharacterRuntimeState
+	Snapshot        model.WorldSnapshot
 }
 
 type WorldInitializer interface {

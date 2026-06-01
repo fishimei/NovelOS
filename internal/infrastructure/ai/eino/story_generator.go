@@ -119,7 +119,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	if err != nil {
 		return model.StoryRunResult{}, err
 	}
-	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusSimulatingEvents, 30)
+	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusPlanningEvents, 30)
 	_, err = agent.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.systemPrompt()),
 		schema.UserMessage(g.userPrompt(input, variable)),
@@ -484,7 +484,7 @@ func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input 
 		"world_state_keys":        worldStateKeys(snapshot.WorldState),
 		"relationships":           relationshipPublicSummaries(snapshot.Relationships),
 		"story_variable":          variable.PlotVariable,
-		"event_timeline":          plan.EventTimeline,
+		"event_plan":              plan.EventPlan,
 		"interaction_analysis":    plan.InteractionAnalysis,
 		"interaction_transcripts": plan.InteractionTranscripts,
 		"turns":                   plan.Turns,
@@ -545,7 +545,7 @@ func (g *StoryRunGenerator) turnNarrativePrompt() string {
 func (g *StoryRunGenerator) summaryPrompt() string {
 	return firstText(g.resultPrompt, "整理故事演绎结果。") + `
 
-根据已完成的 event_timeline、interaction_analysis、interaction_transcripts、turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、content、plot_variable、memory_patch、review、turns。运行中的事件和 turns 只是素材，不是章节正文；content 必须在本阶段统一写成连贯完整章节正文，不要只列提纲。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容。relationship_updates 可填 pair_id、summary、tension_delta、events；交涉造成的关系变化应写入 events，event_type 可用 negotiation 或 interaction_outcome。只输出 JSON。`
+根据已完成的 event_plan、interaction_analysis、interaction_transcripts、turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、content、plot_variable、memory_patch、review、turns。运行中的事件和 turns 只是素材，不是章节正文；content 必须在本阶段统一写成连贯完整章节正文，不要只列提纲。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容。relationship_updates 可填 pair_id、summary、tension_delta、events；交涉造成的关系变化应写入 events，event_type 可用 negotiation 或 interaction_outcome。只输出 JSON。`
 }
 
 func (g *StoryRunGenerator) perspectiveForTurn(snapshot StoryContextSnapshot, turn StoryTurnPlan, variable StoryVariablePlan) *CharacterPerspective {
@@ -583,7 +583,7 @@ func (g *StoryRunGenerator) buildResult(ctx context.Context, input port.StoryRun
 	return model.StoryRunResult{
 		RunID:     input.Run.RunID,
 		SessionID: input.Run.SessionID,
-		Status:    domain.RunStatusReviewRequired,
+		Status:    domain.RunStatusCompleted,
 		PlotVariable: model.PlotVariable{
 			PressureSource:      firstText(plotVariable.PressureSource, input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "当前故事压力"),
 			FocalCharacterID:    focalID,
@@ -596,7 +596,7 @@ func (g *StoryRunGenerator) buildResult(ctx context.Context, input port.StoryRun
 			RelatedCharacterIDs: relatedIDs,
 			WorldStatePressure:  plotVariable.WorldStatePressure,
 		},
-		EventTimeline:          plan.EventTimeline,
+		EventPlan:              plan.EventPlan,
 		InteractionAnalysis:    plan.InteractionAnalysis,
 		InteractionTranscripts: plan.InteractionTranscripts,
 		Draft: model.Draft{

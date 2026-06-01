@@ -12,14 +12,13 @@ type Code string
 
 // 预定义的错误码常量。
 const (
-	CodeValidationError     Code = "VALIDATION_ERROR"      // 验证错误
-	CodeNotFound            Code = "NOT_FOUND"             // 资源未找到
+	CodeValidationError     Code = "VALIDATION_ERROR"     // 验证错误
+	CodeNotFound            Code = "NOT_FOUND"            // 资源未找到
 	CodeConflict            Code = "CONFLICT"             // 资源冲突
 	CodeGenerationFailed    Code = "GENERATION_FAILED"    // AI 生成失败
-	CodeConstraintViolation Code = "CONSTRAINT_VIOLATION"  // 约束违反
+	CodeConstraintViolation Code = "CONSTRAINT_VIOLATION" // 约束违反
 	CodeInternalError       Code = "INTERNAL_ERROR"       // 内部错误
 	CodeRunNotReady         Code = "RUN_NOT_READY"        // 运行未就绪
-	CodeRunAlreadyCommitted Code = "RUN_ALREADY_COMMITTED" // 运行已提交
 )
 
 // Error 是应用程序错误结构体。

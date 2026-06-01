@@ -104,8 +104,8 @@ func (s *SetupSessionAdvancer) Generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
-	s.appendAuditEvent(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true})
-	s.publish(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true})
+	s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusCompleted, "run_id": runID, "result_available": true})
+	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusCompleted, "run_id": runID, "result_available": true})
 }
 
 func (s *SetupSessionAdvancer) failRun(ctx context.Context, runID string, session model.SetupSession, err error) {

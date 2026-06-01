@@ -4,6 +4,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 )
@@ -100,42 +101,37 @@ type StorySessionRepository interface {
 	GetRunResultByID(ctx context.Context, runID string) (model.StoryRunResult, error)
 	SaveRunResult(ctx context.Context, runID string, result model.StoryRunResult) error
 	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
-	UpdateRunTimeline(ctx context.Context, runID string, headTickID string) error
-	MarkCommitted(ctx context.Context, runID string) error
+	UpdateRunHead(ctx context.Context, runID string, headEventID string) error
+	MarkCut(ctx context.Context, runID string) error
 }
 
-type StoryTimelineRepository interface {
-	CreateBranch(ctx context.Context, branch model.StoryBranch) (model.StoryBranch, error)
-	GetBranchByID(ctx context.Context, branchID string) (model.StoryBranch, error)
-	ListBranchesBySessionID(ctx context.Context, sessionID string) ([]model.StoryBranch, error)
-	UpdateBranchHead(ctx context.Context, branchID string, headTickID string) error
-	AppendTick(ctx context.Context, tick model.StoryTick, refs []model.StoryTickStateRef, versions []model.StoryStateVersion) (model.StoryTick, error)
-	GetTickByID(ctx context.Context, tickID string) (model.StoryTick, error)
-	ListTicksByBranchID(ctx context.Context, branchID string) ([]model.StoryTick, error)
-	ListTickStateRefs(ctx context.Context, tickID string) ([]model.StoryTickStateRef, error)
-	ResolveTickState(ctx context.Context, tickID string) (model.StoryTickState, error)
-}
+type StoryEventStore interface {
+	AppendEvent(ctx context.Context, e model.StoryEvent) (model.StoryEvent, error)
+	GetEvent(ctx context.Context, id string) (model.StoryEvent, error)
+	ListEventsByBranch(ctx context.Context, branchID string) ([]model.StoryEvent, error)
+	ListEventsBySession(ctx context.Context, sessionID string) ([]model.StoryEvent, error)
 
-type SimulationRepository interface {
-	GetTimelineByProjectID(ctx context.Context, projectID string) (model.StoryTimeline, error)
-	UpsertTimeline(ctx context.Context, timeline model.StoryTimeline) (model.StoryTimeline, error)
+	CreateBranch(ctx context.Context, b model.Branch) (model.Branch, error)
+	GetBranch(ctx context.Context, id string) (model.Branch, error)
+	ListBranchesBySession(ctx context.Context, sessionID string) ([]model.Branch, error)
+	UpdateBranchHead(ctx context.Context, branchID, headEventID string) error
+	SetPublishedFrontier(ctx context.Context, branchID, eventID string) error
+
+	ResolveStateAt(ctx context.Context, eventID string) (model.WorldSnapshot, error)
+	InFlightActionsAt(ctx context.Context, branchID string, at time.Time) ([]model.OngoingAction, error)
+	UpsertSnapshot(ctx context.Context, branchID, eventID string, s model.WorldSnapshot) error
+	InitGenesis(ctx context.Context, projectID, sessionID string, t0 model.WorldSnapshot) (model.StoryEvent, error)
+
 	GetWorldMapByProjectID(ctx context.Context, projectID string) (model.WorldMap, error)
 	UpsertWorldMap(ctx context.Context, worldMap model.WorldMap) (model.WorldMap, error)
 	ListMapTilesByProjectID(ctx context.Context, projectID string) ([]model.MapTile, error)
 	UpsertMapTiles(ctx context.Context, projectID string, tiles []model.MapTile) error
-	CreateTickRun(ctx context.Context, run model.StoryTickRun) (model.StoryTickRun, error)
-	UpdateTickRun(ctx context.Context, run model.StoryTickRun) (model.StoryTickRun, error)
-	GetTickRunByID(ctx context.Context, tickRunID string) (model.StoryTickRun, error)
 	ListLocationsByProjectID(ctx context.Context, projectID string) ([]model.LocationState, error)
 	UpsertLocations(ctx context.Context, projectID string, locations []model.LocationState) error
 	ListFactionInfluencesByProjectID(ctx context.Context, projectID string) ([]model.FactionInfluence, error)
 	UpsertFactionInfluences(ctx context.Context, projectID string, influences []model.FactionInfluence) error
-	ListCharacterStatesByProjectID(ctx context.Context, projectID string) ([]model.CharacterSimulationState, error)
-	UpsertCharacterStates(ctx context.Context, projectID string, states []model.CharacterSimulationState) error
-	AppendEvent(ctx context.Context, event model.SimulationEvent) (model.SimulationEvent, error)
-	ListEventsByTickRunID(ctx context.Context, tickRunID string) ([]model.SimulationEvent, error)
-	CreateSnapshot(ctx context.Context, snapshot model.SimulationSnapshot) (model.SimulationSnapshot, error)
-	GetSnapshotByTickRunID(ctx context.Context, tickRunID string) (model.SimulationSnapshot, error)
+	CreateChapterSpan(ctx context.Context, span model.ChapterEventSpan) (model.ChapterEventSpan, error)
+	GetChapterSpanByRange(ctx context.Context, branchID, fromEventID, toEventID string) (model.ChapterEventSpan, error)
 }
 
 // ChapterRepository 是章节仓库的接口。
@@ -172,8 +168,7 @@ type Repositories struct {
 	SetupSessions    SetupSessionRepository
 	DialogueSessions DialogueSessionRepository
 	StorySessions    StorySessionRepository
-	StoryTimeline    StoryTimelineRepository
-	Simulation       SimulationRepository
+	StoryEvents      StoryEventStore
 	Chapters         ChapterRepository
 	Memories         MemoryRepository
 	Audit            AuditRepository

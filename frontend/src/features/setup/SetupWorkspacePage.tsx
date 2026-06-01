@@ -1338,17 +1338,17 @@ function formatDialogueActionStatus(status?: string) {
 
 function defaultDialogueActionLabel(actionType?: string) {
   switch (actionType) {
-    case 'setup.start_and_advance':
+    case 'setup_start_and_advance':
       return '生成项目设定草案';
-    case 'setup.advance':
+    case 'setup_advance':
       return '更新设定草案';
-    case 'setup.apply':
+    case 'setup_apply':
       return '应用设定草案';
-    case 'story.create_and_advance':
+    case 'story_create_and_advance':
       return '开始剧情编排';
-    case 'story.advance':
+    case 'story_advance':
       return '继续剧情编排';
-    case 'story.commit':
+    case 'story_cut_chapter':
       return '提交章节草稿';
     default:
       return '执行下一步';
@@ -1357,10 +1357,10 @@ function defaultDialogueActionLabel(actionType?: string) {
 
 function defaultDialogueActionDescription(actionType?: string) {
   switch (actionType) {
-    case 'setup.start_and_advance':
-    case 'setup.advance':
+    case 'setup_start_and_advance':
+    case 'setup_advance':
       return '确认后会触发 setup run，生成一版新的结构化草案。';
-    case 'setup.apply':
+    case 'setup_apply':
       return '确认后会把已审核的草案写入项目状态。';
     default:
       return '确认后执行这个待确认操作。';

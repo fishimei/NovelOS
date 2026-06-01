@@ -1,13 +1,15 @@
 // Package service 包含应用程序的具体业务逻辑实现。
-// 这些服务类封装了跨多个仓库的复杂业务操作，如设置运行应用和故事运行提交。
+// 这些服务类封装了跨多个仓库的复杂业务操作，如设置运行应用和故事事件裁章。
 // 服务类遵循单一职责原则，每个服务负责一个特定的业务流程。
 package service
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/port"
+	"github.com/fishimei/NovelOS/internal/pkgerr"
 )
 
 // currentTime 获取当前时间的辅助函数。
@@ -34,4 +36,9 @@ func firstNonEmpty(value string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func isNotFound(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeNotFound
 }

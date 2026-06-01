@@ -16,7 +16,7 @@ type DialogueActionExecutor struct {
 	setupApplier     *SetupRunApplier
 	storyStarter     *StorySessionStarter
 	storyAdvancer    *StorySessionAdvancer
-	storyCommitter   *StoryRunCommitter
+	storyCutter      *StoryChapterCutter
 	audit            port.AuditRepository
 	validator        *DialogueActionValidator
 	clock            port.Clock
@@ -29,7 +29,7 @@ func NewDialogueActionExecutor(
 	setupApplier *SetupRunApplier,
 	storyStarter *StorySessionStarter,
 	storyAdvancer *StorySessionAdvancer,
-	storyCommitter *StoryRunCommitter,
+	storyCutter *StoryChapterCutter,
 	audit port.AuditRepository,
 	validator *DialogueActionValidator,
 	clock port.Clock,
@@ -41,7 +41,7 @@ func NewDialogueActionExecutor(
 		setupApplier:     setupApplier,
 		storyStarter:     storyStarter,
 		storyAdvancer:    storyAdvancer,
-		storyCommitter:   storyCommitter,
+		storyCutter:      storyCutter,
 		audit:            audit,
 		validator:        validator,
 		clock:            clock,
@@ -163,16 +163,18 @@ func (e *DialogueActionExecutor) execute(ctx context.Context, option model.Dialo
 		}
 		option.Result = map[string]any{"story_run_id": run.RunID, "status": run.Status}
 		return option, nil
-	case domain.DialogueActionStoryCommit:
-		result, err := e.storyCommitter.Commit(ctx, stringValue(option.Payload, "story_run_id"), model.CommitStoryRunInput{
-			DraftID:       stringValue(option.Payload, "draft_id"),
-			MemoryPatchID: stringValue(option.Payload, "memory_patch_id"),
-			AuthorNote:    firstNonEmpty(input.AuthorNote, stringValue(option.Payload, "author_note")),
+	case domain.DialogueActionStoryCutChapter:
+		result, err := e.storyCutter.CutChapter(ctx, stringValue(option.Payload, "story_run_id"), model.CutChapterInput{
+			BranchID:    stringValue(option.Payload, "branch_id"),
+			FromEventID: stringValue(option.Payload, "from_event_id"),
+			ToEventID:   stringValue(option.Payload, "to_event_id"),
+			Title:       stringValue(option.Payload, "title"),
+			AuthorNote:  firstNonEmpty(input.AuthorNote, stringValue(option.Payload, "author_note")),
 		})
 		if err != nil {
 			return option, err
 		}
-		option.Result = map[string]any{"chapter_id": result.Chapter.ID, "story_run_id": result.StoryRun.RunID, "status": result.StoryRun.Status}
+		option.Result = map[string]any{"chapter_id": result.Chapter.ID, "span_id": result.Span.ID, "story_run_id": result.StoryRun.RunID, "status": result.StoryRun.Status}
 		return option, nil
 	default:
 		return option, pkgerr.Validation("unsupported dialogue action type")

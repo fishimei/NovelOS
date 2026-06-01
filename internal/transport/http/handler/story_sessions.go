@@ -15,12 +15,12 @@ import (
 )
 
 type StorySessionsHandler struct {
-	sessions          port.StorySessionRepository
-	audit             port.AuditRepository
-	events            port.GenerationEventStream
-	advancer          *service.StorySessionAdvancer
-	committer         *service.StoryRunCommitter
-	narrativeTimeline *service.StoryTimelineService
+	sessions port.StorySessionRepository
+	audit    port.AuditRepository
+	events   port.GenerationEventStream
+	advancer *service.StorySessionAdvancer
+	cutter   *service.StoryChapterCutter
+	log      *service.StoryEventLogService
 }
 
 func NewStorySessionsHandler(
@@ -28,16 +28,16 @@ func NewStorySessionsHandler(
 	audit port.AuditRepository,
 	events port.GenerationEventStream,
 	advancer *service.StorySessionAdvancer,
-	committer *service.StoryRunCommitter,
-	narrativeTimeline *service.StoryTimelineService,
+	cutter *service.StoryChapterCutter,
+	logService *service.StoryEventLogService,
 ) StorySessionsHandler {
 	return StorySessionsHandler{
-		sessions:          sessions,
-		audit:             audit,
-		events:            events,
-		advancer:          advancer,
-		committer:         committer,
-		narrativeTimeline: narrativeTimeline,
+		sessions: sessions,
+		audit:    audit,
+		events:   events,
+		advancer: advancer,
+		cutter:   cutter,
+		log:      logService,
 	}
 }
 
@@ -46,7 +46,6 @@ func (h StorySessionsHandler) Create(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-
 	result, err := h.sessions.CreateSession(c.Request.Context(), c.Param("project_id"), model.CreateStorySessionInput{
 		Title:            req.Title,
 		OpeningSituation: req.OpeningSituation,
@@ -56,7 +55,6 @@ func (h StorySessionsHandler) Create(c *gin.Context) {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusCreated, result)
 }
 
@@ -65,14 +63,12 @@ func (h StorySessionsHandler) List(c *gin.Context) {
 	if !bindQuery(c, &query) {
 		return
 	}
-
 	pageInput := normalizePageInput(query.Page, query.PageSize)
 	result, err := h.sessions.ListSessionsByProjectID(c.Request.Context(), c.Param("project_id"), pageInput)
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.PaginatedData(c, http.StatusOK, result.Items, pageInput.Page, pageInput.PageSize, result.Total)
 }
 
@@ -82,7 +78,6 @@ func (h StorySessionsHandler) Get(c *gin.Context) {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
@@ -91,20 +86,17 @@ func (h StorySessionsHandler) Update(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-
 	session, err := h.sessions.GetSessionByID(c.Request.Context(), c.Param("session_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	session.Title = strings.TrimSpace(req.Title)
 	result, err := h.sessions.UpdateSession(c.Request.Context(), session)
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
@@ -113,7 +105,6 @@ func (h StorySessionsHandler) Delete(c *gin.Context) {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, gin.H{"deleted": true})
 }
 
@@ -122,73 +113,51 @@ func (h StorySessionsHandler) Advance(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-
 	result, err := h.advancer.Advance(c.Request.Context(), c.Param("session_id"), model.AdvanceStorySessionInput{
 		AuthorMessage: req.AuthorMessage,
 		BranchID:      req.BranchID,
-		BaseTickID:    req.BaseTickID,
+		BaseEventID:   req.BaseEventID,
 	})
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusAccepted, result)
 }
 
-func (h StorySessionsHandler) GetTimeline(c *gin.Context) {
-	h.GetNarrativeTimeline(c)
-}
-
-func (h StorySessionsHandler) GetNarrativeTimeline(c *gin.Context) {
-	result, err := h.narrativeTimeline.ListSessionTimeline(c.Request.Context(), c.Param("session_id"))
+func (h StorySessionsHandler) ListEvents(c *gin.Context) {
+	result, err := h.log.ListSessionEvents(c.Request.Context(), c.Param("session_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
-func (h StorySessionsHandler) GetTick(c *gin.Context) {
-	h.GetNarrativeTick(c)
-}
-
-func (h StorySessionsHandler) GetNarrativeTick(c *gin.Context) {
-	result, err := h.narrativeTimeline.GetTick(c.Request.Context(), c.Param("tick_id"))
+func (h StorySessionsHandler) GetEvent(c *gin.Context) {
+	result, err := h.log.GetEvent(c.Request.Context(), c.Param("event_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
-func (h StorySessionsHandler) GetTickState(c *gin.Context) {
-	h.GetNarrativeTickState(c)
-}
-
-func (h StorySessionsHandler) GetNarrativeTickState(c *gin.Context) {
-	result, err := h.narrativeTimeline.GetTickState(c.Request.Context(), c.Param("tick_id"))
+func (h StorySessionsHandler) GetEventState(c *gin.Context) {
+	result, err := h.log.GetEventState(c.Request.Context(), c.Param("event_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
-func (h StorySessionsHandler) ForkTick(c *gin.Context) {
-	h.ForkNarrativeTick(c)
-}
-
-func (h StorySessionsHandler) ForkNarrativeTick(c *gin.Context) {
-	var req dto.ForkStoryTickRequest
+func (h StorySessionsHandler) ForkEvent(c *gin.Context) {
+	var req dto.ForkStoryEventRequest
 	if !bindJSON(c, &req) {
 		return
 	}
-
-	result, err := h.narrativeTimeline.ForkTick(c.Request.Context(), c.Param("tick_id"), model.ForkStoryTickInput{
+	result, err := h.log.ForkEvent(c.Request.Context(), c.Param("event_id"), model.ForkStoryEventInput{
 		Name:          req.Name,
 		AuthorMessage: req.AuthorMessage,
 	})
@@ -196,28 +165,21 @@ func (h StorySessionsHandler) ForkNarrativeTick(c *gin.Context) {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusCreated, result)
 }
 
 func (h StorySessionsHandler) AdvanceBranch(c *gin.Context) {
-	h.AdvanceNarrativeBranch(c)
-}
-
-func (h StorySessionsHandler) AdvanceNarrativeBranch(c *gin.Context) {
 	var req dto.AdvanceStorySessionRequest
 	if !bindJSON(c, &req) {
 		return
 	}
-
-	result, err := h.narrativeTimeline.AdvanceBranch(c.Request.Context(), c.Param("branch_id"), model.AdvanceStorySessionInput{
+	result, err := h.log.AdvanceBranch(c.Request.Context(), c.Param("branch_id"), model.AdvanceStorySessionInput{
 		AuthorMessage: req.AuthorMessage,
 	})
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusAccepted, result)
 }
 
@@ -227,7 +189,6 @@ func (h StorySessionsHandler) GetRun(c *gin.Context) {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
@@ -237,18 +198,15 @@ func (h StorySessionsHandler) GetRunResult(c *gin.Context) {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
 func (h StorySessionsHandler) GetRunEventHistory(c *gin.Context) {
-	// 历史事件读取持久化 RunEvent；实时流仍由 Subscribe 负责，避免把 SSE 当成正史来源。
 	result, err := h.audit.ListRunEvents(c.Request.Context(), "story", c.Param("run_id"))
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
 
@@ -259,7 +217,6 @@ func (h StorySessionsHandler) Subscribe(c *gin.Context) {
 		return
 	}
 	defer cancel()
-
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case <-c.Request.Context().Done():
@@ -274,21 +231,21 @@ func (h StorySessionsHandler) Subscribe(c *gin.Context) {
 	})
 }
 
-func (h StorySessionsHandler) CommitRun(c *gin.Context) {
-	var req dto.CommitStoryRunRequest
+func (h StorySessionsHandler) CutChapter(c *gin.Context) {
+	var req dto.CutChapterRequest
 	if !bindJSON(c, &req) {
 		return
 	}
-
-	result, err := h.committer.Commit(c.Request.Context(), c.Param("run_id"), model.CommitStoryRunInput{
-		DraftID:       req.DraftID,
-		MemoryPatchID: req.MemoryPatchID,
-		AuthorNote:    req.AuthorNote,
+	result, err := h.cutter.CutChapter(c.Request.Context(), c.Param("run_id"), model.CutChapterInput{
+		BranchID:    req.BranchID,
+		FromEventID: req.FromEventID,
+		ToEventID:   req.ToEventID,
+		Title:       req.Title,
+		AuthorNote:  req.AuthorNote,
 	})
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
-
 	presenter.Data(c, http.StatusOK, result)
 }
