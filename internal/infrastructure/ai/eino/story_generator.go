@@ -103,7 +103,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return model.StoryRunResult{}, fmt.Errorf("seed plot variable: %w", err)
 	}
 	state.variable = variable
-	plannedActions, err := g.planCharacterActions(ctx, input, snapshot, variable)
+	plannedActions, err := g.planCharacterActions(ctx, input, snapshot)
 	if err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("plan character actions: %w", err)
 	}
@@ -261,17 +261,17 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 	}
 }
 
-func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, seed StoryVariablePlan) ([]ScenePlannedAction, error) {
+func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) ([]ScenePlannedAction, error) {
 	if g.actionDecider == nil {
-		return nil, nil
-	}
-	characterIDs := sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, snapshot.Characters)
-	if len(characterIDs) == 0 {
 		return nil, nil
 	}
 	world, err := g.decisionWorldSnapshot(ctx, input, snapshot)
 	if err != nil {
 		return nil, err
+	}
+	characterIDs := idleCharacterIDs(world, snapshot.Characters)
+	if len(characterIDs) == 0 {
+		return nil, nil
 	}
 	planned := make([]ScenePlannedAction, 0, len(characterIDs))
 	for _, characterID := range characterIDs {
@@ -359,6 +359,34 @@ func characterDecisionInput(world model.WorldSnapshot, character model.Character
 		FactionInfluences: factionInfluencesForLocation(world.Factions, location.ID),
 		NearbyLocations:   nearbyLocationContexts(world.Locations, world.Factions, location),
 	}
+}
+
+func idleCharacterIDs(world model.WorldSnapshot, characters []model.Character) []string {
+	ids := make([]string, 0, len(characters))
+	for _, character := range characters {
+		if character.ID == "" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(character.Status), "inactive") {
+			continue
+		}
+		state, ok := world.Characters[character.ID]
+		if ok && !characterStateIsIdle(state, world.StoryTime) {
+			continue
+		}
+		if ok && strings.EqualFold(strings.TrimSpace(state.Status), "inactive") {
+			continue
+		}
+		ids = appendUniqueString(ids, character.ID)
+	}
+	return ids
+}
+
+func characterStateIsIdle(state model.CharacterRuntimeState, clock time.Time) bool {
+	if state.OngoingAction == nil {
+		return true
+	}
+	return !state.OngoingAction.EndsAt.After(clock)
 }
 
 func visibleWorldSnapshotForCharacter(world model.WorldSnapshot, characterID string) model.WorldSnapshot {

@@ -673,20 +673,18 @@ func TestPlanCharacterActionsUsesVisibleDecisionInput(t *testing.T) {
 		}},
 	}
 
-	planned, err := generator.planCharacterActions(context.Background(), input, snapshot, StoryVariablePlan{
-		PlotVariable: StoryNarrativePlotVariable{RelatedCharacterIDs: []string{"character_1"}},
-	})
+	planned, err := generator.planCharacterActions(context.Background(), input, snapshot)
 	if err != nil {
 		t.Fatalf("planCharacterActions() error = %v", err)
 	}
-	if len(planned) != 1 {
-		t.Fatalf("planned actions = %#v, want one", planned)
+	if len(planned) != 2 {
+		t.Fatalf("planned actions = %#v, want two idle characters", planned)
 	}
 	if len(planned[0].ParticipantIDs) != 1 || planned[0].ParticipantIDs[0] != "character_2" {
 		t.Fatalf("participant ids = %#v, want character_2", planned[0].ParticipantIDs)
 	}
-	if len(decider.inputs) != 1 {
-		t.Fatalf("decider calls = %d, want 1", len(decider.inputs))
+	if len(decider.inputs) != 2 {
+		t.Fatalf("decider calls = %d, want 2", len(decider.inputs))
 	}
 	relationship := decider.inputs[0].World.Relationships["rel_1"]
 	if len(relationship.Views) != 1 {
@@ -694,6 +692,30 @@ func TestPlanCharacterActionsUsesVisibleDecisionInput(t *testing.T) {
 	}
 	if relationship.Views[0].PrivateAttitude != "警惕" {
 		t.Fatalf("visible relationship leaked wrong private attitude: %#v", relationship.Views)
+	}
+}
+
+func TestIdleCharacterIDsUseWorldClock(t *testing.T) {
+	clock := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	world := model.WorldSnapshot{
+		StoryTime: clock,
+		Characters: map[string]model.CharacterRuntimeState{
+			"character_1": {CharacterID: "character_1", Status: "active"},
+			"character_2": {CharacterID: "character_2", Status: "active", OngoingAction: &model.OngoingAction{EndsAt: clock.Add(time.Hour)}},
+			"character_3": {CharacterID: "character_3", Status: "active", OngoingAction: &model.OngoingAction{EndsAt: clock}},
+			"character_4": {CharacterID: "character_4", Status: "inactive"},
+		},
+	}
+	ids := idleCharacterIDs(world, []model.Character{
+		{ID: "character_1"},
+		{ID: "character_2"},
+		{ID: "character_3"},
+		{ID: "character_4"},
+		{ID: "character_5", Status: "inactive"},
+	})
+
+	if len(ids) != 2 || ids[0] != "character_1" || ids[1] != "character_3" {
+		t.Fatalf("idle ids = %#v, want [character_1 character_3]", ids)
 	}
 }
 
