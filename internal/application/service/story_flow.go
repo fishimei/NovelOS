@@ -177,23 +177,15 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		storyTime = parent.StoryTime
 	}
 	written := make([]model.StoryEvent, 0, len(result.EventPlan)+1)
+	branch := model.Branch{ID: run.BranchID, ProjectID: run.ProjectID, SessionID: run.SessionID}
 	for _, planned := range orderedStoryEventPlans(result.EventPlan) {
 		eventTime := storyTime.Add(time.Duration(maxInt(planned.TimeIndex, 0)) * time.Hour)
-		event, err := s.store.AppendEvent(ctx, model.StoryEvent{
-			ProjectID:     run.ProjectID,
-			SessionID:     run.SessionID,
-			BranchID:      run.BranchID,
-			ParentEventID: parentEventID,
-			StoryTime:     eventTime,
-			Kind:          model.EventKindActionScheduled,
-			ActorIDs:      actorIDsForPlan(planned),
-			LocationKey:   planned.LocationKey,
-			ResourceKeys:  resourceKeysForPlan(planned),
-			Summary:       planned.Summary,
-			Payload:       map[string]any{"event_plan": planned, "source_run_id": run.RunID},
-			StateDelta:    model.EventStateDelta{},
-			CreatedAt:     currentTime(s.clock),
-		})
+		action := ongoingActionFromPlan(planned, eventTime)
+		eventInput := StoryEventFromAction(branch, action, parentEventID)
+		eventInput.Payload["event_plan"] = planned
+		eventInput.Payload["source_run_id"] = run.RunID
+		eventInput.CreatedAt = currentTime(s.clock)
+		event, err := s.store.AppendEvent(ctx, eventInput)
 		if err != nil {
 			return model.StoryRunResult{}, err
 		}
@@ -299,6 +291,23 @@ func orderedStoryEventPlans(events []model.StoryEventPlan) []model.StoryEventPla
 		return out[i].TimeIndex < out[j].TimeIndex
 	})
 	return out
+}
+
+func ongoingActionFromPlan(event model.StoryEventPlan, eventTime time.Time) model.OngoingAction {
+	return model.OngoingAction{
+		CharacterID:       event.CharacterID,
+		ActionType:        firstNonEmpty(event.ActionType, "action"),
+		Description:       event.Summary,
+		TargetLocationKey: event.LocationKey,
+		ParticipantIDs:    uniqueStrings(event.TargetActorIDs),
+		StartAt:           eventTime,
+		ArriveAt:          eventTime,
+		EffectAt:          eventTime,
+		EndsAt:            eventTime.Add(time.Hour),
+		ResourceKeys:      resourceKeysForPlan(event),
+		Status:            "ongoing",
+		Rationale:         event.Intent,
+	}
 }
 
 func actorIDsForPlan(event model.StoryEventPlan) []string {

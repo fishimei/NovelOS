@@ -94,3 +94,37 @@ func TestTimedActionFromOngoingActionCarriesIntent(t *testing.T) {
 		t.Fatal("timed action participant ids should not alias source action")
 	}
 }
+
+func TestOngoingActionFromPlanBuildsActionPayload(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	action := ongoingActionFromPlan(model.StoryEventPlan{
+		CharacterID:    "A",
+		LocationKey:    "loc:tavern",
+		ActionType:     "observe",
+		Summary:        "A watches for B",
+		Intent:         "confirm B's arrival",
+		TargetActorIDs: []string{"B", "B"},
+	}, start)
+
+	if action.CharacterID != "A" || action.ActionType != "observe" || action.TargetLocationKey != "loc:tavern" {
+		t.Fatalf("unexpected action identity: %#v", action)
+	}
+	if len(action.ParticipantIDs) != 1 || action.ParticipantIDs[0] != "B" {
+		t.Fatalf("participant ids = %#v, want [B]", action.ParticipantIDs)
+	}
+	if !action.EndsAt.Equal(start.Add(time.Hour)) || action.Status != "ongoing" {
+		t.Fatalf("unexpected action timing/status: %#v", action)
+	}
+	if !hasString(action.ResourceKeys, "character:A") || !hasString(action.ResourceKeys, "character:B") || !hasString(action.ResourceKeys, "location:loc:tavern") {
+		t.Fatalf("resource keys missing action targets: %#v", action.ResourceKeys)
+	}
+}
+
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
