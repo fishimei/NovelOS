@@ -7,6 +7,51 @@ import (
 	"github.com/fishimei/NovelOS/internal/application/model"
 )
 
+type recordingMemoryRepository struct {
+	calls    []string
+	memories map[string][]model.Memory
+}
+
+func (r *recordingMemoryRepository) ListByCharacterID(_ context.Context, characterID string, _ int) ([]model.Memory, error) {
+	r.calls = append(r.calls, characterID)
+	return append([]model.Memory(nil), r.memories[characterID]...), nil
+}
+
+func (r *recordingMemoryRepository) Create(context.Context, string, model.CreateMemoryInput) (model.Memory, error) {
+	return model.Memory{}, nil
+}
+
+func (r *recordingMemoryRepository) CreateBatch(context.Context, []model.Memory) error {
+	return nil
+}
+
+func TestLoadRecentMemoriesForCharactersOnlyLoadsSelectedCharacters(t *testing.T) {
+	repo := &recordingMemoryRepository{memories: map[string][]model.Memory{
+		"character_1": {{CharacterID: "character_1", Content: "Lin remembers the dock."}},
+		"character_2": {{CharacterID: "character_2", Content: "Shen distrusts Lin."}},
+		"character_3": {{CharacterID: "character_3", Content: "Yan waits elsewhere."}},
+	}}
+	snapshot := StoryContextSnapshot{
+		Session:        model.StorySession{LastAuthorMessage: "advance the dock scene"},
+		RecentMemories: map[string][]model.Memory{},
+	}
+	state := &storyRunState{run: model.StoryRun{RunID: "run_1", ProjectID: "project_1"}}
+
+	err := loadRecentMemoriesForCharacters(context.Background(), storyGeneratorDeps{memories: repo}, state, &snapshot, "project_1", []string{"character_1", "character_2", "character_1"})
+	if err != nil {
+		t.Fatalf("loadRecentMemoriesForCharacters() error = %v", err)
+	}
+	if len(repo.calls) != 2 || repo.calls[0] != "character_1" || repo.calls[1] != "character_2" {
+		t.Fatalf("memory recall calls = %#v, want selected unique characters only", repo.calls)
+	}
+	if len(snapshot.RecentMemories["character_1"]) != 1 || len(snapshot.RecentMemories["character_2"]) != 1 {
+		t.Fatalf("selected memories were not loaded: %#v", snapshot.RecentMemories)
+	}
+	if _, ok := snapshot.RecentMemories["character_3"]; ok {
+		t.Fatalf("unselected character memory leaked into snapshot: %#v", snapshot.RecentMemories)
+	}
+}
+
 func TestChooseNextStoryActorRecordsTurn(t *testing.T) {
 	state := &storyRunState{run: model.StoryRun{RunID: "run_1"}, maxTurns: 25}
 	turn, err := chooseNextStoryActor(context.Background(), storyGeneratorDeps{}, state, ChooseNextStoryActorInput{

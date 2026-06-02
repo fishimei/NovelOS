@@ -93,17 +93,36 @@ func loadStoryContext(ctx context.Context, deps storyGeneratorDeps, state *story
 	} else if !isNotFound(err) {
 		return StoryContextSnapshot{}, err
 	}
-	query := storyMemoryRecallQuery(session, snapshot.WorldState, snapshot.RecentChapters)
-	for _, character := range snapshot.Characters {
-		memories, err := recallCharacterMemories(ctx, deps, state.run.RunID, projectID, character.ID, query)
+	return snapshot, nil
+}
+
+func loadRecentMemoriesForCharacters(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, snapshot *StoryContextSnapshot, projectID string, characterIDs []string) error {
+	if snapshot == nil {
+		return nil
+	}
+	if projectID == "" {
+		projectID = state.run.ProjectID
+	}
+	if snapshot.RecentMemories == nil {
+		snapshot.RecentMemories = map[string][]model.Memory{}
+	}
+	query := storyMemoryRecallQuery(snapshot.Session, snapshot.WorldState, snapshot.RecentChapters)
+	for _, characterID := range uniqueStoryIDs(characterIDs) {
+		if characterID == "" {
+			continue
+		}
+		if _, ok := snapshot.RecentMemories[characterID]; ok {
+			continue
+		}
+		memories, err := recallCharacterMemories(ctx, deps, state.run.RunID, projectID, characterID, query)
 		if err != nil && !isNotFound(err) {
-			return StoryContextSnapshot{}, err
+			return err
 		}
 		if len(memories) > 0 {
-			snapshot.RecentMemories[character.ID] = memories
+			snapshot.RecentMemories[characterID] = memories
 		}
 	}
-	return snapshot, nil
+	return nil
 }
 
 func recallCharacterMemories(ctx context.Context, deps storyGeneratorDeps, runID string, projectID string, characterID string, query string) ([]model.Memory, error) {

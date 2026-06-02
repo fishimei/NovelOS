@@ -109,6 +109,10 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return model.StoryRunResult{}, fmt.Errorf("plan character actions: %w", err)
 	}
 	seedPlannedActionEvents(state, plannedActions)
+	sceneCharacterIDs := sceneCharacterIDsForContext(variable, snapshot.Characters, plannedActions)
+	if err := loadRecentMemoriesForCharacters(ctx, g.deps, state, &snapshot, input.Run.ProjectID, sceneCharacterIDs); err != nil {
+		return model.StoryRunResult{}, fmt.Errorf("load scene memories: %w", err)
+	}
 	sceneContext := g.buildSceneContext(input, snapshot, variable, plannedActions)
 	plan, finalVariable, err := g.simulateScene(ctx, input, snapshot, state, sceneContext, variable)
 	if err != nil {
