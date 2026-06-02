@@ -103,6 +103,7 @@ func TestOngoingActionFromPlanBuildsActionPayload(t *testing.T) {
 		ActionType:     "observe",
 		Summary:        "A watches for B",
 		Intent:         "confirm B's arrival",
+		DurationHours:  2,
 		TargetActorIDs: []string{"B", "B"},
 	}, start)
 
@@ -112,7 +113,7 @@ func TestOngoingActionFromPlanBuildsActionPayload(t *testing.T) {
 	if len(action.ParticipantIDs) != 1 || action.ParticipantIDs[0] != "B" {
 		t.Fatalf("participant ids = %#v, want [B]", action.ParticipantIDs)
 	}
-	if !action.EndsAt.Equal(start.Add(time.Hour)) || action.Status != "ongoing" {
+	if !action.EndsAt.Equal(start.Add(2*time.Hour)) || action.Status != "ongoing" {
 		t.Fatalf("unexpected action timing/status: %#v", action)
 	}
 	if !hasString(action.ResourceKeys, "character:A") || !hasString(action.ResourceKeys, "character:B") || !hasString(action.ResourceKeys, "location:loc:tavern") {

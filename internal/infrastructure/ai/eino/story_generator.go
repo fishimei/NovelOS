@@ -1376,9 +1376,14 @@ func eventPlanFromPlannedActions(plannedActions []ScenePlannedAction) []model.St
 		if characterID == "" || description == "" {
 			continue
 		}
+		durationHours := action.DurationHours
+		if durationHours <= 0 {
+			durationHours = 1
+		}
 		events = append(events, model.StoryEventPlan{
 			ID:             fmt.Sprintf("planned_action_%d", len(events)+1),
 			TimeIndex:      1,
+			DurationHours:  durationHours,
 			CharacterID:    characterID,
 			CharacterName:  strings.TrimSpace(action.CharacterName),
 			LocationKey:    firstText(strings.TrimSpace(action.TargetLocationKey), "scene"),

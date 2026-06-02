@@ -444,6 +444,7 @@ func TestConsumeSceneBatchKeepsPlannedActionsAuthoritative(t *testing.T) {
 		ActionType:        "action",
 		Description:       "Lin goes to the dock to confront Shen",
 		TargetLocationKey: "old_dock",
+		DurationHours:     3,
 		ParticipantIDs:    []string{"character_2"},
 		Rationale:         "force the letter trail into the open",
 	}})
@@ -467,6 +468,9 @@ func TestConsumeSceneBatchKeepsPlannedActionsAuthoritative(t *testing.T) {
 	}
 	if len(plan.EventPlan[0].TargetActorIDs) != 1 || plan.EventPlan[0].TargetActorIDs[0] != "character_2" {
 		t.Fatalf("planned action targets were not preserved: %#v", plan.EventPlan[0])
+	}
+	if plan.EventPlan[0].DurationHours != 3 {
+		t.Fatalf("planned action duration = %d, want 3", plan.EventPlan[0].DurationHours)
 	}
 	if len(plan.InteractionAnalysis.InteractionGroups) != 1 || plan.InteractionAnalysis.InteractionGroups[0].ID != "interaction_1" {
 		t.Fatalf("planned participants did not support interaction group: %#v", plan.InteractionAnalysis.InteractionGroups)

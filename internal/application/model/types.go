@@ -468,6 +468,7 @@ type PlotVariable struct {
 type StoryEventPlan struct {
 	ID             string   `json:"id"`
 	TimeIndex      int      `json:"time_index"`
+	DurationHours  int      `json:"duration_hours,omitempty"`
 	CharacterID    string   `json:"character_id,omitempty"`
 	CharacterName  string   `json:"character_name,omitempty"`
 	LocationKey    string   `json:"location_key"`

@@ -301,6 +301,7 @@ func storyEventPlanTime(baseStoryTime time.Time, event model.StoryEventPlan) tim
 }
 
 func ongoingActionFromPlan(event model.StoryEventPlan, eventTime time.Time) model.OngoingAction {
+	duration := time.Duration(maxInt(event.DurationHours, 1)) * time.Hour
 	return model.OngoingAction{
 		CharacterID:       event.CharacterID,
 		ActionType:        firstNonEmpty(event.ActionType, "action"),
@@ -310,7 +311,7 @@ func ongoingActionFromPlan(event model.StoryEventPlan, eventTime time.Time) mode
 		StartAt:           eventTime,
 		ArriveAt:          eventTime,
 		EffectAt:          eventTime,
-		EndsAt:            eventTime.Add(time.Hour),
+		EndsAt:            eventTime.Add(duration),
 		ResourceKeys:      resourceKeysForPlan(event),
 		Status:            "ongoing",
 		Rationale:         event.Intent,

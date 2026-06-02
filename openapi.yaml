@@ -1826,6 +1826,9 @@ components:
           type: string
         time_index:
           type: integer
+        duration_hours:
+          type: integer
+          description: Relative action duration in story hours. Defaults to 1 when omitted.
         character_id:
           type: string
         character_name:
