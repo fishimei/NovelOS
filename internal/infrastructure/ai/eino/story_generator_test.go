@@ -402,6 +402,54 @@ func TestConsumeSceneBatchTruncatesMaxTurnsAndInfersEvents(t *testing.T) {
 	}
 }
 
+func TestConsumeSceneBatchKeepsPlannedActionsAuthoritative(t *testing.T) {
+	generator := &StoryRunGenerator{maxTurns: 5}
+	input := port.StoryRunGenerationInput{Run: model.StoryRun{RunID: "run_1"}, Session: modelStorySession()}
+	snapshot := StoryContextSnapshot{Characters: []model.Character{
+		{ID: "character_1", Name: "Lin"},
+		{ID: "character_2", Name: "Shen"},
+		{ID: "character_3", Name: "Yan"},
+	}}
+	seed := StoryVariablePlan{PlotVariable: StoryNarrativePlotVariable{CoreChoice: "whether Lin confronts Shen"}}
+	state := &storyRunState{run: input.Run, session: input.Session, maxTurns: 5, characters: snapshot.Characters, variable: seed}
+	seedPlannedActionEvents(state, []ScenePlannedAction{{
+		CharacterID:       "character_1",
+		CharacterName:     "Lin",
+		ActionType:        "action",
+		Description:       "Lin goes to the dock to confront Shen",
+		TargetLocationKey: "old_dock",
+		ParticipantIDs:    []string{"character_2"},
+		Rationale:         "force the letter trail into the open",
+	}})
+	batch := sceneBatchResult{
+		Events: []model.StoryEventPlan{{CharacterID: "character_3", LocationKey: "hall", ActionType: "observe", Summary: "Yan starts an unrelated action"}},
+		InteractionGroups: []model.StoryInteractionGroup{
+			{ID: "interaction_1", LocationKey: "old_dock", CharacterIDs: []string{"character_1", "character_2"}, ShouldInteract: true},
+		},
+		Turns: []StoryTurnPlan{{TurnIndex: 1, ActorID: "character_1", ActionType: "speak", Speech: "You knew about the letter.", TargetActorIDs: []string{"character_2"}, InteractionGroupID: "interaction_1", LocationKey: "old_dock"}},
+	}
+
+	plan, _, err := generator.consumeSceneBatch(context.Background(), input, snapshot, state, batch, seed)
+	if err != nil {
+		t.Fatalf("consumeSceneBatch returned error: %v", err)
+	}
+	if len(plan.EventPlan) != 1 {
+		t.Fatalf("event plan = %#v, want one planned action", plan.EventPlan)
+	}
+	if plan.EventPlan[0].CharacterID != "character_1" || plan.EventPlan[0].Summary != "Lin goes to the dock to confront Shen" {
+		t.Fatalf("scene event overrode planned action: %#v", plan.EventPlan)
+	}
+	if len(plan.EventPlan[0].TargetActorIDs) != 1 || plan.EventPlan[0].TargetActorIDs[0] != "character_2" {
+		t.Fatalf("planned action targets were not preserved: %#v", plan.EventPlan[0])
+	}
+	if len(plan.InteractionAnalysis.InteractionGroups) != 1 || plan.InteractionAnalysis.InteractionGroups[0].ID != "interaction_1" {
+		t.Fatalf("planned participants did not support interaction group: %#v", plan.InteractionAnalysis.InteractionGroups)
+	}
+	if !containsIssue(plan.ContinuityIssues, "planned_actions are authoritative") {
+		t.Fatalf("expected ignored scene event issue, got %#v", plan.ContinuityIssues)
+	}
+}
+
 func TestReflectSceneUsesPerceptionIndex(t *testing.T) {
 	chatModel := &fakeStoryChatModel{responses: []string{
 		`{"summary":"Lin and Shen test each other.","character_takeaways":[{"character_id":"character_2","summary":"Shen suspects Lin."}],"memory_patch":{"character_memory_updates":[{"character_id":"character_2","type":"belief","content":"Lin denied carrying the letter.","importance":4}],"relationship_updates":[],"world_state_updates":[]}}`,

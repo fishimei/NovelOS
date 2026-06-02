@@ -34,6 +34,7 @@ type storyRunState struct {
 	session                model.StorySession
 	maxTurns               int
 	characters             []model.Character
+	plannedActions         []ScenePlannedAction
 	turns                  []StoryTurnPlan
 	events                 []model.StoryEventPlan
 	locationGroups         []model.StoryLocationGroup
@@ -463,7 +464,9 @@ func buildStoryLocationGroups(events []model.StoryEventPlan) []model.StoryLocati
 			group = &model.StoryLocationGroup{ID: fmt.Sprintf("location_group_%d", len(byLocation)+1), LocationKey: event.LocationKey, LocationName: event.LocationName}
 			byLocation[event.LocationKey] = group
 		}
-		group.CharacterIDs = appendUniqueString(group.CharacterIDs, event.CharacterID)
+		for _, characterID := range storyEventPlanCharacterIDs(event) {
+			group.CharacterIDs = appendUniqueString(group.CharacterIDs, characterID)
+		}
 		group.EventIDs = appendUniqueString(group.EventIDs, event.ID)
 		if group.LocationName == "" {
 			group.LocationName = event.LocationName
@@ -476,6 +479,15 @@ func buildStoryLocationGroups(events []model.StoryEventPlan) []model.StoryLocati
 		}
 	}
 	return groups
+}
+
+func storyEventPlanCharacterIDs(event model.StoryEventPlan) []string {
+	ids := make([]string, 0, 1+len(event.TargetActorIDs))
+	ids = appendUniqueString(ids, event.CharacterID)
+	for _, targetID := range event.TargetActorIDs {
+		ids = appendUniqueString(ids, targetID)
+	}
+	return ids
 }
 
 func locationGroupByKey(groups []model.StoryLocationGroup, locationKey string) (model.StoryLocationGroup, bool) {

@@ -107,6 +107,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	if err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("plan character actions: %w", err)
 	}
+	seedPlannedActionEvents(state, plannedActions)
 	sceneContext := g.buildSceneContext(input, snapshot, variable, plannedActions)
 	plan, finalVariable, err := g.simulateScene(ctx, input, snapshot, state, sceneContext, variable)
 	if err != nil {
@@ -841,6 +842,7 @@ func (g *StoryRunGenerator) simulateScene(ctx context.Context, input port.StoryR
 		return StoryPlanResult{}, StoryVariablePlan{}, fmt.Errorf("generate story scene stream: %w; fallback: %v", streamErr, fallbackErr)
 	}
 	state = &storyRunState{run: input.Run, session: input.Session, maxTurns: g.maxTurns, characters: snapshot.Characters, variable: seed}
+	seedPlannedActionEvents(state, sceneContext.PlannedActions)
 	return g.consumeSceneBatch(ctx, input, snapshot, state, batch, seed)
 }
 
@@ -1004,6 +1006,10 @@ func (c *sceneConsumer) consumePlotVariable(ctx context.Context, plot StoryNarra
 }
 
 func (c *sceneConsumer) consumeEvent(ctx context.Context, event model.StoryEventPlan) error {
+	if len(c.state.plannedActions) > 0 {
+		c.addIssue("ignored scene event because planned_actions are authoritative")
+		return nil
+	}
 	locationKey := strings.TrimSpace(event.LocationKey)
 	if locationKey == "" || strings.TrimSpace(event.Summary) == "" {
 		c.addIssue("跳过缺少 location_key 或 summary 的事件记录")
@@ -1288,6 +1294,44 @@ func fallbackEventPlanFromTurns(turns []StoryTurnPlan) []model.StoryEventPlan {
 			Summary:        summary,
 			Intent:         turn.Intent,
 			TargetActorIDs: turn.TargetActorIDs,
+		})
+	}
+	return events
+}
+
+func seedPlannedActionEvents(state *storyRunState, plannedActions []ScenePlannedAction) {
+	if len(plannedActions) == 0 {
+		return
+	}
+	events := eventPlanFromPlannedActions(plannedActions)
+	if len(events) == 0 {
+		return
+	}
+	state.mu.Lock()
+	state.plannedActions = append([]ScenePlannedAction(nil), plannedActions...)
+	state.events = events
+	state.locationGroups = buildStoryLocationGroups(events)
+	state.mu.Unlock()
+}
+
+func eventPlanFromPlannedActions(plannedActions []ScenePlannedAction) []model.StoryEventPlan {
+	events := make([]model.StoryEventPlan, 0, len(plannedActions))
+	for _, action := range plannedActions {
+		characterID := strings.TrimSpace(action.CharacterID)
+		description := strings.TrimSpace(action.Description)
+		if characterID == "" || description == "" {
+			continue
+		}
+		events = append(events, model.StoryEventPlan{
+			ID:             fmt.Sprintf("planned_action_%d", len(events)+1),
+			TimeIndex:      1,
+			CharacterID:    characterID,
+			CharacterName:  strings.TrimSpace(action.CharacterName),
+			LocationKey:    firstText(strings.TrimSpace(action.TargetLocationKey), "scene"),
+			ActionType:     normalizeStoryActionType(action.ActionType, "", description),
+			Summary:        description,
+			Intent:         strings.TrimSpace(action.Rationale),
+			TargetActorIDs: uniqueStoryIDs(action.ParticipantIDs),
 		})
 	}
 	return events
