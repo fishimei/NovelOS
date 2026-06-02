@@ -300,8 +300,12 @@ func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 		EventPlan: []model.StoryEventPlan{
 			{ID: "plan_1", TimeIndex: 1, CharacterID: "character_1", LocationKey: "old_dock", ActionType: "action", Summary: "arrive", TargetActorIDs: []string{"character_2"}},
 		},
-		Draft:       model.Draft{ID: "draft_1", Title: "event run", ChapterNumber: 1, Content: "body", Summary: "summary"},
-		MemoryPatch: model.MemoryPatch{ID: "patch_1"},
+		Turns: []model.StoryTurn{
+			{TurnIndex: 1, ActorID: "character_1", ActionType: "speak", Speech: "arrived", LocationKey: "old_dock"},
+		},
+		SceneSummary: "scene summary",
+		Draft:        model.Draft{ID: "draft_1", Title: "event run", ChapterNumber: 1, Content: "body", Summary: "summary"},
+		MemoryPatch:  model.MemoryPatch{ID: "patch_1"},
 		Events: []model.StoryEvent{
 			{ID: "event_head", Kind: model.EventKindSceneResolved, Summary: "summary"},
 		},
@@ -318,6 +322,9 @@ func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 	}
 	if len(got.EventPlan) != 1 || got.EventPlan[0].TargetActorIDs[0] != "character_2" {
 		t.Fatalf("unexpected event plan: %#v", got.EventPlan)
+	}
+	if got.SceneSummary != "scene summary" || len(got.Turns) != 1 || got.Turns[0].Speech != "arrived" {
+		t.Fatalf("unexpected scene fields: %#v", got)
 	}
 	if len(got.Events) != 1 || got.Events[0].ID != "event_head" {
 		t.Fatalf("unexpected events: %#v", got.Events)
@@ -433,7 +440,7 @@ func TestStoryChapterCutCreatesChapterSpanWithoutStateWrites(t *testing.T) {
 	if err := repos.StorySessions.UpdateRunHead(context.Background(), run.RunID, scene.ID); err != nil {
 		t.Fatalf("update run head: %v", err)
 	}
-	cutter := service.NewStoryChapterCutter(repos.StorySessions, repos.StoryEvents, repos.Chapters, repos.Audit, nil, txm, clock, ids)
+	cutter := service.NewStoryChapterCutter(repos.StorySessions, repos.StoryEvents, repos.Chapters, repos.Audit, txm, clock, ids)
 	cut, err := cutter.CutChapter(context.Background(), run.RunID, model.CutChapterInput{BranchID: branches[0].ID, FromEventID: genesis.ID, ToEventID: scene.ID, AuthorNote: "publish"})
 	if err != nil {
 		t.Fatalf("cut chapter: %v", err)

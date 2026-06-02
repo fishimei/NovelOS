@@ -38,17 +38,17 @@ func TestLoadAgentLimitDefaults(t *testing.T) {
 	if cfg.AI.StoryAgent.MaxTurns != DefaultStoryAgentMaxTurns {
 		t.Fatalf("StoryAgent.MaxTurns = %d, want %d", cfg.AI.StoryAgent.MaxTurns, DefaultStoryAgentMaxTurns)
 	}
-	if cfg.AI.StoryAgent.MaxReactSteps != DefaultStoryAgentMaxReactSteps {
-		t.Fatalf("StoryAgent.MaxReactSteps = %d, want %d", cfg.AI.StoryAgent.MaxReactSteps, DefaultStoryAgentMaxReactSteps)
+	if cfg.AI.StoryAgent.MaxSceneTokens != DefaultStoryAgentMaxSceneTokens {
+		t.Fatalf("StoryAgent.MaxSceneTokens = %d, want %d", cfg.AI.StoryAgent.MaxSceneTokens, DefaultStoryAgentMaxSceneTokens)
 	}
-	if cfg.AI.StoryAgent.MaxChapterTokens != DefaultStoryAgentMaxChapterTokens {
-		t.Fatalf("StoryAgent.MaxChapterTokens = %d, want %d", cfg.AI.StoryAgent.MaxChapterTokens, DefaultStoryAgentMaxChapterTokens)
+	if cfg.AI.StoryAgent.MaxReflectTokens != DefaultStoryAgentMaxReflectTokens {
+		t.Fatalf("StoryAgent.MaxReflectTokens = %d, want %d", cfg.AI.StoryAgent.MaxReflectTokens, DefaultStoryAgentMaxReflectTokens)
 	}
-	if cfg.AI.StoryAgent.MaxTurnTokens != DefaultStoryAgentMaxTurnTokens {
-		t.Fatalf("StoryAgent.MaxTurnTokens = %d, want %d", cfg.AI.StoryAgent.MaxTurnTokens, DefaultStoryAgentMaxTurnTokens)
+	if cfg.AI.StoryAgent.ScenePrompt == "" {
+		t.Fatal("StoryAgent.ScenePrompt is empty")
 	}
-	if cfg.AI.StoryAgent.MaxAssemblerTokens != DefaultStoryAgentMaxAssemblerTokens {
-		t.Fatalf("StoryAgent.MaxAssemblerTokens = %d, want %d", cfg.AI.StoryAgent.MaxAssemblerTokens, DefaultStoryAgentMaxAssemblerTokens)
+	if cfg.AI.StoryAgent.ReflectPrompt == "" {
+		t.Fatal("StoryAgent.ReflectPrompt is empty")
 	}
 	if cfg.AI.DialogueAgent.MaxSteps != DefaultDialogueAgentMaxSteps {
 		t.Fatalf("DialogueAgent.MaxSteps = %d, want %d", cfg.AI.DialogueAgent.MaxSteps, DefaultDialogueAgentMaxSteps)
@@ -64,10 +64,8 @@ func TestLoadAgentLimitOverrides(t *testing.T) {
 ai:
   story_agent:
     max_turns: 40
-    max_react_steps: 140
-    max_chapter_tokens: 6000
-    max_turn_tokens: 1500
-    max_assembler_tokens: 5000
+    max_scene_tokens: 9000
+    max_reflect_tokens: 3500
   dialogue_agent:
     max_steps: 48
     auto_pilot: true
@@ -83,17 +81,11 @@ ai:
 	if cfg.AI.StoryAgent.MaxTurns != 40 {
 		t.Fatalf("StoryAgent.MaxTurns = %d, want 40", cfg.AI.StoryAgent.MaxTurns)
 	}
-	if cfg.AI.StoryAgent.MaxReactSteps != 140 {
-		t.Fatalf("StoryAgent.MaxReactSteps = %d, want 140", cfg.AI.StoryAgent.MaxReactSteps)
+	if cfg.AI.StoryAgent.MaxSceneTokens != 9000 {
+		t.Fatalf("StoryAgent.MaxSceneTokens = %d, want 9000", cfg.AI.StoryAgent.MaxSceneTokens)
 	}
-	if cfg.AI.StoryAgent.MaxChapterTokens != 6000 {
-		t.Fatalf("StoryAgent.MaxChapterTokens = %d, want 6000", cfg.AI.StoryAgent.MaxChapterTokens)
-	}
-	if cfg.AI.StoryAgent.MaxTurnTokens != 1500 {
-		t.Fatalf("StoryAgent.MaxTurnTokens = %d, want 1500", cfg.AI.StoryAgent.MaxTurnTokens)
-	}
-	if cfg.AI.StoryAgent.MaxAssemblerTokens != 5000 {
-		t.Fatalf("StoryAgent.MaxAssemblerTokens = %d, want 5000", cfg.AI.StoryAgent.MaxAssemblerTokens)
+	if cfg.AI.StoryAgent.MaxReflectTokens != 3500 {
+		t.Fatalf("StoryAgent.MaxReflectTokens = %d, want 3500", cfg.AI.StoryAgent.MaxReflectTokens)
 	}
 	if cfg.AI.DialogueAgent.MaxSteps != 48 {
 		t.Fatalf("DialogueAgent.MaxSteps = %d, want 48", cfg.AI.DialogueAgent.MaxSteps)

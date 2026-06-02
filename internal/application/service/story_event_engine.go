@@ -8,12 +8,13 @@ import (
 )
 
 type TimedAction struct {
-	CharacterID string
-	LocationKey string
-	StartAt     time.Time
-	ArriveAt    time.Time
-	EffectAt    time.Time
-	EndsAt      time.Time
+	CharacterID    string
+	LocationKey    string
+	ParticipantIDs []string
+	StartAt        time.Time
+	ArriveAt       time.Time
+	EffectAt       time.Time
+	EndsAt         time.Time
 }
 
 type EventEngineResult struct {
@@ -68,6 +69,18 @@ func minTime(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+func timedActionFrom(action model.OngoingAction) TimedAction {
+	return TimedAction{
+		CharacterID:    action.CharacterID,
+		LocationKey:    action.TargetLocationKey,
+		ParticipantIDs: append([]string(nil), action.ParticipantIDs...),
+		StartAt:        action.StartAt,
+		ArriveAt:       action.ArriveAt,
+		EffectAt:       action.EffectAt,
+		EndsAt:         action.EndsAt,
+	}
 }
 
 func StoryEventFromAction(branch model.Branch, action model.OngoingAction, parentEventID string) model.StoryEvent {

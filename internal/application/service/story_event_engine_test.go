@@ -3,6 +3,8 @@ package service
 import (
 	"testing"
 	"time"
+
+	"github.com/fishimei/NovelOS/internal/application/model"
 )
 
 func TestResolveEventClockUsesActionEnds(t *testing.T) {
@@ -39,5 +41,30 @@ func TestResolveEventClockNoCollisionAfterActionEnds(t *testing.T) {
 	})
 	if len(result.Collisions) != 0 {
 		t.Fatalf("collisions = %d, want 0", len(result.Collisions))
+	}
+}
+
+func TestTimedActionFromOngoingActionCarriesIntent(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	action := model.OngoingAction{
+		CharacterID:       "A",
+		TargetLocationKey: "loc:tavern",
+		ParticipantIDs:    []string{"B"},
+		StartAt:           start,
+		ArriveAt:          start.Add(10 * time.Minute),
+		EffectAt:          start.Add(20 * time.Minute),
+		EndsAt:            start.Add(time.Hour),
+	}
+
+	timed := timedActionFrom(action)
+	if timed.CharacterID != action.CharacterID || timed.LocationKey != action.TargetLocationKey {
+		t.Fatalf("timed action identity = (%q, %q), want (%q, %q)", timed.CharacterID, timed.LocationKey, action.CharacterID, action.TargetLocationKey)
+	}
+	if len(timed.ParticipantIDs) != 1 || timed.ParticipantIDs[0] != "B" {
+		t.Fatalf("participant ids = %#v, want [B]", timed.ParticipantIDs)
+	}
+	timed.ParticipantIDs[0] = "mutated"
+	if action.ParticipantIDs[0] != "B" {
+		t.Fatal("timed action participant ids should not alias source action")
 	}
 }

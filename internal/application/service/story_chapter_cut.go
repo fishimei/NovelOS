@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
@@ -14,14 +13,13 @@ import (
 )
 
 type StoryChapterCutter struct {
-	sessions      port.StorySessionRepository
-	store         port.StoryEventStore
-	chapters      port.ChapterRepository
-	audit         port.AuditRepository
-	memoryService port.CharacterMemoryService
-	tx            port.TxManager
-	clock         port.Clock
-	ids           port.IDGenerator
+	sessions port.StorySessionRepository
+	store    port.StoryEventStore
+	chapters port.ChapterRepository
+	audit    port.AuditRepository
+	tx       port.TxManager
+	clock    port.Clock
+	ids      port.IDGenerator
 }
 
 func NewStoryChapterCutter(
@@ -29,20 +27,18 @@ func NewStoryChapterCutter(
 	store port.StoryEventStore,
 	chapters port.ChapterRepository,
 	audit port.AuditRepository,
-	memoryService port.CharacterMemoryService,
 	tx port.TxManager,
 	clock port.Clock,
 	ids port.IDGenerator,
 ) *StoryChapterCutter {
 	return &StoryChapterCutter{
-		sessions:      sessions,
-		store:         store,
-		chapters:      chapters,
-		audit:         audit,
-		memoryService: memoryService,
-		tx:            tx,
-		clock:         clock,
-		ids:           ids,
+		sessions: sessions,
+		store:    store,
+		chapters: chapters,
+		audit:    audit,
+		tx:       tx,
+		clock:    clock,
+		ids:      ids,
 	}
 }
 
@@ -69,7 +65,6 @@ func (c *StoryChapterCutter) CutChapter(ctx context.Context, runID string, input
 
 	var chapter model.Chapter
 	var span model.ChapterEventSpan
-	var memories []model.Memory
 	err = c.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
 		branch, events, err := c.eventSpan(txCtx, run, input)
 		if err != nil {
@@ -80,7 +75,7 @@ func (c *StoryChapterCutter) CutChapter(ctx context.Context, runID string, input
 		} else if !isNotFound(err) {
 			return err
 		}
-		chapter, memories, err = c.createChapterFromEvents(txCtx, run, input, events)
+		chapter, err = c.createChapterFromEvents(txCtx, run, input, events)
 		if err != nil {
 			return err
 		}
@@ -105,12 +100,6 @@ func (c *StoryChapterCutter) CutChapter(ctx context.Context, runID string, input
 	})
 	if err != nil {
 		return model.CutChapterResult{}, err
-	}
-	if err := c.flushExternalMemories(ctx, run, chapter, memories); err != nil {
-		log.Printf("story run %s external memory flush failed: %v", runID, err)
-		c.appendExternalMemoryFlushFailedEvent(ctx, runID, err)
-	} else if c.memoryService != nil && len(memories) > 0 {
-		c.appendExternalMemoryCommittedEvent(ctx, runID, chapter, len(memories))
 	}
 	updatedRun, err := c.sessions.GetRunByID(ctx, runID)
 	if err != nil {
@@ -170,24 +159,26 @@ func (c *StoryChapterCutter) eventSpan(ctx context.Context, run model.StoryRun, 
 	return model.Branch{}, nil, pkgerr.Validation("event span is not present on branch")
 }
 
-func (c *StoryChapterCutter) createChapterFromEvents(ctx context.Context, run model.StoryRun, input model.CutChapterInput, events []model.StoryEvent) (model.Chapter, []model.Memory, error) {
+func (c *StoryChapterCutter) createChapterFromEvents(ctx context.Context, run model.StoryRun, input model.CutChapterInput, events []model.StoryEvent) (model.Chapter, error) {
 	title := strings.TrimSpace(input.Title)
 	summaries := make([]string, 0)
 	contents := make([]string, 0)
-	memories := make([]model.Memory, 0)
 	chapterNumber := 0
 	for _, event := range events {
 		if event.Kind != model.EventKindSceneResolved {
 			continue
 		}
 		draft := draftFromEvent(event)
+		sceneSummary := summaryFromEvent(event)
 		if title == "" {
 			title = draft.Title
 		}
 		if draft.ChapterNumber > 0 && chapterNumber == 0 {
 			chapterNumber = draft.ChapterNumber
 		}
-		if draft.Summary != "" {
+		if sceneSummary != "" {
+			summaries = append(summaries, sceneSummary)
+		} else if draft.Summary != "" {
 			summaries = append(summaries, draft.Summary)
 		} else if event.Summary != "" {
 			summaries = append(summaries, event.Summary)
@@ -195,28 +186,11 @@ func (c *StoryChapterCutter) createChapterFromEvents(ctx context.Context, run mo
 		if draft.Content != "" {
 			contents = append(contents, draft.Content)
 		}
-		for _, update := range event.StateDelta.CharacterMemoryUpdates {
-			if update.CharacterID == "" || update.Content == "" {
-				continue
-			}
-			memories = append(memories, model.Memory{
-				ID:          generatedID(c.ids, c.clock, "memory"),
-				CharacterID: update.CharacterID,
-				Content:     update.Content,
-				Importance:  update.Importance,
-				Note:        domain.MemoryScopeExternalCommitted + ":" + domain.MemoryCommitTriggerChapterCut,
-				Status:      "active",
-				CreatedAt:   currentTime(c.clock),
-			})
-		}
-	}
-	if len(contents) == 0 {
-		return model.Chapter{}, nil, pkgerr.Validation("event span contains no rendered scene content")
 	}
 	if chapterNumber == 0 {
 		next, err := c.nextChapterNumber(ctx, run.ProjectID)
 		if err != nil {
-			return model.Chapter{}, nil, err
+			return model.Chapter{}, err
 		}
 		chapterNumber = next
 	}
@@ -238,12 +212,9 @@ func (c *StoryChapterCutter) createChapterFromEvents(ctx context.Context, run mo
 	}
 	saved, err := c.chapters.Create(ctx, chapter)
 	if err != nil {
-		return model.Chapter{}, nil, err
+		return model.Chapter{}, err
 	}
-	for i := range memories {
-		memories[i].SourceChapterID = saved.ID
-	}
-	return saved, memories, nil
+	return saved, nil
 }
 
 func (c *StoryChapterCutter) nextChapterNumber(ctx context.Context, projectID string) (int, error) {
@@ -270,16 +241,19 @@ func draftFromEvent(event model.StoryEvent) model.Draft {
 	return draft
 }
 
-func (c *StoryChapterCutter) flushExternalMemories(ctx context.Context, run model.StoryRun, chapter model.Chapter, memories []model.Memory) error {
-	if c.memoryService == nil || len(memories) == 0 {
-		return nil
+func summaryFromEvent(event model.StoryEvent) string {
+	if event.Payload == nil {
+		return event.Summary
 	}
-	return c.memoryService.Commit(ctx, port.CharacterMemoryCommitInput{
-		ProjectID: run.ProjectID,
-		RunID:     run.RunID,
-		Chapter:   chapter,
-		Memories:  memories,
-	})
+	value, ok := event.Payload["summary"]
+	if !ok {
+		return event.Summary
+	}
+	summary, ok := value.(string)
+	if !ok {
+		return event.Summary
+	}
+	return strings.TrimSpace(summary)
 }
 
 func (c *StoryChapterCutter) appendCutEvent(ctx context.Context, runID string, chapter model.Chapter, span model.ChapterEventSpan, authorNote string) error {
@@ -298,45 +272,8 @@ func (c *StoryChapterCutter) appendCutEvent(ctx context.Context, runID string, c
 			"from_event_id":  span.FromEventID,
 			"to_event_id":    span.ToEventID,
 			"author_note":    authorNote,
-			"memory_scope":   domain.MemoryScopeExternalCommitted,
-			"memory_trigger": domain.MemoryCommitTriggerChapterCut,
 		},
 		CreatedAt: currentTime(c.clock),
 	})
 	return err
-}
-
-func (c *StoryChapterCutter) appendExternalMemoryCommittedEvent(ctx context.Context, runID string, chapter model.Chapter, memoryCount int) {
-	if c.audit == nil {
-		return
-	}
-	_, _ = c.audit.AppendRunEvent(ctx, model.RunEvent{
-		RunKind:   "story",
-		RunID:     runID,
-		EventName: "external_memory_committed",
-		Payload: map[string]any{
-			"chapter_id":   chapter.ID,
-			"memory_count": memoryCount,
-			"scope":        domain.MemoryScopeExternalCommitted,
-			"trigger":      domain.MemoryCommitTriggerChapterCut,
-		},
-		CreatedAt: currentTime(c.clock),
-	})
-}
-
-func (c *StoryChapterCutter) appendExternalMemoryFlushFailedEvent(ctx context.Context, runID string, err error) {
-	if c.audit == nil {
-		return
-	}
-	if _, appendErr := c.audit.AppendRunEvent(ctx, model.RunEvent{
-		RunKind:   "story",
-		RunID:     runID,
-		EventName: domain.EventGenerationStep,
-		Payload: map[string]any{
-			"step":  "external_memory_flush_failed",
-			"error": err.Error(),
-		},
-	}); appendErr != nil {
-		log.Printf("append story run %s external memory failure event failed: %v", runID, appendErr)
-	}
 }

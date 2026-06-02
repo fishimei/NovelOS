@@ -75,6 +75,7 @@ const (
 const (
 	MemoryPatchStatusRunLocal             = "run_local"
 	MemoryScopeExternalCommitted          = "external_committed"
+	MemoryCommitTriggerRunCompletion      = "run_completion"
 	MemoryCommitTriggerChapterCut         = "chapter_cut"
 	MemoryCommitTriggerExplicitCheckpoint = "explicit_checkpoint"
 )

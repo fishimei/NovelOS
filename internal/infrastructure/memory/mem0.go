@@ -76,8 +76,12 @@ func (s *Mem0Service) Commit(ctx context.Context, input port.CharacterMemoryComm
 				"memory_id":         memory.ID,
 				"character_id":      memory.CharacterID,
 				"source_chapter_id": memory.SourceChapterID,
+				"source_run_id":     memory.SourceRunID,
+				"branch_id":         memory.BranchID,
+				"source_event_id":   memory.SourceEventID,
 				"importance":        memory.Importance,
 				"status":            memory.Status,
+				"note":              memory.Note,
 				"canon_status":      "committed",
 			},
 			"infer": false,
@@ -158,6 +162,12 @@ func (r mem0SearchResponse) memories(characterID string) []model.Memory {
 		if memory.SourceChapterID == "" {
 			memory.SourceChapterID = stringValue(item.Metadata, "chapter_id")
 		}
+		memory.SourceRunID = stringValue(item.Metadata, "source_run_id")
+		if memory.SourceRunID == "" {
+			memory.SourceRunID = stringValue(item.Metadata, "run_id")
+		}
+		memory.BranchID = stringValue(item.Metadata, "branch_id")
+		memory.SourceEventID = stringValue(item.Metadata, "source_event_id")
 		if memory.Status == "" {
 			memory.Status = "active"
 		}

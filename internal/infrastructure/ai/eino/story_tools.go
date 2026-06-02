@@ -8,9 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
-
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/domain"
@@ -44,46 +41,6 @@ type storyRunState struct {
 	stopReason             string
 	summary                string
 	variable               StoryVariablePlan
-}
-
-func newStoryTools(deps storyGeneratorDeps, state *storyRunState) ([]tool.BaseTool, error) {
-	loadContext, err := utils.InferTool("load_story_context", "读取当前 story run 的项目状态、角色、关系、世界状态、章节和近期记忆。", func(ctx context.Context, input LoadStoryContextInput) (StoryContextSnapshot, error) {
-		return loadStoryContext(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	recordEvent, err := utils.InferTool("record_story_event", "记录事件模拟阶段中某个角色在某个地点的行动。必须提供 location_key、action_type 和 summary。", func(ctx context.Context, input RecordStoryEventInput) (StoryEventRecordResult, error) {
-		return recordStoryEvent(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	selectInteraction, err := utils.InferTool("select_story_interaction", "从同地点候选组中选择会实际发生交涉的角色组。角色必须来自同一个候选地点。", func(ctx context.Context, input SelectStoryInteractionInput) (model.StoryInteractionGroup, error) {
-		return selectStoryInteraction(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	chooseActor, err := utils.InferTool("choose_next_story_actor", "记录后续剧情阶段产生的角色回合，并实时推送给前端。只提交哪个角色说了什么、做了什么，不要提交完整章节正文或关系分析。", func(ctx context.Context, input ChooseNextStoryActorInput) (StoryTurnPlan, error) {
-		return chooseNextStoryActor(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	decideStop, err := utils.InferTool("decide_story_stop", "判断当前演绎是否应该停止。达到最大回合数时工具会强制停止。", func(ctx context.Context, input DecideStoryStopInput) (StoryStopDecision, error) {
-		return decideStoryStop(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	finalizePlan, err := utils.InferTool("finalize_story_plan", "提交本次回合裁决的结构化摘要。停止时必须调用。", func(ctx context.Context, input FinalizeStoryPlanInput) (StoryPlanResult, error) {
-		return finalizeStoryPlan(ctx, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return []tool.BaseTool{loadContext, recordEvent, selectInteraction, chooseActor, decideStop, finalizePlan}, nil
 }
 
 func loadStoryContext(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, input LoadStoryContextInput) (StoryContextSnapshot, error) {

@@ -43,7 +43,7 @@ func TestStoryChapterCutterCutLatestCompletedSpanResolvesRunSpan(t *testing.T) {
 			},
 		},
 	}
-	cutter := NewStoryChapterCutter(sessions, store, &latestSpanChapters{}, nil, nil, latestSpanTx{}, nil, latestSpanIDs{})
+	cutter := NewStoryChapterCutter(sessions, store, &latestSpanChapters{}, nil, latestSpanTx{}, nil, latestSpanIDs{})
 
 	result, err := cutter.CutLatestCompletedSpan(context.Background(), "run_1", model.CutChapterInput{Title: "Latest"})
 	if err != nil {
@@ -57,6 +57,47 @@ func TestStoryChapterCutterCutLatestCompletedSpanResolvesRunSpan(t *testing.T) {
 	}
 	if !sessions.markedCut {
 		t.Fatal("expected story run to be marked cut")
+	}
+}
+
+func TestStoryChapterCutterAllowsSummaryOnlyScene(t *testing.T) {
+	run := model.StoryRun{
+		RunID:       "run_1",
+		SessionID:   "story_1",
+		ProjectID:   "project_1",
+		BranchID:    "branch_1",
+		BaseEventID: "event_1",
+		HeadEventID: "event_2",
+		Status:      domain.RunStatusCompleted,
+		CreatedAt:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	sessions := &latestSpanStorySessions{run: run}
+	store := &latestSpanEventStore{
+		branch: model.Branch{ID: "branch_1", ProjectID: "project_1", SessionID: "story_1"},
+		events: []model.StoryEvent{
+			{ID: "event_1", ProjectID: "project_1", SessionID: "story_1", BranchID: "branch_1", Kind: model.EventKindGenesis},
+			{
+				ID:        "event_2",
+				ProjectID: "project_1",
+				SessionID: "story_1",
+				BranchID:  "branch_1",
+				Kind:      model.EventKindSceneResolved,
+				Summary:   "fallback summary",
+				Payload:   map[string]any{"summary": "scene summary"},
+			},
+		},
+	}
+	cutter := NewStoryChapterCutter(sessions, store, &latestSpanChapters{}, nil, latestSpanTx{}, nil, latestSpanIDs{})
+
+	result, err := cutter.CutLatestCompletedSpan(context.Background(), "run_1", model.CutChapterInput{Title: "Latest"})
+	if err != nil {
+		t.Fatalf("CutLatestCompletedSpan() error = %v", err)
+	}
+	if result.Chapter.Content != "" {
+		t.Fatalf("chapter content = %q, want empty", result.Chapter.Content)
+	}
+	if result.Chapter.Summary != "scene summary" {
+		t.Fatalf("chapter summary = %q", result.Chapter.Summary)
 	}
 }
 

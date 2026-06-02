@@ -22,6 +22,8 @@ type storyRunResultPayload struct {
 	HeadEventID            string                             `json:"head_event_id,omitempty"`
 	PlotVariable           model.PlotVariable                 `json:"plot_variable"`
 	EventPlan              []model.StoryEventPlan             `json:"event_plan"`
+	Turns                  []model.StoryTurn                  `json:"turns"`
+	SceneSummary           string                             `json:"scene_summary"`
 	InteractionAnalysis    model.StoryInteractionAnalysis     `json:"interaction_analysis"`
 	InteractionTranscripts []model.StoryInteractionTranscript `json:"interaction_transcripts"`
 	Draft                  model.Draft                        `json:"draft"`
@@ -992,6 +994,8 @@ func (r *storySessionRepository) GetRunResultByID(ctx context.Context, runID str
 		HeadEventID:            payload.HeadEventID,
 		PlotVariable:           payload.PlotVariable,
 		EventPlan:              payload.EventPlan,
+		Turns:                  payload.Turns,
+		SceneSummary:           payload.SceneSummary,
 		InteractionAnalysis:    payload.InteractionAnalysis,
 		InteractionTranscripts: payload.InteractionTranscripts,
 		Draft:                  payload.Draft,
@@ -1008,6 +1012,8 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 		HeadEventID:            result.HeadEventID,
 		PlotVariable:           result.PlotVariable,
 		EventPlan:              result.EventPlan,
+		Turns:                  result.Turns,
+		SceneSummary:           result.SceneSummary,
 		InteractionAnalysis:    result.InteractionAnalysis,
 		InteractionTranscripts: result.InteractionTranscripts,
 		Draft:                  result.Draft,

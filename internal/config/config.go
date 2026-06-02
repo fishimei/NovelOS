@@ -1,6 +1,3 @@
-// Package config 负责应用程序配置的管理。
-// 支持从 YAML 配置文件、环境变量和命令行参数加载配置。
-// 环境变量使用 NOVEL_OS_ 前缀，例如：NOVEL_OS_POSTGRES_DSN 映射到配置中的 postgres.dsn。
 package config
 
 import (
@@ -11,8 +8,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config 是应用程序的根配置结构，聚合了所有子配置块。
-// 使用 mapstructure 标签以便从 YAML/JSON/环境变量等来源反序列化。
 type Config struct {
 	App         AppConfig         `mapstructure:"app"`
 	Postgres    PostgresConfig    `mapstructure:"postgres"`
@@ -23,14 +18,12 @@ type Config struct {
 	RunExecutor RunExecutorConfig `mapstructure:"run_executor"`
 }
 
-// AppConfig 包含应用运行时的基本配置。
 type AppConfig struct {
 	Name string `mapstructure:"name"`
 	Env  string `mapstructure:"env"`
 	Port int    `mapstructure:"port"`
 }
 
-// PostgresConfig 包含 PostgreSQL 数据库连接配置。
 type PostgresConfig struct {
 	DSN          string `mapstructure:"dsn"`
 	MaxOpenConns int    `mapstructure:"max_open_conns"`
@@ -38,7 +31,6 @@ type PostgresConfig struct {
 	AutoMigrate  bool   `mapstructure:"auto_migrate"`
 }
 
-// AIConfig 包含 AI 模型提供者的配置。
 type AIConfig struct {
 	Provider      string              `mapstructure:"provider"`
 	BaseURL       string              `mapstructure:"base_url"`
@@ -54,17 +46,13 @@ type SetupAgentConfig struct {
 }
 
 type StoryAgentConfig struct {
-	MaxTurns           int    `mapstructure:"max_turns"`
-	MaxReactSteps      int    `mapstructure:"max_react_steps"`
-	MaxChapterTokens   int    `mapstructure:"max_chapter_tokens"`
-	MaxTurnTokens      int    `mapstructure:"max_turn_tokens"`
-	MaxAssemblerTokens int    `mapstructure:"max_assembler_tokens"`
-	ControllerPrompt   string `mapstructure:"controller_prompt"`
-	ToolPrompt         string `mapstructure:"tool_prompt"`
-	ResultPrompt       string `mapstructure:"result_prompt"`
-	NarrativePrompt    string `mapstructure:"narrative_prompt"`
-	VariablePrompt     string `mapstructure:"variable_prompt"`
-	SimulationPrompt   string `mapstructure:"simulation_prompt"`
+	MaxTurns         int    `mapstructure:"max_turns"`
+	MaxSceneTokens   int    `mapstructure:"max_scene_tokens"`
+	MaxReflectTokens int    `mapstructure:"max_reflect_tokens"`
+	ScenePrompt      string `mapstructure:"scene_prompt"`
+	ReflectPrompt    string `mapstructure:"reflect_prompt"`
+	ResultPrompt     string `mapstructure:"result_prompt"`
+	SimulationPrompt string `mapstructure:"simulation_prompt"`
 }
 
 type DialogueAgentConfig struct {
@@ -74,12 +62,10 @@ type DialogueAgentConfig struct {
 }
 
 const (
-	DefaultStoryAgentMaxTurns           = 25
-	DefaultStoryAgentMaxReactSteps      = 80
-	DefaultStoryAgentMaxChapterTokens   = 4000
-	DefaultStoryAgentMaxTurnTokens      = 1200
-	DefaultStoryAgentMaxAssemblerTokens = 4000
-	DefaultDialogueAgentMaxSteps        = 16
+	DefaultStoryAgentMaxTurns         = 25
+	DefaultStoryAgentMaxSceneTokens   = 7000
+	DefaultStoryAgentMaxReflectTokens = 3000
+	DefaultDialogueAgentMaxSteps      = 16
 )
 
 type MemoryConfig struct {
@@ -120,7 +106,6 @@ type WorldConfig struct {
 	MapHeight     int    `mapstructure:"map_height"`
 }
 
-// SSEConfig 包含服务器发送事件（Server-Sent Events）的配置。
 type SSEConfig struct {
 	HeartbeatSeconds int `mapstructure:"heartbeat_seconds"`
 }
@@ -135,34 +120,42 @@ type RunExecutorConfig struct {
 
 const defaultSetupAgentPrompt = `你是 NovelOS 的 Setup 编剧 agent。用户只需要说想创作哪类小说或给出粗略灵感，你要主动推理类型约定、世界压力、人物功能位、关系张力和初始状态。不要把 setup 做成问卷；只有无法合理推断且会改变主方向的信息，才放进 open_questions。输出必须是 JSON 对象。`
 
-const defaultStoryAgentControllerPrompt = `你是 NovelOS 的故事回合裁决 agent。你的职责是围绕当前故事状态判断演绎是否应该停止，以及下一轮应该由谁发言或产生动作。每次需要推进时调用 choose_next_story_actor；需要停止时调用 decide_story_stop 并 finalize_story_plan。最多 25 个业务回合。`
+const defaultStoryAgentScenePrompt = `You are NovelOS' single scene simulator. Simulate only what happens: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+Do not write chapter prose. Do not output content or draft_delta. Do not output memory_patch.
 
-const defaultStoryAgentToolPrompt = `load_story_context 用于读取当前故事上下文；choose_next_story_actor 用于记录下一行动者；decide_story_stop 用于判断是否停止；finalize_story_plan 用于提交结构化摘要。不要直接编造已存在事实，不要写入数据库。`
+Perspective contract:
+- You receive shared_observable and one private character_view per character.
+- A character's speech/action must be grounded only in shared_observable plus that character's own character_view.
+- Do not let a character use another character's secrets, private_attitude, or non-public known_facts unless that information was spoken or observed.
+- Character misreadings should shape behavior; do not correct them with omniscient truth.
 
-const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘要，供后端生成剧情变量、逐回合正文和状态补丁。`
+Output strict NDJSON, one JSON object per line, no array, no markdown fence.
+Order: one plot_variable, then event records, then 0-3 interaction records, then turn records, then one stop record.
+Allowed record types only:
+{"type":"plot_variable","plot_variable":{...}}
+{"type":"event","event":{...}}
+{"type":"interaction","interaction_group":{...}}
+{"type":"turn","turn":{...}}
+{"type":"stop","stop_reason":"..."}
 
-const defaultStoryAgentNarrativePrompt = `你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。`
+Every event must include location_key, action_type, and summary. interaction_group.character_ids must share the same location. Maximum turns: constraints.max_turns.`
 
-const defaultStoryAgentVariablePrompt = `你是 NovelOS 的剧情变量 agent。你的职责是在角色演绎之前，基于作者意图、当前故事状态、世界压力、角色目标和关系张力，生成一个会推动本章状态变化的核心变量，并为每个相关角色生成受限视角下可感知的变量切片。全局剧情变量可以知道完整结构；角色切片只能包含该角色合理知道、误读、感受到的压力和行动倾向。输出必须是 JSON 对象。`
+const defaultStoryAgentReflectPrompt = `You are NovelOS' scene reflection and memory agent. Given a completed simulated scene plus perception_index and prior_memories, output exactly one JSON object:
+{"summary":"...","character_takeaways":[{"character_id":"...","summary":"..."}],"memory_patch":{"character_memory_updates":[],"relationship_updates":[],"world_state_updates":[]}}
+
+Memory perspective contract:
+- Each character_memory_update must be based only on turn/event ids visible to that character in perception_index.
+- A character not present may record only observable external facts, not private dialogue.
+- Misreadings are allowed as beliefs when grounded in that character's view; do not correct with global truth.
+- Deduplicate prior_memories and write only new or changed memories from this scene.
+Do not write prose. Output JSON only.`
+
+const defaultStoryAgentResultPrompt = `You are NovelOS' non-streaming scene simulation fallback. Output one JSON object with plot_variable, event_plan or events, interaction_groups, turns, and stop_reason. Do not output title, content, draft_delta, or memory_patch.`
 
 const defaultStoryAgentSimulationPrompt = `你是 NovelOS 的世界模拟行动裁决 agent。你会收到角色当前位置、坐标、当前地点势力影响、附近地点与距离信息。你只决定该角色在这些已提供信息下接下来要做什么、持续多久、为什么。不要写章节正文，不要制造多人相遇，不要让角色感知未提供的信息。输出必须是 JSON 对象，包含 action_type、description、duration_hours、rationale。`
 
 const defaultDialogueAgentPrompt = `你是 NovelOS 的统一对话 Agent。每轮必须先调用 load_dialogue_context。你的职责是和用户交流、澄清目标、读取当前项目状态，并通过 propose_* 工具提出可确认选项。用户未明确确认前，不能调用 execute_confirmed_action；不要声称已经修改项目状态。涉及 setup/story 状态变更时，只创建待确认 option；若缺少 run/session/draft ID，先 inspect 或 list，再不足则提出澄清问题。结束本轮必须调用 finalize_dialogue_response。`
 
-// Load 从多个来源加载配置并返回 Config 结构体。
-// 配置优先级（从高到低）：命令行参数 > 环境变量 > 配置文件 > 默认值。
-// 具体步骤如下：
-// 1. 创建空的 Viper 实例（不共享全局配置）
-// 2. 设置环境变量前缀为 NOVEL_OS，使 NOVEL_OS_POSTGRES_DSN 映射到 postgres.dsn
-// 3. 启用自动环境变量映射（将环境变量绑定到配置键）
-// 4. 设置所有配置项的默认值（确保即使没有配置也能启动）
-// 5. 如果传入了配置文件路径：
-//   - 设置配置文件路径
-//   - 读取配置文件（忽略"文件不存在"错误，因为可能有环境变量覆盖）
-//   - 如果有其他读取错误，返回错误
-//
-// 6. 将配置反序列化到 Config 结构体
-// 7. 返回配置和任何反序列化错误
 func Load(configFile string) (Config, error) {
 	v := viper.New()
 	v.SetEnvPrefix("NOVEL_OS")
@@ -181,15 +174,11 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("ai.model", "claude-sonnet-4-6")
 	v.SetDefault("ai.setup_agent.prompt", defaultSetupAgentPrompt)
 	v.SetDefault("ai.story_agent.max_turns", DefaultStoryAgentMaxTurns)
-	v.SetDefault("ai.story_agent.max_react_steps", DefaultStoryAgentMaxReactSteps)
-	v.SetDefault("ai.story_agent.max_chapter_tokens", DefaultStoryAgentMaxChapterTokens)
-	v.SetDefault("ai.story_agent.max_turn_tokens", DefaultStoryAgentMaxTurnTokens)
-	v.SetDefault("ai.story_agent.max_assembler_tokens", DefaultStoryAgentMaxAssemblerTokens)
-	v.SetDefault("ai.story_agent.controller_prompt", defaultStoryAgentControllerPrompt)
-	v.SetDefault("ai.story_agent.tool_prompt", defaultStoryAgentToolPrompt)
+	v.SetDefault("ai.story_agent.max_scene_tokens", DefaultStoryAgentMaxSceneTokens)
+	v.SetDefault("ai.story_agent.max_reflect_tokens", DefaultStoryAgentMaxReflectTokens)
+	v.SetDefault("ai.story_agent.scene_prompt", defaultStoryAgentScenePrompt)
+	v.SetDefault("ai.story_agent.reflect_prompt", defaultStoryAgentReflectPrompt)
 	v.SetDefault("ai.story_agent.result_prompt", defaultStoryAgentResultPrompt)
-	v.SetDefault("ai.story_agent.narrative_prompt", defaultStoryAgentNarrativePrompt)
-	v.SetDefault("ai.story_agent.variable_prompt", defaultStoryAgentVariablePrompt)
 	v.SetDefault("ai.story_agent.simulation_prompt", defaultStoryAgentSimulationPrompt)
 	v.SetDefault("ai.dialogue_agent.prompt", defaultDialogueAgentPrompt)
 	v.SetDefault("ai.dialogue_agent.max_steps", DefaultDialogueAgentMaxSteps)

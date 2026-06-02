@@ -29,6 +29,7 @@ type StorySessionAdvancer struct {
 	store     port.StoryEventStore
 	audit     port.AuditRepository
 	generator port.StoryRunGenerator
+	memory    port.CharacterMemoryService
 	events    port.GenerationEventStream
 	clock     port.Clock
 	ids       port.IDGenerator
@@ -39,11 +40,12 @@ func NewStorySessionAdvancer(
 	store port.StoryEventStore,
 	audit port.AuditRepository,
 	generator port.StoryRunGenerator,
+	memory port.CharacterMemoryService,
 	events port.GenerationEventStream,
 	clock port.Clock,
 	ids port.IDGenerator,
 ) *StorySessionAdvancer {
-	return &StorySessionAdvancer{sessions: sessions, store: store, audit: audit, generator: generator, events: events, clock: clock, ids: ids}
+	return &StorySessionAdvancer{sessions: sessions, store: store, audit: audit, generator: generator, memory: memory, events: events, clock: clock, ids: ids}
 }
 
 func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error) {
@@ -146,12 +148,13 @@ func (s *StorySessionAdvancer) Generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
+	s.commitCharacterMemories(ctx, run, result)
 	if err := s.sessions.SaveRunResult(ctx, runID, result); err != nil {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
 	session.Status = domain.SessionStatusIdle
-	session.CurrentPlotVariableSummary = result.PlotVariable.CoreChoice
+	session.CurrentPlotVariableSummary = firstNonEmpty(result.SceneSummary, result.PlotVariable.CoreChoice)
 	if _, err := s.sessions.UpdateSession(ctx, session); err != nil {
 		s.failRun(ctx, runID, session, err)
 		return
@@ -212,9 +215,11 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		ActorIDs:      actorIDsForResult(result),
 		LocationKey:   primaryLocationKey(result),
 		ResourceKeys:  resourceKeysForResult(result),
-		Summary:       firstNonEmpty(result.Draft.Summary, result.PlotVariable.CoreChoice),
+		Summary:       firstNonEmpty(result.SceneSummary, result.PlotVariable.CoreChoice),
 		Payload: map[string]any{
 			"draft":                   result.Draft,
+			"summary":                 result.SceneSummary,
+			"turns":                   result.Turns,
 			"memory_patch":            result.MemoryPatch,
 			"memory_scope":            domain.MemoryPatchStatusRunLocal,
 			"interaction_analysis":    result.InteractionAnalysis,
@@ -238,6 +243,51 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		return model.StoryRunResult{}, err
 	}
 	return result, nil
+}
+
+func (s *StorySessionAdvancer) commitCharacterMemories(ctx context.Context, run model.StoryRun, result model.StoryRunResult) {
+	if s.memory == nil || len(result.MemoryPatch.CharacterMemoryUpdates) == 0 {
+		return
+	}
+	memories := make([]model.Memory, 0, len(result.MemoryPatch.CharacterMemoryUpdates))
+	for _, update := range result.MemoryPatch.CharacterMemoryUpdates {
+		if update.CharacterID == "" || update.Content == "" {
+			continue
+		}
+		memories = append(memories, model.Memory{
+			ID:            generatedID(s.ids, s.clock, "memory"),
+			CharacterID:   update.CharacterID,
+			Content:       update.Content,
+			SourceRunID:   run.RunID,
+			BranchID:      run.BranchID,
+			SourceEventID: result.HeadEventID,
+			Importance:    update.Importance,
+			Note:          domain.MemoryScopeExternalCommitted + ":" + domain.MemoryCommitTriggerRunCompletion,
+			Status:        "active",
+			CreatedAt:     currentTime(s.clock),
+		})
+	}
+	if len(memories) == 0 {
+		return
+	}
+	err := s.memory.Commit(ctx, port.CharacterMemoryCommitInput{
+		ProjectID: run.ProjectID,
+		RunID:     run.RunID,
+		Memories:  memories,
+	})
+	if err != nil {
+		log.Printf("story run %s external memory commit failed: %v", run.RunID, err)
+		s.appendAuditEvent(ctx, run.RunID, domain.EventGenerationStep, map[string]any{
+			"step":  "external_memory_flush_failed",
+			"error": err.Error(),
+		})
+		return
+	}
+	s.appendAuditEvent(ctx, run.RunID, "external_memory_committed", map[string]any{
+		"memory_count": len(memories),
+		"scope":        domain.MemoryScopeExternalCommitted,
+		"trigger":      domain.MemoryCommitTriggerRunCompletion,
+	})
 }
 
 func orderedStoryEventPlans(events []model.StoryEventPlan) []model.StoryEventPlan {
@@ -268,6 +318,12 @@ func actorIDsForResult(result model.StoryRunResult) []string {
 	for _, transcript := range result.InteractionTranscripts {
 		ids = append(ids, transcript.CharacterIDs...)
 	}
+	for _, turn := range result.Turns {
+		if turn.ActorID != "" {
+			ids = append(ids, turn.ActorID)
+		}
+		ids = append(ids, turn.TargetActorIDs...)
+	}
 	return uniqueStrings(ids)
 }
 
@@ -280,6 +336,11 @@ func primaryLocationKey(result model.StoryRunResult) string {
 	for _, transcript := range result.InteractionTranscripts {
 		if transcript.LocationKey != "" {
 			return transcript.LocationKey
+		}
+	}
+	for _, turn := range result.Turns {
+		if turn.LocationKey != "" {
+			return turn.LocationKey
 		}
 	}
 	return ""
@@ -305,6 +366,19 @@ func resourceKeysForResult(result model.StoryRunResult) []string {
 	keys := make([]string, 0)
 	for _, event := range result.EventPlan {
 		keys = append(keys, resourceKeysForPlan(event)...)
+	}
+	for _, turn := range result.Turns {
+		if turn.ActorID != "" {
+			keys = append(keys, "character:"+turn.ActorID)
+		}
+		for _, actorID := range turn.TargetActorIDs {
+			if actorID != "" {
+				keys = append(keys, "character:"+actorID)
+			}
+		}
+		if turn.LocationKey != "" {
+			keys = append(keys, "location:"+turn.LocationKey)
+		}
 	}
 	return uniqueStrings(keys)
 }

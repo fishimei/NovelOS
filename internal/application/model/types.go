@@ -528,6 +528,21 @@ type StoryInteractionTranscript struct {
 	OutcomeSummary string                 `json:"outcome_summary,omitempty"`
 }
 
+type StoryTurn struct {
+	TurnIndex          int      `json:"turn_index"`
+	ActorID            string   `json:"actor_id,omitempty"`
+	ActorName          string   `json:"actor_name,omitempty"`
+	ActionType         string   `json:"action_type"`
+	Speech             string   `json:"speech,omitempty"`
+	ActionSummary      string   `json:"action_summary,omitempty"`
+	TargetActorIDs     []string `json:"target_actor_ids,omitempty"`
+	Intent             string   `json:"intent,omitempty"`
+	InteractionGroupID string   `json:"interaction_group_id,omitempty"`
+	LocationKey        string   `json:"location_key,omitempty"`
+	LocationName       string   `json:"location_name,omitempty"`
+	Phase              string   `json:"phase,omitempty"`
+}
+
 const (
 	EventKindGenesis          = "genesis"
 	EventKindActionScheduled  = "action_scheduled"
@@ -556,7 +571,7 @@ type StoryEvent struct {
 	CreatedAt     time.Time       `json:"created_at"`
 }
 
-// EventStateDelta 是事件对正史状态的完整增量。
+// EventStateDelta 是事件对正史状态的完整增量；world/relationship 变更必须留在这里，不能随外部记忆提交迁走。
 type EventStateDelta struct {
 	MemoryPatch
 	CharacterMoves []CharacterMove `json:"character_moves,omitempty"`
@@ -591,6 +606,7 @@ type OngoingAction struct {
 	ActionType        string    `json:"action_type"`
 	Description       string    `json:"description"`
 	TargetLocationKey string    `json:"target_location_key,omitempty"`
+	ParticipantIDs    []string  `json:"participant_ids,omitempty"`
 	StartAt           time.Time `json:"start_at"`
 	ArriveAt          time.Time `json:"arrive_at"`
 	EffectAt          time.Time `json:"effect_at"`
@@ -708,20 +724,6 @@ type FactionInfluence struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-type CharacterOngoingAction struct {
-	CharacterID       string    `json:"character_id"`
-	ActionType        string    `json:"action_type"`
-	Description       string    `json:"description"`
-	TargetLocationKey string    `json:"target_location_key,omitempty"`
-	StartAt           time.Time `json:"start_at"`
-	ArriveAt          time.Time `json:"arrive_at"`
-	EffectAt          time.Time `json:"effect_at"`
-	EndsAt            time.Time `json:"ends_at"`
-	ResourceKeys      []string  `json:"resource_keys"`
-	Status            string    `json:"status"`
-	Rationale         string    `json:"rationale"`
-}
-
 type NearbyLocationContext struct {
 	Location          LocationState      `json:"location"`
 	Distance          float64            `json:"distance"`
@@ -817,6 +819,8 @@ type StoryRunResult struct {
 	HeadEventID            string                       `json:"head_event_id,omitempty"`
 	PlotVariable           PlotVariable                 `json:"plot_variable"`           // 剧情变量
 	EventPlan              []StoryEventPlan             `json:"event_plan"`              // 排程事件素材
+	Turns                  []StoryTurn                  `json:"turns"`                   // 全部场景回合素材
+	SceneSummary           string                       `json:"scene_summary"`           // 场景复盘摘要
 	InteractionAnalysis    StoryInteractionAnalysis     `json:"interaction_analysis"`    // 交互分析
 	InteractionTranscripts []StoryInteractionTranscript `json:"interaction_transcripts"` // 交涉记录
 	Draft                  Draft                        `json:"draft"`                   // 章节草稿
@@ -963,10 +967,13 @@ type Memory struct {
 	CharacterID     string    `json:"character_id"`      // 所属角色 ID
 	Content         string    `json:"content"`           // 记忆内容
 	SourceChapterID string    `json:"source_chapter_id"` // 来源章节 ID
-	Importance      int       `json:"importance"`        // 重要性等级
-	Note            string    `json:"note"`              // 备注说明
-	Status          string    `json:"status"`            // 状态标识
-	CreatedAt       time.Time `json:"created_at"`        // 创建时间
+	SourceRunID     string    `json:"source_run_id,omitempty"`
+	BranchID        string    `json:"branch_id,omitempty"`
+	SourceEventID   string    `json:"source_event_id,omitempty"`
+	Importance      int       `json:"importance"` // 重要性等级
+	Note            string    `json:"note"`       // 备注说明
+	Status          string    `json:"status"`     // 状态标识
+	CreatedAt       time.Time `json:"created_at"` // 创建时间
 }
 
 // RunEvent 是运行事件，用于记录 AI 生成过程中的关键事件。

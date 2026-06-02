@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	llmmodel "github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
@@ -37,21 +35,17 @@ type StoryRunGeneratorDeps struct {
 }
 
 type StoryRunGenerator struct {
-	cfg                config.AIConfig
-	model              llmmodel.ToolCallingChatModel
-	deps               storyGeneratorDeps
-	clock              port.Clock
-	ids                port.IDGenerator
-	maxTurns           int
-	controller         string
-	toolPrompt         string
-	resultPrompt       string
-	narrativePrompt    string
-	variablePrompt     string
-	maxReactSteps      int
-	maxChapterTokens   int
-	maxTurnTokens      int
-	maxAssemblerTokens int
+	cfg              config.AIConfig
+	model            llmmodel.ToolCallingChatModel
+	deps             storyGeneratorDeps
+	clock            port.Clock
+	ids              port.IDGenerator
+	maxTurns         int
+	scenePrompt      string
+	reflectPrompt    string
+	resultPrompt     string
+	maxSceneTokens   int
+	maxReflectTokens int
 }
 
 func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*StoryRunGenerator, error) {
@@ -75,18 +69,14 @@ func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*Sto
 			events:        deps.Events,
 			audit:         deps.Audit,
 		},
-		clock:              deps.Clock,
-		ids:                deps.IDs,
-		maxTurns:           maxTurns,
-		controller:         deps.Config.StoryAgent.ControllerPrompt,
-		toolPrompt:         deps.Config.StoryAgent.ToolPrompt,
-		resultPrompt:       deps.Config.StoryAgent.ResultPrompt,
-		narrativePrompt:    deps.Config.StoryAgent.NarrativePrompt,
-		variablePrompt:     deps.Config.StoryAgent.VariablePrompt,
-		maxReactSteps:      positiveIntOrDefault(deps.Config.StoryAgent.MaxReactSteps, config.DefaultStoryAgentMaxReactSteps),
-		maxChapterTokens:   positiveIntOrDefault(deps.Config.StoryAgent.MaxChapterTokens, config.DefaultStoryAgentMaxChapterTokens),
-		maxTurnTokens:      positiveIntOrDefault(deps.Config.StoryAgent.MaxTurnTokens, config.DefaultStoryAgentMaxTurnTokens),
-		maxAssemblerTokens: positiveIntOrDefault(deps.Config.StoryAgent.MaxAssemblerTokens, config.DefaultStoryAgentMaxAssemblerTokens),
+		clock:            deps.Clock,
+		ids:              deps.IDs,
+		maxTurns:         maxTurns,
+		scenePrompt:      deps.Config.StoryAgent.ScenePrompt,
+		reflectPrompt:    deps.Config.StoryAgent.ReflectPrompt,
+		resultPrompt:     deps.Config.StoryAgent.ResultPrompt,
+		maxSceneTokens:   positiveIntOrDefault(deps.Config.StoryAgent.MaxSceneTokens, config.DefaultStoryAgentMaxSceneTokens),
+		maxReflectTokens: positiveIntOrDefault(deps.Config.StoryAgent.MaxReflectTokens, config.DefaultStoryAgentMaxReflectTokens),
 	}
 	return generator, nil
 }
@@ -101,50 +91,29 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return model.StoryRunResult{}, err
 	}
 	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusGeneratingPlotVariable, 20)
-	variable, err := g.generateStoryVariable(ctx, input, snapshot)
+	variable, err := g.seedPlotVariable(ctx, input, snapshot)
 	if err != nil {
-		return model.StoryRunResult{}, fmt.Errorf("generate story variable: %w", err)
+		return model.StoryRunResult{}, fmt.Errorf("seed plot variable: %w", err)
 	}
 	state.variable = variable
-	publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventPlotVariable, map[string]any{"plot_variable": variable.PlotVariable})
-	tools, err := newStoryTools(g.deps, state)
+	sceneContext := g.buildSceneContext(input, snapshot, variable)
+	plan, finalVariable, err := g.simulateScene(ctx, input, snapshot, state, sceneContext, variable)
 	if err != nil {
 		return model.StoryRunResult{}, err
-	}
-	agent, err := react.NewAgent(ctx, &react.AgentConfig{
-		ToolCallingModel: g.model,
-		ToolsConfig:      compose.ToolsNodeConfig{Tools: tools},
-		MaxStep:          g.reactStepLimit(),
-		ToolReturnDirectly: map[string]struct{}{
-			"finalize_story_plan": {},
-		},
-	})
-	if err != nil {
-		return model.StoryRunResult{}, err
-	}
-	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusPlanningEvents, 30)
-	_, err = agent.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.systemPrompt()),
-		schema.UserMessage(g.userPrompt(input, variable)),
-	})
-	if err != nil {
-		return model.StoryRunResult{}, fmt.Errorf("drive story turns: %w", err)
-	}
-	plan := state.planResult()
-	if len(plan.Turns) == 0 {
-		plan.Turns = []StoryTurnPlan{{TurnIndex: 1, ActorName: "旁白", ActionType: "narration", Intent: firstText(variable.PlotVariable.CoreChoice, input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, "推进当前故事变量"), Rationale: "模型未产生回合，使用旁白占位"}}
-	}
-	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusWritingNarrative, 80)
-	narrative, err := g.generateNarrative(ctx, input, snapshot, plan, variable)
-	if err != nil {
-		return model.StoryRunResult{}, fmt.Errorf("generate narrative: %w", err)
 	}
 	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusGeneratingMemoryPatch, 90)
-	result, err := g.buildResult(ctx, input, plan, narrative, variable)
+	reflection, err := g.reflectScene(ctx, input, snapshot, plan, finalVariable)
 	if err != nil {
-		return model.StoryRunResult{}, err
+		if ctx.Err() != nil {
+			return model.StoryRunResult{}, ctx.Err()
+		}
+		publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventGenerationStep, map[string]any{
+			"step":  "reflection_failed",
+			"error": err.Error(),
+		})
+		reflection = fallbackReflectionResult(plan, finalVariable)
 	}
-	return result, nil
+	return g.assembleStoryRunResult(input, plan, reflection, finalVariable), nil
 }
 
 func (g *StoryRunGenerator) publishStoryOrchestrationStarted(ctx context.Context, input port.StoryRunGenerationInput) {
@@ -157,33 +126,167 @@ func (g *StoryRunGenerator) publishStoryOrchestrationStarted(ctx context.Context
 	})
 }
 
-func (g *StoryRunGenerator) systemPrompt() string {
-	parts := []string{g.controller, g.toolPrompt, g.resultPrompt}
-	return strings.Join(parts, "\n\n")
+func (g *StoryRunGenerator) sceneSystemPrompt() string {
+	return firstText(g.scenePrompt, defaultScenePrompt())
 }
 
-func (g *StoryRunGenerator) userPrompt(input port.StoryRunGenerationInput, variable StoryVariablePlan) string {
-	payload, _ := json.Marshal(map[string]any{
-		"story_run_id":        input.Run.RunID,
-		"project_id":          input.Run.ProjectID,
-		"session_id":          input.Session.ID,
-		"title":               input.Session.Title,
-		"opening_situation":   input.Session.OpeningSituation,
-		"author_intent":       input.Session.AuthorIntent,
-		"last_author_message": input.Session.LastAuthorMessage,
-		"story_variable":      variable,
-	})
-	return fmt.Sprintf(`%s
-
-你是 NovelOS 的事件模拟和多人物交涉编排阶段，不是最终正文作者。先调用 load_story_context 核对当前状态。然后按顺序推进：
-	1. 事件模拟：为与 story_variable 相关的主要角色调用 record_story_event，记录他们本时间片在什么地点做什么。
-	2. 同地点分析：record_story_event 返回 same_location_candidates 后，只能从这些候选中调用 select_story_interaction 判断哪些角色会实际交互；不要选择不在同一地点的人。
-	3. 多角色交涉：对 should_interact=true 的 interaction_group，用 choose_next_story_actor 记录交涉回合，并带上 interaction_group_id、location_key、phase=negotiation。
-	4. 如果没有同地点候选或没有可交互组，就用旁白/行动回合总结事件推进，不要强行制造对话。
-	最多 %d 个业务回合内停止。停止时调用 decide_story_stop 与 finalize_story_plan。不要生成完整章节正文。`, string(payload), g.maxTurns)
+func (g *StoryRunGenerator) reflectSystemPrompt() string {
+	return firstText(g.reflectPrompt, defaultReflectPrompt())
 }
 
-func (g *StoryRunGenerator) generateStoryVariable(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (StoryVariablePlan, error) {
+func defaultScenePrompt() string {
+	return `You are NovelOS' single scene simulator. Simulate only what happens: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+Do not write chapter prose. Do not output content or draft_delta. Do not output memory_patch.
+
+Perspective contract:
+- You receive shared_observable and one private character_view per character.
+- A character's speech/action must be grounded only in shared_observable plus that character's own character_view.
+- Do not let a character use another character's secrets, private_attitude, or non-public known_facts unless that information was spoken or observed.
+- Character misreadings should shape behavior; do not correct them with omniscient truth.
+
+Output strict NDJSON, one JSON object per line, no array, no markdown fence.
+Order: one plot_variable, then event records, then 0-3 interaction records, then turn records, then one stop record.
+Allowed record types only:
+{"type":"plot_variable","plot_variable":{...}}
+{"type":"event","event":{...}}
+{"type":"interaction","interaction_group":{...}}
+{"type":"turn","turn":{...}}
+{"type":"stop","stop_reason":"..."}
+
+Every event must include location_key, action_type, and summary. interaction_group.character_ids must share the same location. Maximum turns: constraints.max_turns.`
+}
+
+func defaultSceneFallbackPrompt() string {
+	return `You are NovelOS' non-streaming scene simulation fallback. Output one JSON object with plot_variable, event_plan or events, interaction_groups, turns, and stop_reason. Do not output title, content, draft_delta, or memory_patch.`
+}
+
+func defaultReflectPrompt() string {
+	return `You are NovelOS' scene reflection and memory agent. Given a completed simulated scene plus perception_index and prior_memories, output exactly one JSON object:
+{"summary":"...","character_takeaways":[{"character_id":"...","summary":"..."}],"memory_patch":{"character_memory_updates":[],"relationship_updates":[],"world_state_updates":[]}}
+
+Memory perspective contract:
+- Each character_memory_update must be based only on turn/event ids visible to that character in perception_index.
+- A character not present may record only observable external facts, not private dialogue.
+- Misreadings are allowed as beliefs when grounded in that character's view; do not correct with global truth.
+- Deduplicate prior_memories and write only new or changed memories from this scene.
+Do not write prose. Output JSON only.`
+}
+func (g *StoryRunGenerator) sceneUserPrompt(sceneContext SceneContext) string {
+	payload, _ := json.Marshal(sceneContext)
+	return string(payload)
+}
+
+func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, seed StoryVariablePlan) SceneContext {
+	publicWorld := make([]model.WorldStateEntry, 0, len(snapshot.WorldState))
+	for _, entry := range snapshot.WorldState {
+		if entry.Importance >= 4 || entry.Volatility >= 4 {
+			publicWorld = append(publicWorld, entry)
+		}
+	}
+	if len(publicWorld) == 0 {
+		publicWorld = firstEntries(snapshot.WorldState, 5)
+	}
+	characterIDs := sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, snapshot.Characters)
+	characterViews := make([]SceneCharacterView, 0, len(characterIDs))
+	for _, characterID := range characterIDs {
+		character := characterByID(snapshot.Characters, characterID)
+		if character.ID == "" {
+			continue
+		}
+		variableView := variableViewForCharacter(seed.CharacterViews, character.ID)
+		view := SceneCharacterView{
+			CharacterID: character.ID,
+			Identity: map[string]any{
+				"id":           character.ID,
+				"name":         character.Name,
+				"role":         character.Role,
+				"profile":      character.Profile,
+				"personality":  character.Personality,
+				"voice_style":  character.VoiceStyle,
+				"goals":        firstStrings(character.Goals, 3),
+				"fears":        firstStrings(character.Fears, 3),
+				"constraints":  firstStrings(character.Constraints, 3),
+				"memory_brief": character.RecentMemorySummary,
+			},
+			Secrets:         firstStrings(character.Secrets, 3),
+			PrivateAttitude: privateAttitudesForCharacter(snapshot.Relationships, character.ID),
+			RecentMemories:  memoryContents(snapshot.RecentMemories[character.ID], 4),
+			VisibleWorld:    visibleWorldForCharacter(snapshot.WorldState, character),
+		}
+		if variableView != nil {
+			view.KnownFacts = variableView.KnownFacts
+			view.Misreadings = variableView.Misreadings
+			view.EmotionalPressure = variableView.EmotionalPressure
+			view.ActionBias = variableView.ActionBias
+		}
+		characterViews = append(characterViews, view)
+	}
+	return SceneContext{
+		StoryRunID: input.Run.RunID,
+		ProjectID:  input.Run.ProjectID,
+		SessionID:  input.Session.ID,
+		Session: SceneSessionContext{
+			Title:               input.Session.Title,
+			OpeningSituation:    input.Session.OpeningSituation,
+			AuthorIntent:        input.Session.AuthorIntent,
+			LastAuthorMessage:   input.Session.LastAuthorMessage,
+			CurrentPlotVariable: input.Session.CurrentPlotVariableSummary,
+		},
+		AuthorBible:      compactAuthorBible(snapshot.AuthorBible),
+		PlotVariableSeed: seed,
+		SharedObservable: SharedObservableContext{
+			LocationHints:    compactWorldState(snapshot.WorldState, 5),
+			PublicWorldState: compactWorldState(publicWorld, 8),
+			RecentChapters:   compactChapters(snapshot.RecentChapters, 3),
+		},
+		CharacterViews: characterViews,
+		Constraints: SceneConstraints{
+			MaxTurns:        g.maxTurns,
+			MaxInteractions: 3,
+		},
+	}
+}
+
+func sceneCharacterIDs(relatedIDs []string, characters []model.Character) []string {
+	ids := make([]string, 0, len(relatedIDs))
+	for _, id := range relatedIDs {
+		ids = appendUniqueString(ids, id)
+	}
+	if len(ids) > 0 {
+		return ids
+	}
+	for _, character := range firstEntries(characters, 4) {
+		ids = appendUniqueString(ids, character.ID)
+	}
+	return ids
+}
+
+func privateAttitudesForCharacter(relationships []model.Relationship, characterID string) []map[string]string {
+	views := relationshipViewsForCharacter(relationships, characterID)
+	out := make([]map[string]string, 0, len(views))
+	for _, view := range views {
+		out = append(out, map[string]string{
+			"target_character_id":      view.TargetCharacterID,
+			"public_attitude":          view.PublicAttitude,
+			"private_attitude":         view.PrivateAttitude,
+			"believed_target_attitude": view.BelievedTargetAttitude,
+			"masking_strategy":         view.MaskingStrategy,
+		})
+	}
+	return out
+}
+
+func memoryContents(memories []model.Memory, limit int) []string {
+	out := make([]string, 0, minInt(len(memories), limit))
+	for _, memory := range firstEntries(memories, limit) {
+		if memory.Content != "" {
+			out = append(out, memory.Content)
+		}
+	}
+	return out
+}
+
+func (g *StoryRunGenerator) seedPlotVariable(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (StoryVariablePlan, error) {
 	plot := StoryNarrativePlotVariable{
 		PressureSource:     firstText(input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.CurrentPlotVariableSummary, "当前故事压力"),
 		FocalCharacterID:   storyVariableFocalCharacterID(input, snapshot),
@@ -326,24 +429,6 @@ func containsString(values []string, value string) bool {
 	return false
 }
 
-func storyVariablePromptInput(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) map[string]any {
-	return map[string]any{
-		"session": map[string]any{
-			"title":                 input.Session.Title,
-			"opening_situation":     input.Session.OpeningSituation,
-			"author_intent":         input.Session.AuthorIntent,
-			"last_author_message":   input.Session.LastAuthorMessage,
-			"current_plot_variable": input.Session.CurrentPlotVariableSummary,
-		},
-		"author_bible":    compactAuthorBible(snapshot.AuthorBible),
-		"world_state":     compactWorldState(snapshot.WorldState, 6),
-		"characters":      compactCharacters(snapshot.Characters, 8),
-		"relationships":   compactRelationships(snapshot.Relationships, 8),
-		"recent_chapters": compactChapters(snapshot.RecentChapters, 3),
-		"recent_memories": compactMemories(snapshot.RecentMemories, 2),
-	}
-}
-
 func compactAuthorBible(bible *model.AuthorBible) map[string]any {
 	if bible == nil {
 		return nil
@@ -452,301 +537,707 @@ func positiveIntOrDefault(value int, defaultValue int) int {
 	return defaultValue
 }
 
-func (g *StoryRunGenerator) reactStepLimit() int {
-	return positiveIntOrDefault(g.maxReactSteps, config.DefaultStoryAgentMaxReactSteps)
+func (g *StoryRunGenerator) sceneTokenLimit() int {
+	return positiveIntOrDefault(g.maxSceneTokens, config.DefaultStoryAgentMaxSceneTokens)
 }
 
-func (g *StoryRunGenerator) chapterTokenLimit() int {
-	return positiveIntOrDefault(g.maxChapterTokens, config.DefaultStoryAgentMaxChapterTokens)
+func (g *StoryRunGenerator) reflectTokenLimit() int {
+	return positiveIntOrDefault(g.maxReflectTokens, config.DefaultStoryAgentMaxReflectTokens)
 }
 
-func (g *StoryRunGenerator) turnTokenLimit() int {
-	return positiveIntOrDefault(g.maxTurnTokens, config.DefaultStoryAgentMaxTurnTokens)
-}
-
-func (g *StoryRunGenerator) assemblerTokenLimit() int {
-	return positiveIntOrDefault(g.maxAssemblerTokens, config.DefaultStoryAgentMaxAssemblerTokens)
-}
-
-func (g *StoryRunGenerator) generateNarrative(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) (StoryNarrativeResult, error) {
-	renderedPlan := plan
-	renderedPlan.Turns = make([]StoryTurnPlan, 0, len(plan.Turns))
-	for _, turn := range plan.Turns {
-		rendered, err := g.generateTurnContent(ctx, input, snapshot, renderedPlan, renderedPlan.Turns, turn, variable)
-		if err != nil {
-			if ctx.Err() != nil {
-				return StoryNarrativeResult{}, ctx.Err()
-			}
-			rendered = fallbackTurnContent(turn)
-		}
-		renderedPlan.Turns = append(renderedPlan.Turns, rendered)
-	}
-	metadata := g.generateNarrativeMetadata(ctx, input, snapshot, renderedPlan, variable)
-	assembled := g.assembleChapterDraft(ctx, input, snapshot, renderedPlan, metadata)
-	return mergeNarrativeResult(input, renderedPlan, variable, metadata, assembled), nil
-}
-
-func (g *StoryRunGenerator) generateTurnContent(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, previousTurns []StoryTurnPlan, turn StoryTurnPlan, variable StoryVariablePlan) (StoryTurnPlan, error) {
+func (g *StoryRunGenerator) simulateScene(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, state *storyRunState, sceneContext SceneContext, seed StoryVariablePlan) (StoryPlanResult, StoryVariablePlan, error) {
 	if g.model == nil {
-		return StoryTurnPlan{}, errors.New("story model is not configured")
+		return StoryPlanResult{}, StoryVariablePlan{}, errors.New("story model is not configured")
 	}
-	promptInput := map[string]any{
-		"session":         input.Session,
-		"author_bible":    snapshot.AuthorBible,
-		"recent_chapters": snapshot.RecentChapters,
-		"plan_summary":    plan.Summary,
-		"stop_reason":     plan.StopReason,
-		"previous_turns":  previousTurns,
-		"current_turn":    turn,
-		"story_variable":  variable.PlotVariable,
-		"perspective":     g.perspectiveForTurn(snapshot, turn, variable),
+	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusPlanningEvents, 30)
+	stream, streamErr := g.model.Stream(ctx, []*schema.Message{
+		schema.SystemMessage(g.sceneSystemPrompt()),
+		schema.UserMessage(g.sceneUserPrompt(sceneContext)),
+	}, maxTokensOption(g.cfg.Model, g.sceneTokenLimit()))
+	if streamErr == nil {
+		if stream == nil {
+			streamErr = errors.New("story model returned nil stream")
+		}
 	}
-	payload, _ := json.Marshal(promptInput)
+	if streamErr == nil {
+		plan, variable, consumeErr := g.consumeSceneStream(ctx, input, snapshot, state, stream, seed)
+		if consumeErr == nil {
+			return plan, variable, nil
+		}
+		if ctx.Err() != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, ctx.Err()
+		}
+		streamErr = consumeErr
+	}
+	publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventGenerationStep, map[string]any{
+		"step":  "scene_stream_fallback",
+		"error": streamErr.Error(),
+	})
+	batch, fallbackErr := g.generateSceneFallback(ctx, sceneContext)
+	if fallbackErr != nil {
+		return StoryPlanResult{}, StoryVariablePlan{}, fmt.Errorf("generate story scene stream: %w; fallback: %v", streamErr, fallbackErr)
+	}
+	state = &storyRunState{run: input.Run, session: input.Session, maxTurns: g.maxTurns, characters: snapshot.Characters, variable: seed}
+	return g.consumeSceneBatch(ctx, input, snapshot, state, batch, seed)
+}
+
+func (g *StoryRunGenerator) generateSceneFallback(ctx context.Context, sceneContext SceneContext) (sceneBatchResult, error) {
+	prompt := firstText(g.resultPrompt, defaultSceneFallbackPrompt())
 	msg, err := g.model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.turnNarrativePrompt()),
-		schema.UserMessage(string(payload)),
-	}, maxTokensOption(g.cfg.Model, g.turnTokenLimit()))
+		schema.SystemMessage(prompt),
+		schema.UserMessage(g.sceneUserPrompt(sceneContext)),
+	}, maxTokensOption(g.cfg.Model, g.sceneTokenLimit()))
 	if err != nil {
-		return StoryTurnPlan{}, err
+		return sceneBatchResult{}, err
 	}
-	var out struct {
-		Content string `json:"content"`
+	var batch sceneBatchResult
+	if err := decodeModelJSON(msg.Content, &batch); err != nil {
+		return sceneBatchResult{}, err
 	}
-	if err := decodeModelJSON(msg.Content, &out); err != nil {
-		return StoryTurnPlan{}, err
-	}
-	turn.Content = firstText(out.Content, turn.Intent)
-	return turn, nil
+	return batch, nil
 }
 
-func (g *StoryRunGenerator) generateNarrativeMetadata(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) StoryNarrativeResult {
-	if g.model == nil {
-		return fallbackNarrativeMetadata(input, plan, variable)
-	}
-	promptInput := map[string]any{
-		"session":                 input.Session,
-		"author_bible":            snapshot.AuthorBible,
-		"recent_chapters":         snapshot.RecentChapters,
-		"world_state_keys":        worldStateKeys(snapshot.WorldState),
-		"relationships":           relationshipPublicSummaries(snapshot.Relationships),
-		"story_variable":          variable.PlotVariable,
-		"event_plan":              plan.EventPlan,
-		"interaction_analysis":    plan.InteractionAnalysis,
-		"interaction_transcripts": plan.InteractionTranscripts,
-		"turns":                   plan.Turns,
-		"stop_reason":             plan.StopReason,
-	}
-	payload, _ := json.Marshal(promptInput)
-	msg, err := g.model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.statePatchPrompt()),
-		schema.UserMessage(string(payload)),
-	}, maxTokensOption(g.cfg.Model, g.chapterTokenLimit()))
-	if err == nil {
-		var out StoryNarrativeResult
-		if decodeModelJSON(msg.Content, &out) == nil && storyNarrativeResultUsable(out) {
-			out.Content = ""
-			if len(out.Turns) == 0 {
-				out.Turns = plan.Turns
+func (g *StoryRunGenerator) consumeSceneStream(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, state *storyRunState, stream *schema.StreamReader[*schema.Message], seed StoryVariablePlan) (StoryPlanResult, StoryVariablePlan, error) {
+	defer stream.Close()
+	consumer := newSceneConsumer(g, input, snapshot, state, seed)
+	var chunkBuffer string
+	for {
+		select {
+		case <-ctx.Done():
+			return StoryPlanResult{}, StoryVariablePlan{}, ctx.Err()
+		default:
+		}
+		msg, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		}
+		if msg == nil || msg.Content == "" {
+			continue
+		}
+		chunkBuffer += msg.Content
+		for {
+			lineEnd := strings.IndexByte(chunkBuffer, '\n')
+			if lineEnd < 0 {
+				break
 			}
-			return out
+			line := chunkBuffer[:lineEnd]
+			chunkBuffer = chunkBuffer[lineEnd+1:]
+			if err := consumer.consumeRawLine(ctx, line); err != nil {
+				return StoryPlanResult{}, StoryVariablePlan{}, err
+			}
 		}
 	}
-	return fallbackNarrativeMetadata(input, plan, variable)
-}
-
-func (g *StoryRunGenerator) assembleChapterDraft(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, metadata StoryNarrativeResult) StoryNarrativeResult {
-	if g.model == nil {
-		return fallbackAssembledDraft(input, plan, metadata)
-	}
-	promptInput := map[string]any{
-		"session":          input.Session,
-		"author_bible":     snapshot.AuthorBible,
-		"recent_chapters":  snapshot.RecentChapters,
-		"metadata_title":   metadata.Title,
-		"metadata_summary": metadata.Summary,
-		"turns":            plan.Turns,
-		"stop_reason":      plan.StopReason,
-	}
-	payload, _ := json.Marshal(promptInput)
-	msg, err := g.model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.chapterAssemblerPrompt()),
-		schema.UserMessage(string(payload)),
-	}, maxTokensOption(g.cfg.Model, g.assemblerTokenLimit()))
-	if err == nil {
-		var out StoryNarrativeResult
-		if decodeModelJSON(msg.Content, &out) == nil && storyNarrativeResultUsable(out) {
-			out.Turns = plan.Turns
-			if out.Content == "" {
-				out.Content = formatDraftContent(plan)
-			}
-			out.PlotVariable = StoryNarrativePlotVariable{}
-			out.MemoryPatch = StoryNarrativeMemoryPatch{}
-			return out
+	if strings.TrimSpace(chunkBuffer) != "" {
+		if err := consumer.consumeRawLine(ctx, chunkBuffer); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
 		}
 	}
-	return fallbackAssembledDraft(input, plan, metadata)
+	return consumer.finish(ctx)
 }
 
-func fallbackNarrativeMetadata(input port.StoryRunGenerationInput, plan StoryPlanResult, variable StoryVariablePlan) StoryNarrativeResult {
-	return StoryNarrativeResult{
-		Title:   firstText(input.Session.Title, "未命名章节"),
-		Summary: plan.Summary,
-		PlotVariable: firstVariable(variable.PlotVariable, StoryNarrativePlotVariable{
-			PressureSource:      firstText(input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "当前故事压力"),
-			FocalCharacterID:    firstActorID(plan.Turns),
-			CoreChoice:          firstText(plan.Summary, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "推进当前故事变量"),
-			RelatedCharacterIDs: relatedCharacterIDs(plan.Turns),
-		}),
-		Review: StoryNarrativeReview{Pass: true},
-		Turns:  plan.Turns,
+func (g *StoryRunGenerator) consumeSceneBatch(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, state *storyRunState, batch sceneBatchResult, seed StoryVariablePlan) (StoryPlanResult, StoryVariablePlan, error) {
+	consumer := newSceneConsumer(g, input, snapshot, state, seed)
+	if storyPlotVariableUsable(batch.PlotVariable) {
+		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "plot_variable", PlotVariable: batch.PlotVariable}); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		}
+	}
+	events := batch.EventPlan
+	if len(events) == 0 {
+		events = batch.Events
+	}
+	for _, event := range events {
+		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "event", Event: event}); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		}
+	}
+	for _, group := range batch.InteractionGroups {
+		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "interaction", InteractionGroup: group}); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		}
+	}
+	for _, turn := range batch.Turns {
+		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "turn", Turn: turn}); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		}
+	}
+	if batch.StopReason != "" {
+		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "stop", StopReason: batch.StopReason}); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		}
+	}
+	return consumer.finish(ctx)
+}
+
+type sceneConsumer struct {
+	g                       *StoryRunGenerator
+	input                   port.StoryRunGenerationInput
+	snapshot                StoryContextSnapshot
+	state                   *storyRunState
+	seed                    StoryVariablePlan
+	variable                StoryVariablePlan
+	pendingLine             string
+	locationGroupsPublished bool
+	firstTurnPublished      bool
+	reviewIssues            []string
+}
+
+func newSceneConsumer(g *StoryRunGenerator, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, state *storyRunState, seed StoryVariablePlan) *sceneConsumer {
+	return &sceneConsumer{g: g, input: input, snapshot: snapshot, state: state, seed: seed, variable: seed}
+}
+
+func (c *sceneConsumer) consumeRawLine(ctx context.Context, line string) error {
+	text := strings.TrimSpace(line)
+	if text == "" || strings.HasPrefix(text, "```") {
+		return nil
+	}
+	if c.pendingLine != "" {
+		text = c.pendingLine + text
+		c.pendingLine = ""
+	}
+	record, ok, err := parseSceneRecordLine(text)
+	if err != nil {
+		c.pendingLine = text
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+	return c.consumeRecord(ctx, record)
+}
+
+func (c *sceneConsumer) consumeRecord(ctx context.Context, record sceneRecord) error {
+	switch strings.TrimSpace(record.Type) {
+	case "plot_variable":
+		return c.consumePlotVariable(ctx, record.PlotVariable)
+	case "event":
+		return c.consumeEvent(ctx, record.Event)
+	case "interaction":
+		return c.consumeInteraction(ctx, record.InteractionGroup)
+	case "turn":
+		return c.consumeTurn(ctx, record.Turn)
+	case "stop":
+		return c.consumeStop(ctx, record.StopReason)
+	case "draft_delta", "result":
+		c.addIssue(fmt.Sprintf("ignored v1-only NDJSON record type: %s", record.Type))
+		return nil
+	default:
+		c.addIssue(fmt.Sprintf("跳过未知 NDJSON 记录类型：%s", record.Type))
+		return nil
 	}
 }
 
-func fallbackAssembledDraft(input port.StoryRunGenerationInput, plan StoryPlanResult, metadata StoryNarrativeResult) StoryNarrativeResult {
-	return StoryNarrativeResult{
-		Title:   firstText(metadata.Title, input.Session.Title, "未命名章节"),
-		Summary: firstText(metadata.Summary, plan.Summary),
-		Content: formatDraftContent(plan),
-		Review:  StoryNarrativeReview{Pass: true},
-		Turns:   plan.Turns,
-	}
+func (c *sceneConsumer) consumePlotVariable(ctx context.Context, plot StoryNarrativePlotVariable) error {
+	variable := StoryVariablePlan{PlotVariable: plot, CharacterViews: c.seed.CharacterViews}
+	c.variable = normalizeStoryVariable(variable, c.input, c.snapshot)
+	c.state.mu.Lock()
+	c.state.variable = c.variable
+	c.state.mu.Unlock()
+	publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventPlotVariable, map[string]any{"plot_variable": c.variable.PlotVariable})
+	return nil
 }
 
-func fallbackTurnContent(turn StoryTurnPlan) StoryTurnPlan {
+func (c *sceneConsumer) consumeEvent(ctx context.Context, event model.StoryEventPlan) error {
+	locationKey := strings.TrimSpace(event.LocationKey)
+	if locationKey == "" || strings.TrimSpace(event.Summary) == "" {
+		c.addIssue("跳过缺少 location_key 或 summary 的事件记录")
+		return nil
+	}
+	actionType := normalizeStoryActionType(event.ActionType, "", event.Summary)
+	if !isAllowedStoryActionType(actionType) {
+		c.addIssue(fmt.Sprintf("跳过非法 action_type 的事件记录：%s", event.ActionType))
+		return nil
+	}
+	c.state.mu.Lock()
+	actorID, actorName, err := resolveStoryActor(c.state.characters, event.CharacterID, event.CharacterName, actionType)
+	if err != nil {
+		c.state.mu.Unlock()
+		c.addIssue(err.Error())
+		return nil
+	}
+	targetActorIDs, err := validStoryTargetActorIDs(c.state.characters, event.TargetActorIDs)
+	if err != nil {
+		c.state.mu.Unlock()
+		c.addIssue(err.Error())
+		return nil
+	}
+	if event.TimeIndex <= 0 {
+		event.TimeIndex = len(c.state.events) + 1
+	}
+	if event.ID == "" {
+		event.ID = fmt.Sprintf("story_event_%d", len(c.state.events)+1)
+	}
+	event.CharacterID = actorID
+	event.CharacterName = actorName
+	event.LocationKey = locationKey
+	event.LocationName = strings.TrimSpace(event.LocationName)
+	event.ActionType = actionType
+	event.Summary = strings.TrimSpace(event.Summary)
+	event.Intent = strings.TrimSpace(event.Intent)
+	event.Visibility = strings.TrimSpace(event.Visibility)
+	event.TargetActorIDs = targetActorIDs
+	c.state.events = append(c.state.events, event)
+	c.state.locationGroups = buildStoryLocationGroups(c.state.events)
+	c.state.mu.Unlock()
+	publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventStoryEventPlanned, map[string]any{"event": event})
+	return nil
+}
+
+func (c *sceneConsumer) consumeInteraction(ctx context.Context, group model.StoryInteractionGroup) error {
+	c.publishLocationGroups(ctx)
+	locationKey := strings.TrimSpace(group.LocationKey)
+	if locationKey == "" {
+		c.addIssue("跳过缺少 location_key 的交涉组")
+		return nil
+	}
+	c.state.mu.Lock()
+	candidate, ok := locationGroupByKey(c.state.locationGroups, locationKey)
+	if !ok {
+		c.state.mu.Unlock()
+		c.addIssue("跳过未命中同地点候选的交涉组")
+		return nil
+	}
+	characterIDs, err := validStoryTargetActorIDs(c.state.characters, group.CharacterIDs)
+	if err != nil {
+		c.state.mu.Unlock()
+		c.addIssue(err.Error())
+		return nil
+	}
+	characterIDs = uniqueStoryIDs(characterIDs)
+	if len(characterIDs) < 2 {
+		c.state.mu.Unlock()
+		c.addIssue("跳过少于两个角色的交涉组")
+		return nil
+	}
+	for _, characterID := range characterIDs {
+		if !containsString(candidate.CharacterIDs, characterID) {
+			c.state.mu.Unlock()
+			c.addIssue("跳过跨地点交涉组")
+			return nil
+		}
+	}
+	if group.ShouldInteract && selectedInteractionCount(c.state.interactionGroups) >= 3 {
+		c.state.mu.Unlock()
+		c.addIssue("跳过超过 max_interactions 的交涉组")
+		return nil
+	}
+	eventIDs := group.EventIDs
+	if len(eventIDs) == 0 {
+		eventIDs = candidate.EventIDs
+	}
+	if group.ID == "" {
+		group.ID = fmt.Sprintf("interaction_%d", len(c.state.interactionGroups)+1)
+	}
+	group.LocationKey = candidate.LocationKey
+	group.LocationName = firstText(group.LocationName, candidate.LocationName)
+	group.CharacterIDs = characterIDs
+	group.EventIDs = eventIDs
+	group.InteractionType = strings.TrimSpace(group.InteractionType)
+	group.Stakes = strings.TrimSpace(group.Stakes)
+	group.Rationale = strings.TrimSpace(group.Rationale)
+	c.state.interactionGroups = append(c.state.interactionGroups, group)
+	analysis := model.StoryInteractionAnalysis{LocationGroups: copyStoryLocationGroups(c.state.locationGroups), InteractionGroups: copyStoryInteractionGroups(c.state.interactionGroups)}
+	c.state.mu.Unlock()
+	if group.ShouldInteract {
+		updateStoryRunStep(ctx, c.g.deps, c.input.Run.RunID, domain.RunStatusNegotiatingInteractions, 60)
+	} else {
+		updateStoryRunStep(ctx, c.g.deps, c.input.Run.RunID, domain.RunStatusSelectingInteractions, 45)
+	}
+	publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventInteractionAnalysis, map[string]any{"analysis": analysis})
+	if group.ShouldInteract {
+		publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventInteractionSelected, map[string]any{"interaction_group": group})
+	}
+	return nil
+}
+
+func (c *sceneConsumer) consumeTurn(ctx context.Context, turn StoryTurnPlan) error {
+	c.publishLocationGroups(ctx)
+	turn.ActionType = normalizeStoryActionType(turn.ActionType, turn.Speech, turn.ActionSummary)
+	if !isAllowedStoryActionType(turn.ActionType) {
+		c.addIssue(fmt.Sprintf("跳过非法 action_type 的回合：%s", turn.ActionType))
+		return nil
+	}
+	c.state.mu.Lock()
+	if len(c.state.turns) >= c.state.maxTurns {
+		c.state.stopReason = "达到最大回合数"
+		c.state.mu.Unlock()
+		c.addIssue("超过 max_turns 的回合已截断")
+		return nil
+	}
+	actorID, actorName, err := resolveStoryActor(c.state.characters, turn.ActorID, turn.ActorName, turn.ActionType)
+	if err != nil {
+		c.state.mu.Unlock()
+		c.addIssue(err.Error())
+		return nil
+	}
+	targetActorIDs, err := validStoryTargetActorIDs(c.state.characters, turn.TargetActorIDs)
+	if err != nil {
+		c.state.mu.Unlock()
+		c.addIssue(err.Error())
+		return nil
+	}
+	if turn.TurnIndex <= 0 {
+		turn.TurnIndex = len(c.state.turns) + 1
+	}
+	turn.ActorID = actorID
+	turn.ActorName = actorName
+	turn.TargetActorIDs = targetActorIDs
+	turn.Intent = strings.TrimSpace(turn.Intent)
+	turn.Rationale = strings.TrimSpace(turn.Rationale)
+	turn.InteractionGroupID = strings.TrimSpace(turn.InteractionGroupID)
+	turn.LocationKey = strings.TrimSpace(turn.LocationKey)
+	turn.LocationName = strings.TrimSpace(turn.LocationName)
+	turn.Phase = strings.TrimSpace(turn.Phase)
 	turn.Content = firstText(turn.Content, turn.Speech, turn.ActionSummary, turn.Intent, turn.Rationale)
-	return turn
+	if turn.InteractionGroupID != "" {
+		if err := validateStoryTurnInteraction(c.state.interactionGroups, turn); err != nil {
+			c.state.mu.Unlock()
+			c.addIssue(err.Error())
+			return nil
+		}
+		if turn.Phase == "" {
+			turn.Phase = "negotiation"
+		}
+		if turn.LocationKey == "" || turn.LocationName == "" {
+			turn.LocationKey, turn.LocationName = interactionLocation(c.state.interactionGroups, turn.InteractionGroupID)
+		}
+	}
+	c.state.turns = append(c.state.turns, turn)
+	if turn.InteractionGroupID != "" {
+		c.state.interactionTranscripts = upsertStoryInteractionTurn(c.state.interactionTranscripts, c.state.interactionGroups, turn)
+	}
+	c.state.mu.Unlock()
+	if !c.firstTurnPublished {
+		updateStoryRunStep(ctx, c.g.deps, c.input.Run.RunID, domain.RunStatusDrivingCharacterTurns, 70)
+		c.firstTurnPublished = true
+	}
+	display := storyTurnDisplayPayload(turn)
+	if turn.InteractionGroupID != "" {
+		publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventNegotiationTurn, display)
+	}
+	publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventCharacterTurn, display)
+	return nil
 }
 
-func mergeNarrativeResult(input port.StoryRunGenerationInput, plan StoryPlanResult, variable StoryVariablePlan, metadata StoryNarrativeResult, assembled StoryNarrativeResult) StoryNarrativeResult {
-	return StoryNarrativeResult{
-		Title:        firstText(assembled.Title, metadata.Title, input.Session.Title, "未命名章节"),
-		Summary:      firstText(assembled.Summary, metadata.Summary, plan.Summary),
-		Content:      firstText(assembled.Content, formatDraftContent(plan)),
-		PlotVariable: firstVariable(variable.PlotVariable, metadata.PlotVariable),
-		MemoryPatch:  metadata.MemoryPatch,
-		Review:       mergeNarrativeReview(metadata.Review, assembled.Review),
-		Turns:        plan.Turns,
+func (c *sceneConsumer) consumeStop(ctx context.Context, stopReason string) error {
+	c.publishLocationGroups(ctx)
+	c.state.mu.Lock()
+	if stopReason != "" {
+		c.state.stopReason = stopReason
+	}
+	c.state.mu.Unlock()
+	publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventGenerationStep, map[string]any{"step": "scene_stop", "stop_reason": stopReason})
+	return nil
+}
+
+func (c *sceneConsumer) finish(ctx context.Context) (StoryPlanResult, StoryVariablePlan, error) {
+	if strings.TrimSpace(c.pendingLine) != "" {
+		record, ok, err := parseSceneRecordLine(c.pendingLine)
+		if err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, fmt.Errorf("parse pending NDJSON record: %w", err)
+		}
+		if ok {
+			if err := c.consumeRecord(ctx, record); err != nil {
+				return StoryPlanResult{}, StoryVariablePlan{}, err
+			}
+		}
+	}
+	c.publishLocationGroups(ctx)
+	plan := c.state.planResult()
+	if len(plan.Turns) == 0 {
+		plan.Turns = []StoryTurnPlan{{
+			TurnIndex:     1,
+			ActorName:     "旁白",
+			ActionType:    "narration",
+			Intent:        firstText(c.variable.PlotVariable.CoreChoice, c.input.Session.LastAuthorMessage, c.input.Session.AuthorIntent, c.input.Session.OpeningSituation, "推进当前故事变量"),
+			ActionSummary: "模型未产生回合，使用旁白占位",
+		}}
+	}
+	if len(plan.EventPlan) == 0 {
+		plan.EventPlan = fallbackEventPlanFromTurns(plan.Turns)
+		plan.InteractionAnalysis.LocationGroups = buildStoryLocationGroups(plan.EventPlan)
+	}
+	plan.ContinuityIssues = append(plan.ContinuityIssues, c.reviewIssues...)
+	return plan, c.variable, nil
+}
+
+func (c *sceneConsumer) publishLocationGroups(ctx context.Context) {
+	if c.locationGroupsPublished {
+		return
+	}
+	c.state.mu.Lock()
+	groups := copyStoryLocationGroups(c.state.locationGroups)
+	c.state.mu.Unlock()
+	c.locationGroupsPublished = true
+	if len(groups) == 0 {
+		return
+	}
+	updateStoryRunStep(ctx, c.g.deps, c.input.Run.RunID, domain.RunStatusSelectingInteractions, 45)
+	publishStoryEvent(ctx, c.g.deps, c.input.Run.RunID, domain.EventSameLocationCandidates, map[string]any{"location_groups": groups})
+}
+
+func (c *sceneConsumer) addIssue(issue string) {
+	issue = strings.TrimSpace(issue)
+	if issue != "" {
+		c.reviewIssues = append(c.reviewIssues, issue)
 	}
 }
 
-func mergeNarrativeReview(metadata StoryNarrativeReview, assembled StoryNarrativeReview) StoryNarrativeReview {
-	return StoryNarrativeReview{
-		Pass:             metadata.Pass && assembled.Pass,
-		HardViolations:   append(metadata.HardViolations, assembled.HardViolations...),
-		ContinuityIssues: append(metadata.ContinuityIssues, assembled.ContinuityIssues...),
-		StyleIssues:      append(metadata.StyleIssues, assembled.StyleIssues...),
-		SuggestedFixes:   append(metadata.SuggestedFixes, assembled.SuggestedFixes...),
+func parseSceneRecordLine(line string) (sceneRecord, bool, error) {
+	text := strings.TrimSpace(line)
+	if text == "" || strings.HasPrefix(text, "```") {
+		return sceneRecord{}, false, nil
 	}
+	start := strings.IndexByte(text, '{')
+	end := strings.LastIndexByte(text, '}')
+	if start < 0 || end < start {
+		return sceneRecord{}, false, fmt.Errorf("line is not a JSON object")
+	}
+	text = text[start : end+1]
+	var record sceneRecord
+	if err := json.Unmarshal([]byte(text), &record); err != nil {
+		return sceneRecord{}, false, err
+	}
+	if strings.TrimSpace(record.Type) == "" {
+		return sceneRecord{}, false, fmt.Errorf("scene record missing type")
+	}
+	return record, true, nil
 }
 
-func storyNarrativeResultUsable(result StoryNarrativeResult) bool {
-	return strings.TrimSpace(result.Title) != "" || strings.TrimSpace(result.Summary) != "" || strings.TrimSpace(result.Content) != "" || storyPlotVariableUsable(result.PlotVariable) || len(result.MemoryPatch.CharacterMemoryUpdates) > 0 || len(result.MemoryPatch.RelationshipUpdates) > 0 || len(result.MemoryPatch.WorldStateUpdates) > 0 || len(result.Turns) > 0
+func fallbackEventPlanFromTurns(turns []StoryTurnPlan) []model.StoryEventPlan {
+	events := make([]model.StoryEventPlan, 0, len(turns))
+	for _, turn := range turns {
+		summary := firstText(turn.ActionSummary, turn.Speech, turn.Content, turn.Intent)
+		if summary == "" {
+			continue
+		}
+		events = append(events, model.StoryEventPlan{
+			ID:             fmt.Sprintf("story_event_%d", len(events)+1),
+			TimeIndex:      len(events) + 1,
+			CharacterID:    turn.ActorID,
+			CharacterName:  turn.ActorName,
+			LocationKey:    firstText(turn.LocationKey, "scene"),
+			LocationName:   turn.LocationName,
+			ActionType:     normalizeStoryActionType(turn.ActionType, turn.Speech, turn.ActionSummary),
+			Summary:        summary,
+			Intent:         turn.Intent,
+			TargetActorIDs: turn.TargetActorIDs,
+		})
+	}
+	return events
+}
+
+func isAllowedStoryActionType(actionType string) bool {
+	switch actionType {
+	case "speak", "action", "silence", "observe", "narration":
+		return true
+	default:
+		return false
+	}
 }
 
 func storyPlotVariableUsable(variable StoryNarrativePlotVariable) bool {
 	return strings.TrimSpace(variable.PressureSource) != "" || strings.TrimSpace(variable.CoreChoice) != "" || strings.TrimSpace(variable.FocalCharacterID) != "" || len(variable.RelatedCharacterIDs) > 0 || len(variable.WorldStatePressure) > 0
 }
 
-func (g *StoryRunGenerator) variableSystemPrompt() string {
-	return firstText(g.variablePrompt, "你是 NovelOS 的剧情变量 agent。先生成推动本章状态变化的核心变量，并为角色生成受限视角变量切片。输出 JSON。") + `
-
-输出 JSON 对象，字段包括 plot_variable 和 character_views。plot_variable 包含 pressure_source、focal_character_id、core_choice、option_a、option_b、cost_a、cost_b、irreversible_effect、related_character_ids、world_state_pressure。character_views 的每项包含 character_id、known_facts、misreadings、emotional_pressure、action_bias。只输出 JSON。`
-}
-
-func (g *StoryRunGenerator) turnNarrativePrompt() string {
-	return firstText(g.narrativePrompt, "你是 NovelOS 的受限视角多角色演绎 agent。只根据当前 actor 的 perspective 生成本回合内容，输出 JSON：{\"content\":\"...\"}。") + `
-
-本次只生成 current_turn 的正文。禁止使用 perspective 之外的秘密、private_attitude 或全局真相。可使用 perspective.variable_view 中该角色可感知的变量切片，但不能使用其他角色切片或全局隐藏信息。speak 写角色台词和必要动作；action 写可观察动作；silence/observe 写沉默或观察；narration 写短叙事。只输出 JSON。`
-}
-
-func (g *StoryRunGenerator) statePatchPrompt() string {
-	return firstText(g.resultPrompt, "整理故事演绎结果。") + `
-
-根据已完成的 event_plan、interaction_analysis、interaction_transcripts、turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、plot_variable、memory_patch、review、turns。不要输出 content；章节正文由 assembler 阶段根据逐回合 content 生成。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容，不能根据润色需要新增事件。relationship_updates 可填 pair_id、summary、tension_delta、events；交涉造成的关系变化应写入 events，event_type 可用 negotiation 或 interaction_outcome。只输出 JSON。`
-}
-
-func (g *StoryRunGenerator) chapterAssemblerPrompt() string {
-	return firstText(g.narrativePrompt, "你是 NovelOS 的章节 assembler。只整合已给出的逐回合正文，输出 JSON。") + `
-
-把 turns[*].content 组装成连贯章节。只能润色衔接和调整段落节奏，不得新增事件事实，不得改变角色知道什么，不得新增 memory_patch、world_state、relationship state delta，不得改写 event_plan 或 interaction_analysis。输出 JSON 对象，字段只包括 title、summary、content、review、turns。content 必须来自 turns[*].content 的整合结果；如果某个 turn 没有 content，只能使用该 turn 的 intent/action_summary 作为保守占位。`
-}
-
-func (g *StoryRunGenerator) perspectiveForTurn(snapshot StoryContextSnapshot, turn StoryTurnPlan, variable StoryVariablePlan) *CharacterPerspective {
-	if turn.ActorID == "" {
-		return nil
+func (g *StoryRunGenerator) reflectScene(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) (SceneReflectionResult, error) {
+	if g.model == nil {
+		return SceneReflectionResult{}, errors.New("story model is not configured")
 	}
-	for _, character := range snapshot.Characters {
-		if character.ID != turn.ActorID {
-			continue
-		}
-		return &CharacterPerspective{
-			Character:         character,
-			VisibleWorld:      visibleWorldForCharacter(snapshot.WorldState, character),
-			RecentMemories:    snapshot.RecentMemories[character.ID],
-			RelationshipViews: relationshipViewsForCharacter(snapshot.Relationships, character.ID),
-			VariableView:      variableViewForCharacter(variable.CharacterViews, character.ID),
-		}
-	}
-	return nil
-}
-
-func (g *StoryRunGenerator) buildResult(ctx context.Context, input port.StoryRunGenerationInput, plan StoryPlanResult, narrative StoryNarrativeResult, variable StoryVariablePlan) (model.StoryRunResult, error) {
-	chapterNumber, err := g.nextChapterNumber(ctx, input.Run.ProjectID)
+	reflectionContext := g.buildReflectionContext(input, snapshot, plan, variable)
+	payload, _ := json.Marshal(reflectionContext)
+	msg, err := g.model.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(g.reflectSystemPrompt()),
+		schema.UserMessage(string(payload)),
+	}, maxTokensOption(g.cfg.Model, g.reflectTokenLimit()))
 	if err != nil {
-		return model.StoryRunResult{}, err
+		return SceneReflectionResult{}, err
 	}
-	content := firstText(narrative.Content, formatDraftContent(plan))
-	plotVariable := firstVariable(variable.PlotVariable, narrative.PlotVariable)
+	var reflection SceneReflectionResult
+	if err := decodeModelJSON(msg.Content, &reflection); err != nil {
+		return SceneReflectionResult{}, err
+	}
+	if strings.TrimSpace(reflection.Summary) == "" {
+		reflection.Summary = fallbackSceneSummary(plan, variable)
+	}
+	return reflection, nil
+}
+
+func (g *StoryRunGenerator) buildReflectionContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) ReflectionContext {
+	characters := make([]ReflectionCharacter, 0, len(snapshot.Characters))
+	for _, character := range snapshot.Characters {
+		characters = append(characters, ReflectionCharacter{ID: character.ID, Name: character.Name, Role: character.Role})
+	}
+	return ReflectionContext{
+		Scene: ReflectionScene{
+			PlotVariable:           variable.PlotVariable,
+			Events:                 plan.EventPlan,
+			Turns:                  toStoryTurns(plan.Turns),
+			InteractionTranscripts: plan.InteractionTranscripts,
+			StopReason:             plan.StopReason,
+		},
+		Characters:      characters,
+		PerceptionIndex: buildPerceptionIndex(snapshot.Characters, plan),
+		PriorMemories:   compactMemories(snapshot.RecentMemories, 8),
+		Relationships:   compactRelationships(snapshot.Relationships, 20),
+		WorldState:      compactWorldState(snapshot.WorldState, 20),
+	}
+}
+
+func fallbackReflectionResult(plan StoryPlanResult, variable StoryVariablePlan) SceneReflectionResult {
+	return SceneReflectionResult{Summary: fallbackSceneSummary(plan, variable)}
+}
+
+func fallbackSceneSummary(plan StoryPlanResult, variable StoryVariablePlan) string {
+	return firstText(plan.Summary, variable.PlotVariable.CoreChoice, plan.StopReason, "scene simulation completed")
+}
+
+func (g *StoryRunGenerator) assembleStoryRunResult(input port.StoryRunGenerationInput, plan StoryPlanResult, reflection SceneReflectionResult, variable StoryVariablePlan) model.StoryRunResult {
+	sceneSummary := firstText(reflection.Summary, fallbackSceneSummary(plan, variable))
+	plotVariable := variable.PlotVariable
 	focalID := firstText(plotVariable.FocalCharacterID, firstActorID(plan.Turns))
 	relatedIDs := plotVariable.RelatedCharacterIDs
 	if len(relatedIDs) == 0 {
 		relatedIDs = relatedCharacterIDs(plan.Turns)
 	}
-	coreChoice := firstText(plotVariable.CoreChoice, narrative.Summary, plan.Summary, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "推进当前故事变量")
+	coreChoice := firstText(plotVariable.CoreChoice, sceneSummary, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "advance current story variable")
 	return model.StoryRunResult{
 		RunID:     input.Run.RunID,
 		SessionID: input.Run.SessionID,
 		Status:    domain.RunStatusCompleted,
 		PlotVariable: model.PlotVariable{
-			PressureSource:      firstText(plotVariable.PressureSource, input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "当前故事压力"),
+			PressureSource:      firstText(plotVariable.PressureSource, input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "current story pressure"),
 			FocalCharacterID:    focalID,
 			CoreChoice:          coreChoice,
-			OptionA:             firstText(plotVariable.OptionA, "暂时维持当前局面"),
-			OptionB:             firstText(plotVariable.OptionB, "主动打破当前局面"),
-			CostA:               firstText(plotVariable.CostA, "压力继续累积"),
-			CostB:               firstText(plotVariable.CostB, "暴露意图或承担代价"),
-			IrreversibleEffect:  firstText(plotVariable.IrreversibleEffect, plan.StopReason, "本轮回合裁决结束"),
+			OptionA:             firstText(plotVariable.OptionA, "hold the current line"),
+			OptionB:             firstText(plotVariable.OptionB, "break the current line"),
+			CostA:               firstText(plotVariable.CostA, "pressure continues accumulating"),
+			CostB:               firstText(plotVariable.CostB, "intent is exposed or a cost is paid"),
+			IrreversibleEffect:  firstText(plotVariable.IrreversibleEffect, plan.StopReason, "the scene closes with irreversible pressure"),
 			RelatedCharacterIDs: relatedIDs,
 			WorldStatePressure:  plotVariable.WorldStatePressure,
 		},
 		EventPlan:              plan.EventPlan,
+		Turns:                  toStoryTurns(plan.Turns),
+		SceneSummary:           sceneSummary,
 		InteractionAnalysis:    plan.InteractionAnalysis,
 		InteractionTranscripts: plan.InteractionTranscripts,
 		Draft: model.Draft{
-			ID:            g.newID("draft"),
-			Title:         firstText(narrative.Title, input.Session.Title, "未命名章节"),
-			ChapterNumber: chapterNumber,
-			Content:       content,
-			Summary:       coreChoice,
-			WordCount:     utf8.RuneCountInString(content),
+			ID:        g.newID("draft"),
+			Title:     firstText(input.Session.Title, "Untitled scene"),
+			Content:   "",
+			Summary:   sceneSummary,
+			WordCount: 0,
 		},
 		Review: model.ReviewReport{
-			Pass:             narrative.Review.Pass,
-			HardViolations:   narrative.Review.HardViolations,
-			ContinuityIssues: narrative.Review.ContinuityIssues,
-			StyleIssues:      narrative.Review.StyleIssues,
-			SuggestedFixes:   narrative.Review.SuggestedFixes,
+			Pass:             true,
+			ContinuityIssues: plan.ContinuityIssues,
 		},
 		MemoryPatch: model.MemoryPatch{
 			ID:                     g.newID("patch"),
 			Status:                 domain.MemoryPatchStatusRunLocal,
-			CharacterMemoryUpdates: toCharacterMemoryUpdates(narrative.MemoryPatch.CharacterMemoryUpdates),
-			RelationshipUpdates:    toRelationshipUpdates(narrative.MemoryPatch.RelationshipUpdates),
-			WorldStateUpdates:      toWorldStateUpdates(narrative.MemoryPatch.WorldStateUpdates),
+			CharacterMemoryUpdates: toCharacterMemoryUpdates(reflection.MemoryPatch.CharacterMemoryUpdates),
+			RelationshipUpdates:    toRelationshipUpdates(reflection.MemoryPatch.RelationshipUpdates),
+			WorldStateUpdates:      toWorldStateUpdates(reflection.MemoryPatch.WorldStateUpdates),
 		},
-	}, nil
+	}
 }
 
+func toStoryTurns(turns []StoryTurnPlan) []model.StoryTurn {
+	out := make([]model.StoryTurn, 0, len(turns))
+	for _, turn := range turns {
+		out = append(out, model.StoryTurn{
+			TurnIndex:          turn.TurnIndex,
+			ActorID:            turn.ActorID,
+			ActorName:          turn.ActorName,
+			ActionType:         turn.ActionType,
+			Speech:             turn.Speech,
+			ActionSummary:      turn.ActionSummary,
+			TargetActorIDs:     turn.TargetActorIDs,
+			Intent:             turn.Intent,
+			InteractionGroupID: turn.InteractionGroupID,
+			LocationKey:        turn.LocationKey,
+			LocationName:       turn.LocationName,
+			Phase:              turn.Phase,
+		})
+	}
+	return out
+}
+
+func buildPerceptionIndex(characters []model.Character, plan StoryPlanResult) []PerceptionIndexEntry {
+	out := make([]PerceptionIndexEntry, 0, len(characters))
+	for _, character := range characters {
+		entry := PerceptionIndexEntry{CharacterID: character.ID}
+		for _, event := range plan.EventPlan {
+			if characterWitnessesEvent(character.ID, event, plan.EventPlan) {
+				entry.WitnessedEventIDs = appendUniqueString(entry.WitnessedEventIDs, event.ID)
+			}
+		}
+		for _, turn := range plan.Turns {
+			if characterWitnessesTurn(character.ID, turn, plan.EventPlan) {
+				entry.WitnessedTurnIndexes = appendUniqueInt(entry.WitnessedTurnIndexes, turn.TurnIndex)
+			}
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func characterWitnessesEvent(characterID string, event model.StoryEventPlan, events []model.StoryEventPlan) bool {
+	if characterID == "" {
+		return false
+	}
+	if event.CharacterID == characterID || containsString(event.TargetActorIDs, characterID) {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(event.Visibility), "private") {
+		return false
+	}
+	return characterAppearsAtLocation(events, characterID, event.LocationKey)
+}
+
+func characterWitnessesTurn(characterID string, turn StoryTurnPlan, events []model.StoryEventPlan) bool {
+	if characterID == "" {
+		return false
+	}
+	if turn.ActorID == characterID || containsString(turn.TargetActorIDs, characterID) {
+		return true
+	}
+	if turn.ActorID == "" && turn.ActionType == "narration" {
+		return true
+	}
+	return characterAppearsAtLocation(events, characterID, turn.LocationKey)
+}
+
+func characterAppearsAtLocation(events []model.StoryEventPlan, characterID string, locationKey string) bool {
+	if characterID == "" || locationKey == "" {
+		return false
+	}
+	for _, event := range events {
+		if event.LocationKey != locationKey {
+			continue
+		}
+		if event.CharacterID == characterID || containsString(event.TargetActorIDs, characterID) {
+			return true
+		}
+	}
+	return false
+}
+
+func appendUniqueInt(values []int, value int) []int {
+	if value <= 0 {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
 func (g *StoryRunGenerator) nextChapterNumber(ctx context.Context, projectID string) (int, error) {
 	chapters, err := g.deps.chapters.ListByProjectID(ctx, projectID, model.PageInput{Page: 1, PageSize: 1000})
 	if err != nil {
@@ -883,15 +1374,6 @@ func validCharacterIDs(ids []string, validCharacters map[string]struct{}) []stri
 	return out
 }
 
-func firstVariable(values ...StoryNarrativePlotVariable) StoryNarrativePlotVariable {
-	for _, value := range values {
-		if strings.TrimSpace(value.CoreChoice) != "" || strings.TrimSpace(value.PressureSource) != "" {
-			return value
-		}
-	}
-	return StoryNarrativePlotVariable{}
-}
-
 func variableViewForCharacter(views []CharacterVariableView, characterID string) *CharacterVariableView {
 	for _, view := range views {
 		if view.CharacterID != characterID {
@@ -901,20 +1383,6 @@ func variableViewForCharacter(views []CharacterVariableView, characterID string)
 		return &copyView
 	}
 	return nil
-}
-
-func relationshipPublicSummaries(relationships []model.Relationship) []map[string]any {
-	items := make([]map[string]any, 0, len(relationships))
-	for _, relationship := range relationships {
-		items = append(items, map[string]any{
-			"pair_id":            relationship.Pair.ID,
-			"left_character_id":  relationship.Pair.LeftCharacterID,
-			"right_character_id": relationship.Pair.RightCharacterID,
-			"summary":            relationship.Pair.Summary,
-			"tension_points":     relationship.Pair.TensionPoints,
-		})
-	}
-	return items
 }
 
 func toCharacterMemoryUpdates(updates []StoryNarrativeCharacterMemoryUpdate) []model.CharacterMemoryUpdate {
@@ -948,29 +1416,6 @@ func toWorldStateUpdates(updates []StoryNarrativeWorldStateUpdate) []model.World
 		out = append(out, model.WorldStateUpdate{Key: update.Key, Operation: update.Operation, Value: update.Value, Note: update.Note})
 	}
 	return out
-}
-
-func formatDraftContent(plan StoryPlanResult) string {
-	var builder strings.Builder
-	if plan.Summary != "" {
-		builder.WriteString(plan.Summary)
-		builder.WriteString("\n\n")
-	}
-	for _, turn := range plan.Turns {
-		actor := firstText(turn.ActorName, turn.ActorID, "旁白")
-		content := firstText(turn.Content, turn.Intent)
-		builder.WriteString(fmt.Sprintf("【回合 %d】%s（%s）：%s", turn.TurnIndex, actor, turn.ActionType, content))
-		if turn.Rationale != "" && turn.Content == "" {
-			builder.WriteString("。理由：")
-			builder.WriteString(turn.Rationale)
-		}
-		builder.WriteString("\n")
-	}
-	if plan.StopReason != "" {
-		builder.WriteString("\n停止原因：")
-		builder.WriteString(plan.StopReason)
-	}
-	return builder.String()
 }
 
 func firstActorID(turns []StoryTurnPlan) string {
