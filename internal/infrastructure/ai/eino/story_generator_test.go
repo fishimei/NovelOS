@@ -453,7 +453,10 @@ func TestConsumeSceneBatchKeepsPlannedActionsAuthoritative(t *testing.T) {
 		InteractionGroups: []model.StoryInteractionGroup{
 			{ID: "interaction_1", LocationKey: "old_dock", CharacterIDs: []string{"character_1", "character_2"}, ShouldInteract: true},
 		},
-		Turns: []StoryTurnPlan{{TurnIndex: 1, ActorID: "character_1", ActionType: "speak", Speech: "You knew about the letter.", TargetActorIDs: []string{"character_2"}, InteractionGroupID: "interaction_1", LocationKey: "old_dock"}},
+		Turns: []StoryTurnPlan{
+			{TurnIndex: 1, ActorID: "character_1", ActionType: "speak", Speech: "You knew about the letter.", TargetActorIDs: []string{"character_2"}, InteractionGroupID: "interaction_1", LocationKey: "old_dock"},
+			{TurnIndex: 2, ActorID: "character_3", ActionType: "speak", Speech: "I followed you.", TargetActorIDs: []string{"character_1"}, LocationKey: "old_dock"},
+		},
 	}
 
 	plan, _, err := generator.consumeSceneBatch(context.Background(), input, snapshot, state, batch, seed)
@@ -472,11 +475,17 @@ func TestConsumeSceneBatchKeepsPlannedActionsAuthoritative(t *testing.T) {
 	if plan.EventPlan[0].DurationHours != 3 {
 		t.Fatalf("planned action duration = %d, want 3", plan.EventPlan[0].DurationHours)
 	}
+	if len(plan.Turns) != 1 || plan.Turns[0].ActorID != "character_1" {
+		t.Fatalf("planned action participants did not constrain turns: %#v", plan.Turns)
+	}
 	if len(plan.InteractionAnalysis.InteractionGroups) != 1 || plan.InteractionAnalysis.InteractionGroups[0].ID != "interaction_1" {
 		t.Fatalf("planned participants did not support interaction group: %#v", plan.InteractionAnalysis.InteractionGroups)
 	}
 	if !containsIssue(plan.ContinuityIssues, "planned_actions are authoritative") {
 		t.Fatalf("expected ignored scene event issue, got %#v", plan.ContinuityIssues)
+	}
+	if !containsIssue(plan.ContinuityIssues, "planned action participants") {
+		t.Fatalf("expected unplanned turn issue, got %#v", plan.ContinuityIssues)
 	}
 }
 

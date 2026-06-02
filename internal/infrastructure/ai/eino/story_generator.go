@@ -570,6 +570,14 @@ func sceneCharacterIDsForContext(seed StoryVariablePlan, characters []model.Char
 	if len(plannedActions) == 0 {
 		return sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, characters)
 	}
+	ids := plannedActionCharacterIDs(plannedActions)
+	if len(ids) == 0 {
+		return sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, characters)
+	}
+	return ids
+}
+
+func plannedActionCharacterIDs(plannedActions []ScenePlannedAction) []string {
 	ids := make([]string, 0, len(plannedActions)*2)
 	for _, action := range plannedActions {
 		ids = appendUniqueString(ids, action.CharacterID)
@@ -577,10 +585,20 @@ func sceneCharacterIDsForContext(seed StoryVariablePlan, characters []model.Char
 			ids = appendUniqueString(ids, participantID)
 		}
 	}
-	if len(ids) == 0 {
-		return sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, characters)
-	}
 	return ids
+}
+
+func plannedActionsAllowTurn(plannedActions []ScenePlannedAction, actorID string, targetActorIDs []string) bool {
+	allowed := plannedActionCharacterIDs(plannedActions)
+	if actorID != "" && !containsString(allowed, actorID) {
+		return false
+	}
+	for _, targetID := range targetActorIDs {
+		if !containsString(allowed, targetID) {
+			return false
+		}
+	}
+	return true
 }
 
 func privateAttitudesForCharacter(relationships []model.Relationship, characterID string) []map[string]string {
@@ -1212,6 +1230,11 @@ func (c *sceneConsumer) consumeTurn(ctx context.Context, turn StoryTurnPlan) err
 	turn.ActorID = actorID
 	turn.ActorName = actorName
 	turn.TargetActorIDs = targetActorIDs
+	if len(c.state.plannedActions) > 0 && !plannedActionsAllowTurn(c.state.plannedActions, turn.ActorID, turn.TargetActorIDs) {
+		c.state.mu.Unlock()
+		c.addIssue("story turn actor must belong to planned action participants")
+		return nil
+	}
 	turn.Intent = strings.TrimSpace(turn.Intent)
 	turn.Rationale = strings.TrimSpace(turn.Rationale)
 	turn.InteractionGroupID = strings.TrimSpace(turn.InteractionGroupID)
