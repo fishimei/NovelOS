@@ -198,7 +198,7 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 	if len(publicWorld) == 0 {
 		publicWorld = firstEntries(snapshot.WorldState, 5)
 	}
-	characterIDs := sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, snapshot.Characters)
+	characterIDs := sceneCharacterIDsForContext(seed, snapshot.Characters, plannedActions)
 	characterViews := make([]SceneCharacterView, 0, len(characterIDs))
 	for _, characterID := range characterIDs {
 		character := characterByID(snapshot.Characters, characterID)
@@ -503,6 +503,23 @@ func sceneCharacterIDs(relatedIDs []string, characters []model.Character) []stri
 	}
 	for _, character := range firstEntries(characters, 4) {
 		ids = appendUniqueString(ids, character.ID)
+	}
+	return ids
+}
+
+func sceneCharacterIDsForContext(seed StoryVariablePlan, characters []model.Character, plannedActions []ScenePlannedAction) []string {
+	if len(plannedActions) == 0 {
+		return sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, characters)
+	}
+	ids := make([]string, 0, len(plannedActions)*2)
+	for _, action := range plannedActions {
+		ids = appendUniqueString(ids, action.CharacterID)
+		for _, participantID := range action.ParticipantIDs {
+			ids = appendUniqueString(ids, participantID)
+		}
+	}
+	if len(ids) == 0 {
+		return sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, characters)
 	}
 	return ids
 }

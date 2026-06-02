@@ -568,6 +568,34 @@ func TestBuildSceneContextOnlyIncludesOwnVariableView(t *testing.T) {
 	}
 }
 
+func TestBuildSceneContextUsesPlannedActionParticipants(t *testing.T) {
+	generator := &StoryRunGenerator{maxTurns: 25}
+	sceneContext := generator.buildSceneContext(port.StoryRunGenerationInput{
+		Run:     model.StoryRun{RunID: "run_1", SessionID: "story_1", ProjectID: "project_1"},
+		Session: modelStorySession(),
+	}, StoryContextSnapshot{
+		Characters: []model.Character{
+			{ID: "character_1", Name: "林澈"},
+			{ID: "character_2", Name: "沈砚"},
+			{ID: "character_3", Name: "严舟"},
+		},
+	}, StoryVariablePlan{
+		PlotVariable: StoryNarrativePlotVariable{RelatedCharacterIDs: []string{"character_1", "character_3"}},
+	}, []ScenePlannedAction{
+		{CharacterID: "character_1", ParticipantIDs: []string{"character_2"}},
+	})
+
+	if sceneCharacterViewByID(sceneContext.CharacterViews, "character_1") == nil {
+		t.Fatalf("expected actor in scene context: %#v", sceneContext.CharacterViews)
+	}
+	if sceneCharacterViewByID(sceneContext.CharacterViews, "character_2") == nil {
+		t.Fatalf("expected intended participant in scene context: %#v", sceneContext.CharacterViews)
+	}
+	if sceneCharacterViewByID(sceneContext.CharacterViews, "character_3") != nil {
+		t.Fatalf("unplanned plot-related character leaked into scene context: %#v", sceneContext.CharacterViews)
+	}
+}
+
 func TestPlanCharacterActionsUsesVisibleDecisionInput(t *testing.T) {
 	decider := &fakeCharacterActionDecider{decision: model.CharacterActionDecision{
 		ActionType:        "action",
