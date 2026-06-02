@@ -138,3 +138,22 @@ func StoryEventFromAction(branch model.Branch, action model.OngoingAction, paren
 		StateDelta:    model.EventStateDelta{},
 	}
 }
+
+func StoryEventFromActionCompletion(branch model.Branch, action model.OngoingAction, parentEventID string) model.StoryEvent {
+	completed := action
+	completed.Status = "completed"
+	return model.StoryEvent{
+		ProjectID:     branch.ProjectID,
+		SessionID:     branch.SessionID,
+		BranchID:      branch.ID,
+		ParentEventID: parentEventID,
+		StoryTime:     action.EndsAt,
+		Kind:          model.EventKindActionCompleted,
+		ActorIDs:      []string{action.CharacterID},
+		LocationKey:   action.TargetLocationKey,
+		ResourceKeys:  action.ResourceKeys,
+		Summary:       action.Description,
+		Payload:       map[string]any{"action": completed},
+		StateDelta:    model.EventStateDelta{},
+	}
+}

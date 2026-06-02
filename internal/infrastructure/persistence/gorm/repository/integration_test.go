@@ -400,6 +400,68 @@ func TestStoryEventStoreGenesisForkAndResolveState(t *testing.T) {
 	}
 }
 
+func TestStoryEventStoreInFlightActionsStopAtCompletionEvent(t *testing.T) {
+	_, repos, _, _, clock := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "in-flight actions"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	genesis, err := repos.StoryEvents.InitGenesis(context.Background(), project.ID, session.ID, model.WorldSnapshot{
+		StoryTime:     clock.Now(),
+		WorldState:    map[string]model.WorldStateEntry{},
+		Characters:    map[string]model.CharacterRuntimeState{},
+		Relationships: map[string]model.Relationship{},
+	})
+	if err != nil {
+		t.Fatalf("init genesis: %v", err)
+	}
+	branches, err := repos.StoryEvents.ListBranchesBySession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("list branches: %v", err)
+	}
+	branch := branches[0]
+	start := clock.Now()
+	action := model.OngoingAction{
+		CharacterID:       "character_1",
+		ActionType:        "observe",
+		Description:       "Lin watches the dock",
+		TargetLocationKey: "old_dock",
+		StartAt:           start,
+		ArriveAt:          start,
+		EffectAt:          start,
+		EndsAt:            start.Add(time.Hour),
+		ResourceKeys:      []string{"character:character_1", "location:old_dock"},
+		Status:            "ongoing",
+	}
+	scheduledInput := service.StoryEventFromAction(branch, action, genesis.ID)
+	scheduledInput.CreatedAt = clock.Now()
+	scheduled, err := repos.StoryEvents.AppendEvent(context.Background(), scheduledInput)
+	if err != nil {
+		t.Fatalf("append scheduled action: %v", err)
+	}
+	completionInput := service.StoryEventFromActionCompletion(branch, action, scheduled.ID)
+	completionInput.CreatedAt = clock.Now()
+	if _, err := repos.StoryEvents.AppendEvent(context.Background(), completionInput); err != nil {
+		t.Fatalf("append completed action: %v", err)
+	}
+
+	inFlight, err := repos.StoryEvents.InFlightActionsAt(context.Background(), branch.ID, start.Add(30*time.Minute))
+	if err != nil {
+		t.Fatalf("in-flight before completion: %v", err)
+	}
+	if len(inFlight) != 1 || inFlight[0].CharacterID != "character_1" {
+		t.Fatalf("expected action in flight before completion, got %#v", inFlight)
+	}
+	inFlight, err = repos.StoryEvents.InFlightActionsAt(context.Background(), branch.ID, start.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("in-flight at completion: %v", err)
+	}
+	if len(inFlight) != 0 {
+		t.Fatalf("expected action released at completion, got %#v", inFlight)
+	}
+}
+
 func TestStoryChapterCutCreatesChapterSpanWithoutStateWrites(t *testing.T) {
 	_, repos, txm, ids, clock := testRepos(t)
 	project := createProject(t, repos)

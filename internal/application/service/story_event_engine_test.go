@@ -124,6 +124,33 @@ func TestOngoingActionFromPlanBuildsActionPayload(t *testing.T) {
 	}
 }
 
+func TestStoryEventFromActionCompletionBuildsCompletedPayload(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	action := model.OngoingAction{
+		CharacterID:       "A",
+		ActionType:        "observe",
+		Description:       "A watches for B",
+		TargetLocationKey: "loc:tavern",
+		StartAt:           start,
+		EndsAt:            start.Add(time.Hour),
+		ResourceKeys:      []string{"character:A"},
+		Status:            "ongoing",
+	}
+
+	event := StoryEventFromActionCompletion(model.Branch{ID: "branch_1", ProjectID: "project_1", SessionID: "story_1"}, action, "event_parent")
+
+	if event.Kind != model.EventKindActionCompleted || !event.StoryTime.Equal(action.EndsAt) {
+		t.Fatalf("unexpected completion event: %#v", event)
+	}
+	completed, ok := event.Payload["action"].(model.OngoingAction)
+	if !ok {
+		t.Fatalf("completion action payload missing: %#v", event.Payload)
+	}
+	if completed.Status != "completed" || action.Status != "ongoing" {
+		t.Fatalf("completion status not isolated: completed=%#v source=%#v", completed, action)
+	}
+}
+
 func TestStoryEventPlanTimeUsesBaseClock(t *testing.T) {
 	base := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
 	first := storyEventPlanTime(base, model.StoryEventPlan{TimeIndex: 1})
@@ -171,6 +198,19 @@ func TestSceneTimeFromScheduledActionsUsesCompletionBeforeLaterCollision(t *test
 
 	if want := start.Add(time.Hour); !sceneTime.Equal(want) {
 		t.Fatalf("scene time = %s, want earliest completion before later collision %s", sceneTime, want)
+	}
+}
+
+func TestActionsCompletedAtSelectsSameTick(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	completed := actionsCompletedAt([]model.OngoingAction{
+		{CharacterID: "A", EndsAt: start.Add(time.Hour)},
+		{CharacterID: "B", EndsAt: start.Add(2 * time.Hour)},
+		{CharacterID: "C", EndsAt: start.Add(time.Hour)},
+	}, start.Add(time.Hour))
+
+	if len(completed) != 2 || completed[0].CharacterID != "A" || completed[1].CharacterID != "C" {
+		t.Fatalf("completed actions = %#v, want A and C", completed)
 	}
 }
 

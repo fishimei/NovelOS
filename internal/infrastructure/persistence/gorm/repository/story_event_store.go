@@ -190,6 +190,9 @@ func (s *storyEventStore) InFlightActionsAt(ctx context.Context, branchID string
 	}
 	actionsByCharacter := map[string]model.OngoingAction{}
 	for _, event := range events {
+		if event.StoryTime.After(at) {
+			continue
+		}
 		switch event.Kind {
 		case model.EventKindActionScheduled:
 			action, ok := actionFromEvent(event)
@@ -198,6 +201,15 @@ func (s *storyEventStore) InFlightActionsAt(ctx context.Context, branchID string
 			}
 			if !action.StartAt.After(at) && action.EndsAt.After(at) && action.Status == "ongoing" {
 				actionsByCharacter[action.CharacterID] = action
+			}
+		case model.EventKindActionCompleted:
+			action, ok := actionFromEvent(event)
+			if ok {
+				delete(actionsByCharacter, action.CharacterID)
+				continue
+			}
+			for _, actorID := range event.ActorIDs {
+				delete(actionsByCharacter, actorID)
 			}
 		case model.EventKindSceneResolved:
 			for _, actorID := range event.ActorIDs {
@@ -525,12 +537,12 @@ func storyEventRow(e model.StoryEvent) (persistencemodels.StoryEvent, error) {
 		Kind:           e.Kind,
 		ActorIDsJSON:   actorIDs,
 		LocationKey:    e.LocationKey,
-		ResourceJSON:    resources,
-		Summary:         e.Summary,
-		PayloadJSON:     payload,
-		StateDeltaJSON:  delta,
-		Published:       e.Published,
-		CreatedAt:       e.CreatedAt,
+		ResourceJSON:   resources,
+		Summary:        e.Summary,
+		PayloadJSON:    payload,
+		StateDeltaJSON: delta,
+		Published:      e.Published,
+		CreatedAt:      e.CreatedAt,
 	}, nil
 }
 

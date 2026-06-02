@@ -177,9 +177,10 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		baseStoryTime = parent.StoryTime
 	}
 	storyTime := baseStoryTime
-	written := make([]model.StoryEvent, 0, len(result.EventPlan)+1)
+	written := make([]model.StoryEvent, 0, len(result.EventPlan)*2+1)
 	branch := model.Branch{ID: run.BranchID, ProjectID: run.ProjectID, SessionID: run.SessionID}
 	timedActions := make([]TimedAction, 0, len(result.EventPlan))
+	scheduledActions := make([]model.OngoingAction, 0, len(result.EventPlan))
 	for _, planned := range orderedStoryEventPlans(result.EventPlan) {
 		eventTime := storyEventPlanTime(baseStoryTime, planned)
 		action := ongoingActionFromPlan(planned, eventTime)
@@ -192,6 +193,7 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 			return model.StoryRunResult{}, err
 		}
 		written = append(written, event)
+		scheduledActions = append(scheduledActions, action)
 		timedActions = append(timedActions, timedActionFrom(action))
 		parentEventID = event.ID
 		storyTime = event.StoryTime
@@ -199,6 +201,17 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 	sceneTime := sceneTimeFromScheduledActions(baseStoryTime, timedActions, storyTime)
 	if sceneTime.IsZero() {
 		sceneTime = run.CreatedAt
+	}
+	for _, action := range actionsCompletedAt(scheduledActions, sceneTime) {
+		eventInput := StoryEventFromActionCompletion(branch, action, parentEventID)
+		eventInput.Payload["source_run_id"] = run.RunID
+		eventInput.CreatedAt = currentTime(s.clock)
+		event, err := s.store.AppendEvent(ctx, eventInput)
+		if err != nil {
+			return model.StoryRunResult{}, err
+		}
+		written = append(written, event)
+		parentEventID = event.ID
 	}
 	sceneEvent, err := s.store.AppendEvent(ctx, model.StoryEvent{
 		ProjectID:     run.ProjectID,
@@ -331,6 +344,22 @@ func sceneTimeFromScheduledActions(start time.Time, actions []TimedAction, fallb
 		return next
 	}
 	return result.Clock
+}
+
+func actionsCompletedAt(actions []model.OngoingAction, at time.Time) []model.OngoingAction {
+	if at.IsZero() {
+		return nil
+	}
+	out := make([]model.OngoingAction, 0)
+	for _, action := range actions {
+		if action.CharacterID == "" || action.EndsAt.IsZero() {
+			continue
+		}
+		if action.EndsAt.Equal(at) {
+			out = append(out, action)
+		}
+	}
+	return out
 }
 
 func actorIDsForPlan(event model.StoryEventPlan) []string {

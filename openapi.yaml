@@ -2231,7 +2231,7 @@ components:
           format: date-time
         kind:
           type: string
-          enum: [genesis, action_scheduled, scene_resolved, variable_injected, promotion]
+          enum: [genesis, action_scheduled, action_completed, scene_resolved, variable_injected, promotion]
         actor_ids:
           type: array
           items:

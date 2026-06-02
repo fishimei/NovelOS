@@ -547,6 +547,7 @@ type StoryTurn struct {
 const (
 	EventKindGenesis          = "genesis"
 	EventKindActionScheduled  = "action_scheduled"
+	EventKindActionCompleted  = "action_completed"
 	EventKindSceneResolved    = "scene_resolved"
 	EventKindVariableInjected = "variable_injected"
 	EventKindPromotion        = "promotion"
