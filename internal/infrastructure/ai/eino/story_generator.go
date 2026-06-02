@@ -9,6 +9,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	llmmodel "github.com/cloudwego/eino/components/model"
@@ -273,24 +274,49 @@ func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port
 	if len(characterIDs) == 0 {
 		return nil, nil
 	}
-	planned := make([]ScenePlannedAction, 0, len(characterIDs))
-	for _, characterID := range characterIDs {
-		character := characterByID(snapshot.Characters, characterID)
-		if character.ID == "" {
-			continue
+	results := make([]plannedActionResult, len(characterIDs))
+	var wg sync.WaitGroup
+	for idx, characterID := range characterIDs {
+		wg.Add(1)
+		go func(idx int, characterID string) {
+			defer wg.Done()
+			action, err := g.planCharacterAction(ctx, snapshot, world, characterID)
+			results[idx] = plannedActionResult{action: action, err: err}
+		}(idx, characterID)
+	}
+	wg.Wait()
+	planned := make([]ScenePlannedAction, 0, len(results))
+	for _, result := range results {
+		if result.err != nil {
+			return nil, result.err
 		}
-		decisionInput := characterDecisionInput(world, character)
-		decision, err := g.actionDecider.Decide(ctx, decisionInput)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", character.ID, err)
+		if result.action.CharacterID != "" {
+			planned = append(planned, result.action)
 		}
-		action, err := scenePlannedActionFromDecision(snapshot.Characters, character, decision)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", character.ID, err)
-		}
-		planned = append(planned, action)
 	}
 	return planned, nil
+}
+
+type plannedActionResult struct {
+	action ScenePlannedAction
+	err    error
+}
+
+func (g *StoryRunGenerator) planCharacterAction(ctx context.Context, snapshot StoryContextSnapshot, world model.WorldSnapshot, characterID string) (ScenePlannedAction, error) {
+	character := characterByID(snapshot.Characters, characterID)
+	if character.ID == "" {
+		return ScenePlannedAction{}, nil
+	}
+	decisionInput := characterDecisionInput(world, character)
+	decision, err := g.actionDecider.Decide(ctx, decisionInput)
+	if err != nil {
+		return ScenePlannedAction{}, fmt.Errorf("%s: %w", character.ID, err)
+	}
+	action, err := scenePlannedActionFromDecision(snapshot.Characters, character, decision)
+	if err != nil {
+		return ScenePlannedAction{}, fmt.Errorf("%s: %w", character.ID, err)
+	}
+	return action, nil
 }
 
 func (g *StoryRunGenerator) decisionWorldSnapshot(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (model.WorldSnapshot, error) {

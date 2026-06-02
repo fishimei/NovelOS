@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,13 +44,38 @@ func (fakeIDGenerator) New(prefix string) string {
 }
 
 type fakeCharacterActionDecider struct {
+	mu       sync.Mutex
 	inputs   []model.CharacterActionDecisionInput
 	decision model.CharacterActionDecision
 }
 
 func (d *fakeCharacterActionDecider) Decide(_ context.Context, input model.CharacterActionDecisionInput) (model.CharacterActionDecision, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.inputs = append(d.inputs, input)
 	return d.decision, nil
+}
+
+func (d *fakeCharacterActionDecider) inputsSnapshot() []model.CharacterActionDecisionInput {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]model.CharacterActionDecisionInput(nil), d.inputs...)
+}
+
+type blockingCharacterActionDecider struct {
+	started  chan string
+	release  <-chan struct{}
+	decision model.CharacterActionDecision
+}
+
+func (d *blockingCharacterActionDecider) Decide(ctx context.Context, input model.CharacterActionDecisionInput) (model.CharacterActionDecision, error) {
+	d.started <- input.Character.ID
+	select {
+	case <-d.release:
+		return d.decision, nil
+	case <-ctx.Done():
+		return model.CharacterActionDecision{}, ctx.Err()
+	}
 }
 
 type fakeStoryChatModel struct {
@@ -683,15 +709,83 @@ func TestPlanCharacterActionsUsesVisibleDecisionInput(t *testing.T) {
 	if len(planned[0].ParticipantIDs) != 1 || planned[0].ParticipantIDs[0] != "character_2" {
 		t.Fatalf("participant ids = %#v, want character_2", planned[0].ParticipantIDs)
 	}
-	if len(decider.inputs) != 2 {
-		t.Fatalf("decider calls = %d, want 2", len(decider.inputs))
+	inputs := decider.inputsSnapshot()
+	if len(inputs) != 2 {
+		t.Fatalf("decider calls = %d, want 2", len(inputs))
 	}
-	relationship := decider.inputs[0].World.Relationships["rel_1"]
+	linInput := decisionInputByCharacterID(inputs, "character_1")
+	if linInput == nil {
+		t.Fatalf("missing character_1 decision input: %#v", inputs)
+	}
+	relationship := linInput.World.Relationships["rel_1"]
 	if len(relationship.Views) != 1 {
 		t.Fatalf("visible relationship views = %#v, want one own view", relationship.Views)
 	}
 	if relationship.Views[0].PrivateAttitude != "警惕" {
 		t.Fatalf("visible relationship leaked wrong private attitude: %#v", relationship.Views)
+	}
+}
+
+func TestPlanCharacterActionsFansOutDecisions(t *testing.T) {
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseAll := func() {
+		releaseOnce.Do(func() {
+			close(release)
+		})
+	}
+	defer releaseAll()
+	decider := &blockingCharacterActionDecider{
+		started: make(chan string, 2),
+		release: release,
+		decision: model.CharacterActionDecision{
+			ActionType:    "observe",
+			Description:   "watch the situation",
+			DurationHours: 1,
+		},
+	}
+	generator := &StoryRunGenerator{actionDecider: decider, clock: fakeClock{}}
+	input := port.StoryRunGenerationInput{
+		Run:     model.StoryRun{RunID: "run_1", SessionID: "story_1", ProjectID: "project_1"},
+		Session: modelStorySession(),
+	}
+	snapshot := StoryContextSnapshot{
+		Characters: []model.Character{
+			{ID: "character_1", Name: "Lin", Status: "active"},
+			{ID: "character_2", Name: "Shen", Status: "active"},
+		},
+	}
+	type planResult struct {
+		planned []ScenePlannedAction
+		err     error
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan planResult, 1)
+	go func() {
+		planned, err := generator.planCharacterActions(ctx, input, snapshot)
+		done <- planResult{planned: planned, err: err}
+	}()
+
+	started := []string{
+		receiveStartedCharacter(t, decider.started),
+		receiveStartedCharacter(t, decider.started),
+	}
+	if !containsString(started, "character_1") || !containsString(started, "character_2") {
+		t.Fatalf("started decider calls = %#v, want both idle characters", started)
+	}
+	releaseAll()
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("planCharacterActions() error = %v", result.err)
+		}
+		if len(result.planned) != 2 {
+			t.Fatalf("planned actions = %#v, want two", result.planned)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("planCharacterActions did not finish after releasing decider calls")
 	}
 }
 
@@ -717,6 +811,26 @@ func TestIdleCharacterIDsUseWorldClock(t *testing.T) {
 	if len(ids) != 2 || ids[0] != "character_1" || ids[1] != "character_3" {
 		t.Fatalf("idle ids = %#v, want [character_1 character_3]", ids)
 	}
+}
+
+func decisionInputByCharacterID(inputs []model.CharacterActionDecisionInput, characterID string) *model.CharacterActionDecisionInput {
+	for i := range inputs {
+		if inputs[i].Character.ID == characterID {
+			return &inputs[i]
+		}
+	}
+	return nil
+}
+
+func receiveStartedCharacter(t *testing.T, started <-chan string) string {
+	t.Helper()
+	select {
+	case characterID := <-started:
+		return characterID
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("timed out waiting for parallel character action decision")
+	}
+	return ""
 }
 
 func sceneCharacterViewByID(views []SceneCharacterView, characterID string) *SceneCharacterView {
