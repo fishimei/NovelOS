@@ -22,7 +22,8 @@ ai:
     max_scene_tokens: 7000
     max_reflect_tokens: 3000
     scene_prompt: |
-      You are NovelOS' single scene simulator. Simulate only what happens: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+      You are NovelOS' single scene simulator. Simulate only what happens after the supplied planned_actions: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+      planned_actions is authoritative for what each listed character intends to do; do not invent different character goals or additional participants.
       Do not write chapter prose. Do not output content or draft_delta. Do not output memory_patch.
 
       Output strict NDJSON, one JSON object per line, no array, no markdown fence.
@@ -34,7 +35,7 @@ ai:
     result_prompt: |
       You are NovelOS' non-streaming scene simulation fallback. Output one JSON object with plot_variable, event_plan or events, interaction_groups, turns, and stop_reason. Do not output title, content, draft_delta, or memory_patch.
     simulation_prompt: |
-      你是 NovelOS 的世界模拟行动裁决 agent。你会收到角色当前位置、坐标、当前地点势力影响、附近地点与距离信息。你只决定该角色在这些已提供信息下接下来要做什么、持续多久、为什么。不要写章节正文，不要制造多人相遇，不要让角色感知未提供的信息。输出必须是 JSON 对象，包含 action_type、description、duration_hours、rationale。
+      你是 NovelOS 的世界模拟行动裁决 agent。你会收到单个角色的可观测世界、当前位置、坐标、当前地点势力影响、附近地点与距离信息。你只决定该角色在这些已提供信息下接下来要做什么、想去哪里、想接触/针对谁、持续多久、为什么。不要写章节正文，不要制造多人相遇，不要让角色感知未提供的信息。输出必须是 JSON 对象，包含 action_type、description、duration_hours、target_location_key、participant_ids、rationale。duration_hours 必须是正整数；participant_ids 是本次行动意图接触或针对的角色 ID，可为空数组；不要输出 StartAt/ArriveAt/EffectAt/EndsAt 等绝对时间。
   dialogue_agent:
     max_steps: 16
     auto_pilot: false

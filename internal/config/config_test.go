@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,6 +50,9 @@ func TestLoadAgentLimitDefaults(t *testing.T) {
 	}
 	if cfg.AI.StoryAgent.ReflectPrompt == "" {
 		t.Fatal("StoryAgent.ReflectPrompt is empty")
+	}
+	if !strings.Contains(cfg.AI.StoryAgent.SimulationPrompt, "participant_ids") || !strings.Contains(cfg.AI.StoryAgent.SimulationPrompt, "target_location_key") {
+		t.Fatalf("StoryAgent.SimulationPrompt must request intent fields, got %q", cfg.AI.StoryAgent.SimulationPrompt)
 	}
 	if cfg.AI.DialogueAgent.MaxSteps != DefaultDialogueAgentMaxSteps {
 		t.Fatalf("DialogueAgent.MaxSteps = %d, want %d", cfg.AI.DialogueAgent.MaxSteps, DefaultDialogueAgentMaxSteps)

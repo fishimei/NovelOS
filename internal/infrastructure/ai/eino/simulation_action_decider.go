@@ -36,7 +36,7 @@ func (d *CharacterActionDecider) Decide(ctx context.Context, input model.Charact
 		schema.UserMessage(fmt.Sprintf(`请基于以下 JSON 决定该角色的下一步行动：
 %s
 
-只返回 JSON 对象，字段为 action_type、description、duration_hours、rationale。duration_hours 必须是正整数。`, string(payload))),
+只返回 JSON 对象，字段为 action_type、description、duration_hours、target_location_key、participant_ids、rationale。duration_hours 必须是正整数；participant_ids 是本次行动意图接触或针对的角色 ID，可为空数组；不要输出 StartAt、ArriveAt、EffectAt、EndsAt 等绝对时间。`, string(payload))),
 	}, maxTokensOption(d.modelName, 800))
 	if err != nil {
 		return model.CharacterActionDecision{}, err

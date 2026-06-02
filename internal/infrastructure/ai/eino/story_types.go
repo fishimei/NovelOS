@@ -81,9 +81,21 @@ type SceneContext struct {
 	Session          SceneSessionContext     `json:"session"`
 	AuthorBible      map[string]any          `json:"author_bible,omitempty"`
 	PlotVariableSeed StoryVariablePlan       `json:"plot_variable_seed"`
+	PlannedActions   []ScenePlannedAction    `json:"planned_actions,omitempty"`
 	SharedObservable SharedObservableContext `json:"shared_observable"`
 	CharacterViews   []SceneCharacterView    `json:"character_views"`
 	Constraints      SceneConstraints        `json:"constraints"`
+}
+
+type ScenePlannedAction struct {
+	CharacterID       string   `json:"character_id"`
+	CharacterName     string   `json:"character_name,omitempty"`
+	ActionType        string   `json:"action_type"`
+	Description       string   `json:"description"`
+	TargetLocationKey string   `json:"target_location_key,omitempty"`
+	DurationHours     int      `json:"duration_hours"`
+	ParticipantIDs    []string `json:"participant_ids,omitempty"`
+	Rationale         string   `json:"rationale,omitempty"`
 }
 
 type SceneSessionContext struct {

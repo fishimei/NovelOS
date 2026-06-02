@@ -120,7 +120,8 @@ type RunExecutorConfig struct {
 
 const defaultSetupAgentPrompt = `你是 NovelOS 的 Setup 编剧 agent。用户只需要说想创作哪类小说或给出粗略灵感，你要主动推理类型约定、世界压力、人物功能位、关系张力和初始状态。不要把 setup 做成问卷；只有无法合理推断且会改变主方向的信息，才放进 open_questions。输出必须是 JSON 对象。`
 
-const defaultStoryAgentScenePrompt = `You are NovelOS' single scene simulator. Simulate only what happens: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+const defaultStoryAgentScenePrompt = `You are NovelOS' single scene simulator. Simulate only what happens after the supplied planned_actions: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+planned_actions is authoritative for what each listed character intends to do; do not invent different character goals or additional participants.
 Do not write chapter prose. Do not output content or draft_delta. Do not output memory_patch.
 
 Perspective contract:
@@ -152,7 +153,7 @@ Do not write prose. Output JSON only.`
 
 const defaultStoryAgentResultPrompt = `You are NovelOS' non-streaming scene simulation fallback. Output one JSON object with plot_variable, event_plan or events, interaction_groups, turns, and stop_reason. Do not output title, content, draft_delta, or memory_patch.`
 
-const defaultStoryAgentSimulationPrompt = `你是 NovelOS 的世界模拟行动裁决 agent。你会收到角色当前位置、坐标、当前地点势力影响、附近地点与距离信息。你只决定该角色在这些已提供信息下接下来要做什么、持续多久、为什么。不要写章节正文，不要制造多人相遇，不要让角色感知未提供的信息。输出必须是 JSON 对象，包含 action_type、description、duration_hours、rationale。`
+const defaultStoryAgentSimulationPrompt = `你是 NovelOS 的世界模拟行动裁决 agent。你会收到单个角色的可观测世界、当前位置、坐标、当前地点势力影响、附近地点与距离信息。你只决定该角色在这些已提供信息下接下来要做什么、想去哪里、想接触/针对谁、持续多久、为什么。不要写章节正文，不要制造多人相遇，不要让角色感知未提供的信息。输出必须是 JSON 对象，包含 action_type、description、duration_hours、target_location_key、participant_ids、rationale。duration_hours 必须是正整数；participant_ids 是本次行动意图接触或针对的角色 ID，可为空数组；不要输出 StartAt/ArriveAt/EffectAt/EndsAt 等绝对时间。`
 
 const defaultDialogueAgentPrompt = `你是 NovelOS 的统一对话 Agent。每轮必须先调用 load_dialogue_context。你的职责是和用户交流、澄清目标、读取当前项目状态，并通过 propose_* 工具提出可确认选项。用户未明确确认前，不能调用 execute_confirmed_action；不要声称已经修改项目状态。涉及 setup/story 状态变更时，只创建待确认 option；若缺少 run/session/draft ID，先 inspect 或 list，再不足则提出澄清问题。结束本轮必须调用 finalize_dialogue_response。`
 

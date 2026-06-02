@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +30,8 @@ type StoryRunGeneratorDeps struct {
 	Chapters      port.ChapterRepository
 	Memories      port.MemoryRepository
 	MemoryService port.CharacterMemoryService
+	StoryEvents   port.StoryEventStore
+	ActionDecider port.CharacterActionDecider
 	Events        port.GenerationEventStream
 	Audit         port.AuditRepository
 	Clock         port.Clock
@@ -37,6 +41,7 @@ type StoryRunGeneratorDeps struct {
 type StoryRunGenerator struct {
 	cfg              config.AIConfig
 	model            llmmodel.ToolCallingChatModel
+	actionDecider    port.CharacterActionDecider
 	deps             storyGeneratorDeps
 	clock            port.Clock
 	ids              port.IDGenerator
@@ -66,9 +71,11 @@ func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*Sto
 			chapters:      deps.Chapters,
 			memories:      deps.Memories,
 			memoryService: deps.MemoryService,
+			storyEvents:   deps.StoryEvents,
 			events:        deps.Events,
 			audit:         deps.Audit,
 		},
+		actionDecider:    deps.ActionDecider,
 		clock:            deps.Clock,
 		ids:              deps.IDs,
 		maxTurns:         maxTurns,
@@ -96,7 +103,11 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return model.StoryRunResult{}, fmt.Errorf("seed plot variable: %w", err)
 	}
 	state.variable = variable
-	sceneContext := g.buildSceneContext(input, snapshot, variable)
+	plannedActions, err := g.planCharacterActions(ctx, input, snapshot, variable)
+	if err != nil {
+		return model.StoryRunResult{}, fmt.Errorf("plan character actions: %w", err)
+	}
+	sceneContext := g.buildSceneContext(input, snapshot, variable, plannedActions)
 	plan, finalVariable, err := g.simulateScene(ctx, input, snapshot, state, sceneContext, variable)
 	if err != nil {
 		return model.StoryRunResult{}, err
@@ -135,7 +146,8 @@ func (g *StoryRunGenerator) reflectSystemPrompt() string {
 }
 
 func defaultScenePrompt() string {
-	return `You are NovelOS' single scene simulator. Simulate only what happens: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+	return `You are NovelOS' single scene simulator. Simulate only what happens after the supplied planned_actions: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
+planned_actions is authoritative for what each listed character intends to do; do not invent different character goals or additional participants.
 Do not write chapter prose. Do not output content or draft_delta. Do not output memory_patch.
 
 Perspective contract:
@@ -176,7 +188,7 @@ func (g *StoryRunGenerator) sceneUserPrompt(sceneContext SceneContext) string {
 	return string(payload)
 }
 
-func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, seed StoryVariablePlan) SceneContext {
+func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, seed StoryVariablePlan, plannedActions []ScenePlannedAction) SceneContext {
 	publicWorld := make([]model.WorldStateEntry, 0, len(snapshot.WorldState))
 	for _, entry := range snapshot.WorldState {
 		if entry.Importance >= 4 || entry.Volatility >= 4 {
@@ -234,6 +246,7 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 		},
 		AuthorBible:      compactAuthorBible(snapshot.AuthorBible),
 		PlotVariableSeed: seed,
+		PlannedActions:   plannedActions,
 		SharedObservable: SharedObservableContext{
 			LocationHints:    compactWorldState(snapshot.WorldState, 5),
 			PublicWorldState: compactWorldState(publicWorld, 8),
@@ -245,6 +258,239 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 			MaxInteractions: 3,
 		},
 	}
+}
+
+func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, seed StoryVariablePlan) ([]ScenePlannedAction, error) {
+	if g.actionDecider == nil {
+		return nil, nil
+	}
+	characterIDs := sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, snapshot.Characters)
+	if len(characterIDs) == 0 {
+		return nil, nil
+	}
+	world, err := g.decisionWorldSnapshot(ctx, input, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	planned := make([]ScenePlannedAction, 0, len(characterIDs))
+	for _, characterID := range characterIDs {
+		character := characterByID(snapshot.Characters, characterID)
+		if character.ID == "" {
+			continue
+		}
+		decisionInput := characterDecisionInput(world, character)
+		decision, err := g.actionDecider.Decide(ctx, decisionInput)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", character.ID, err)
+		}
+		action, err := scenePlannedActionFromDecision(snapshot.Characters, character, decision)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", character.ID, err)
+		}
+		planned = append(planned, action)
+	}
+	return planned, nil
+}
+
+func (g *StoryRunGenerator) decisionWorldSnapshot(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (model.WorldSnapshot, error) {
+	if g.deps.storyEvents != nil && input.Run.BaseEventID != "" {
+		return g.deps.storyEvents.ResolveStateAt(ctx, input.Run.BaseEventID)
+	}
+	return worldSnapshotFromStoryContext(input, snapshot, g.now()), nil
+}
+
+func worldSnapshotFromStoryContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, now time.Time) model.WorldSnapshot {
+	storyTime := input.Run.CreatedAt
+	if storyTime.IsZero() {
+		storyTime = now
+	}
+	worldState := make(map[string]model.WorldStateEntry, len(snapshot.WorldState))
+	for _, entry := range snapshot.WorldState {
+		if entry.Key != "" {
+			worldState[entry.Key] = entry
+		}
+	}
+	characters := make(map[string]model.CharacterRuntimeState, len(snapshot.Characters))
+	for _, character := range snapshot.Characters {
+		if character.ID == "" {
+			continue
+		}
+		characters[character.ID] = model.CharacterRuntimeState{
+			CharacterID: character.ID,
+			Status:      firstText(character.Status, "active"),
+		}
+	}
+	relationships := make(map[string]model.Relationship, len(snapshot.Relationships))
+	for idx, relationship := range snapshot.Relationships {
+		relationships[relationshipMapKey(relationship, idx)] = relationship
+	}
+	return model.WorldSnapshot{
+		AtEventID:     input.Run.BaseEventID,
+		StoryTime:     storyTime,
+		WorldState:    worldState,
+		Characters:    characters,
+		Relationships: relationships,
+	}
+}
+
+func relationshipMapKey(relationship model.Relationship, idx int) string {
+	if relationship.Pair.ID != "" {
+		return relationship.Pair.ID
+	}
+	if relationship.Pair.LeftCharacterID != "" || relationship.Pair.RightCharacterID != "" {
+		return relationship.Pair.LeftCharacterID + ":" + relationship.Pair.RightCharacterID
+	}
+	return fmt.Sprintf("relationship_%d", idx+1)
+}
+
+func characterDecisionInput(world model.WorldSnapshot, character model.Character) model.CharacterActionDecisionInput {
+	state := world.Characters[character.ID]
+	if state.CharacterID == "" {
+		state.CharacterID = character.ID
+		state.Status = firstText(character.Status, "active")
+	}
+	location := locationByKey(world.Locations, state.LocationKey)
+	return model.CharacterActionDecisionInput{
+		World:             visibleWorldSnapshotForCharacter(world, character.ID),
+		Character:         character,
+		CharacterState:    state,
+		Location:          location,
+		FactionInfluences: factionInfluencesForLocation(world.Factions, location.ID),
+		NearbyLocations:   nearbyLocationContexts(world.Locations, world.Factions, location),
+	}
+}
+
+func visibleWorldSnapshotForCharacter(world model.WorldSnapshot, characterID string) model.WorldSnapshot {
+	visible := world
+	visible.WorldState = make(map[string]model.WorldStateEntry, len(world.WorldState))
+	for key, entry := range world.WorldState {
+		visible.WorldState[key] = entry
+	}
+	visible.Characters = make(map[string]model.CharacterRuntimeState, len(world.Characters))
+	for id, state := range world.Characters {
+		if id != characterID {
+			state.OngoingAction = nil
+		}
+		visible.Characters[id] = state
+	}
+	visible.Relationships = make(map[string]model.Relationship, len(world.Relationships))
+	for key, relationship := range world.Relationships {
+		if filtered, ok := relationshipVisibleToCharacter(relationship, characterID); ok {
+			visible.Relationships[key] = filtered
+		}
+	}
+	return visible
+}
+
+func relationshipVisibleToCharacter(relationship model.Relationship, characterID string) (model.Relationship, bool) {
+	involved := relationshipPairInvolves(relationship.Pair, characterID)
+	visible := relationship
+	visible.Views = nil
+	visible.CharacterAView = nil
+	visible.CharacterBView = nil
+	for _, view := range relationship.Views {
+		if view.SourceCharacterID != characterID {
+			continue
+		}
+		involved = true
+		visible.Views = append(visible.Views, view)
+	}
+	if !involved {
+		return model.Relationship{}, false
+	}
+	for i := range visible.Views {
+		view := &visible.Views[i]
+		if view.SourceCharacterID == visible.Pair.LeftCharacterID {
+			visible.CharacterAView = view
+		}
+		if view.SourceCharacterID == visible.Pair.RightCharacterID {
+			visible.CharacterBView = view
+		}
+	}
+	return visible, true
+}
+
+func relationshipPairInvolves(pair model.RelationshipPair, characterID string) bool {
+	return pair.LeftCharacterID == characterID || pair.RightCharacterID == characterID
+}
+
+func locationByKey(locations []model.LocationState, locationKey string) model.LocationState {
+	for _, location := range locations {
+		if location.ID == locationKey {
+			return location
+		}
+	}
+	return model.LocationState{}
+}
+
+func factionInfluencesForLocation(influences []model.FactionInfluence, locationID string) []model.FactionInfluence {
+	if locationID == "" {
+		return nil
+	}
+	out := make([]model.FactionInfluence, 0, len(influences))
+	for _, influence := range influences {
+		if influence.LocationID == locationID {
+			out = append(out, influence)
+		}
+	}
+	return out
+}
+
+func nearbyLocationContexts(locations []model.LocationState, influences []model.FactionInfluence, current model.LocationState) []model.NearbyLocationContext {
+	if current.ID == "" {
+		return nil
+	}
+	out := make([]model.NearbyLocationContext, 0, len(locations))
+	for _, location := range locations {
+		if location.ID == "" || location.ID == current.ID {
+			continue
+		}
+		out = append(out, model.NearbyLocationContext{
+			Location:          location,
+			Distance:          locationDistance(current, location),
+			FactionInfluences: factionInfluencesForLocation(influences, location.ID),
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Distance < out[j].Distance
+	})
+	out = firstEntries(out, 5)
+	return out
+}
+
+func locationDistance(a, b model.LocationState) float64 {
+	dx := float64(a.X - b.X)
+	dy := float64(a.Y - b.Y)
+	return math.Sqrt(dx*dx + dy*dy)
+}
+
+func scenePlannedActionFromDecision(characters []model.Character, character model.Character, decision model.CharacterActionDecision) (ScenePlannedAction, error) {
+	actionType := normalizeStoryActionType(decision.ActionType, "", decision.Description)
+	if actionType == "" {
+		actionType = "observe"
+	}
+	description := strings.TrimSpace(decision.Description)
+	if description == "" {
+		description = "观察当前局势"
+	}
+	durationHours := decision.DurationHours
+	if durationHours <= 0 {
+		durationHours = 1
+	}
+	participantIDs, err := validStoryTargetActorIDs(characters, decision.ParticipantIDs)
+	if err != nil {
+		return ScenePlannedAction{}, err
+	}
+	return ScenePlannedAction{
+		CharacterID:       character.ID,
+		CharacterName:     character.Name,
+		ActionType:        actionType,
+		Description:       description,
+		TargetLocationKey: strings.TrimSpace(decision.TargetLocationKey),
+		DurationHours:     durationHours,
+		ParticipantIDs:    uniqueStoryIDs(participantIDs),
+		Rationale:         strings.TrimSpace(decision.Rationale),
+	}, nil
 }
 
 func sceneCharacterIDs(relatedIDs []string, characters []model.Character) []string {

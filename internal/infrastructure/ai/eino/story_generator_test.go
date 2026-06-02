@@ -42,6 +42,16 @@ func (fakeIDGenerator) New(prefix string) string {
 	return prefix + "_id"
 }
 
+type fakeCharacterActionDecider struct {
+	inputs   []model.CharacterActionDecisionInput
+	decision model.CharacterActionDecision
+}
+
+func (d *fakeCharacterActionDecider) Decide(_ context.Context, input model.CharacterActionDecisionInput) (model.CharacterActionDecision, error) {
+	d.inputs = append(d.inputs, input)
+	return d.decision, nil
+}
+
 type fakeStoryChatModel struct {
 	responses     []string
 	streamChunks  []string
@@ -208,7 +218,7 @@ func TestSimulateSceneConsumesV2NDJSONStream(t *testing.T) {
 		RelatedCharacterIDs: []string{"character_1", "character_2"},
 	}}
 	state := &storyRunState{run: input.Run, session: input.Session, maxTurns: 5, characters: snapshot.Characters, variable: seed}
-	plan, variable, err := generator.simulateScene(context.Background(), input, snapshot, state, generator.buildSceneContext(input, snapshot, seed), seed)
+	plan, variable, err := generator.simulateScene(context.Background(), input, snapshot, state, generator.buildSceneContext(input, snapshot, seed, nil), seed)
 	if err != nil {
 		t.Fatalf("simulateScene returned error: %v", err)
 	}
@@ -258,7 +268,7 @@ func TestSimulateSceneHandlesFencedAndSplitNDJSONStream(t *testing.T) {
 	seed := StoryVariablePlan{PlotVariable: StoryNarrativePlotVariable{CoreChoice: "whether Lin hides the coin", RelatedCharacterIDs: []string{"character_1"}}}
 	state := &storyRunState{run: input.Run, session: input.Session, maxTurns: 5, characters: snapshot.Characters, variable: seed}
 
-	plan, variable, err := generator.simulateScene(context.Background(), input, snapshot, state, generator.buildSceneContext(input, snapshot, seed), seed)
+	plan, variable, err := generator.simulateScene(context.Background(), input, snapshot, state, generator.buildSceneContext(input, snapshot, seed, nil), seed)
 	if err != nil {
 		t.Fatalf("simulateScene returned error: %v", err)
 	}
@@ -295,7 +305,7 @@ func TestSimulateSceneFallsBackWhenStreamCannotBeParsed(t *testing.T) {
 	seed := StoryVariablePlan{PlotVariable: StoryNarrativePlotVariable{CoreChoice: "recover from invalid stream", RelatedCharacterIDs: []string{"character_1"}}}
 	state := &storyRunState{run: input.Run, session: input.Session, maxTurns: 5, characters: snapshot.Characters, variable: seed}
 
-	plan, _, err := generator.simulateScene(context.Background(), input, snapshot, state, generator.buildSceneContext(input, snapshot, seed), seed)
+	plan, _, err := generator.simulateScene(context.Background(), input, snapshot, state, generator.buildSceneContext(input, snapshot, seed, nil), seed)
 	if err != nil {
 		t.Fatalf("simulateScene returned error: %v", err)
 	}
@@ -519,7 +529,7 @@ func TestBuildSceneContextOnlyIncludesOwnRelationshipView(t *testing.T) {
 			{SourceCharacterID: "character_1", TargetCharacterID: "character_2", PrivateAttitude: "警惕"},
 			{SourceCharacterID: "character_2", TargetCharacterID: "character_1", PrivateAttitude: "嫉妒"},
 		}}},
-	}, StoryVariablePlan{PlotVariable: StoryNarrativePlotVariable{RelatedCharacterIDs: []string{"character_1", "character_2"}}})
+	}, StoryVariablePlan{PlotVariable: StoryNarrativePlotVariable{RelatedCharacterIDs: []string{"character_1", "character_2"}}}, nil)
 	view := sceneCharacterViewByID(sceneContext.CharacterViews, "character_1")
 	if view == nil {
 		t.Fatal("expected character view")
@@ -545,7 +555,7 @@ func TestBuildSceneContextOnlyIncludesOwnVariableView(t *testing.T) {
 			{CharacterID: "character_1", KnownFacts: []string{"城门提前关闭"}, EmotionalPressure: "必须决定是否暴露身份"},
 			{CharacterID: "character_2", KnownFacts: []string{"林澈行踪异常"}, EmotionalPressure: "怀疑林澈隐瞒"},
 		},
-	})
+	}, nil)
 	view := sceneCharacterViewByID(sceneContext.CharacterViews, "character_1")
 	if view == nil {
 		t.Fatal("expected character view")
@@ -555,6 +565,59 @@ func TestBuildSceneContextOnlyIncludesOwnVariableView(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(view.KnownFacts, ","), "行踪异常") {
 		t.Fatalf("variable view leaked another character view: %#v", view)
+	}
+}
+
+func TestPlanCharacterActionsUsesVisibleDecisionInput(t *testing.T) {
+	decider := &fakeCharacterActionDecider{decision: model.CharacterActionDecision{
+		ActionType:        "action",
+		Description:       "去码头找沈砚摊牌",
+		TargetLocationKey: "old_dock",
+		DurationHours:     2,
+		ParticipantIDs:    []string{"沈砚"},
+		Rationale:         "必须确认密信去向",
+	}}
+	generator := &StoryRunGenerator{actionDecider: decider, clock: fakeClock{}}
+	input := port.StoryRunGenerationInput{
+		Run:     model.StoryRun{RunID: "run_1", SessionID: "story_1", ProjectID: "project_1"},
+		Session: modelStorySession(),
+	}
+	snapshot := StoryContextSnapshot{
+		WorldState: []model.WorldStateEntry{{Key: "gate_lockdown", Note: "城门提前关闭", Importance: 5}},
+		Characters: []model.Character{
+			{ID: "character_1", Name: "林澈", Status: "active"},
+			{ID: "character_2", Name: "沈砚", Status: "active"},
+		},
+		Relationships: []model.Relationship{{
+			Pair: model.RelationshipPair{ID: "rel_1", LeftCharacterID: "character_1", RightCharacterID: "character_2", Summary: "旧识互疑"},
+			Views: []model.RelationshipView{
+				{SourceCharacterID: "character_1", TargetCharacterID: "character_2", PrivateAttitude: "警惕"},
+				{SourceCharacterID: "character_2", TargetCharacterID: "character_1", PrivateAttitude: "嫉妒"},
+			},
+		}},
+	}
+
+	planned, err := generator.planCharacterActions(context.Background(), input, snapshot, StoryVariablePlan{
+		PlotVariable: StoryNarrativePlotVariable{RelatedCharacterIDs: []string{"character_1"}},
+	})
+	if err != nil {
+		t.Fatalf("planCharacterActions() error = %v", err)
+	}
+	if len(planned) != 1 {
+		t.Fatalf("planned actions = %#v, want one", planned)
+	}
+	if len(planned[0].ParticipantIDs) != 1 || planned[0].ParticipantIDs[0] != "character_2" {
+		t.Fatalf("participant ids = %#v, want character_2", planned[0].ParticipantIDs)
+	}
+	if len(decider.inputs) != 1 {
+		t.Fatalf("decider calls = %d, want 1", len(decider.inputs))
+	}
+	relationship := decider.inputs[0].World.Relationships["rel_1"]
+	if len(relationship.Views) != 1 {
+		t.Fatalf("visible relationship views = %#v, want one own view", relationship.Views)
+	}
+	if relationship.Views[0].PrivateAttitude != "警惕" {
+		t.Fatalf("visible relationship leaked wrong private attitude: %#v", relationship.Views)
 	}
 }
 

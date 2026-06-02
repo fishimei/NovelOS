@@ -85,6 +85,10 @@ func New(cfg config.Config) *App {
 			MapHeight:     cfg.World.MapHeight,
 		},
 	)
+	actionDecider, err := einoai.NewCharacterActionDecider(context.Background(), cfg.AI)
+	if err != nil {
+		log.Fatalf("bootstrap character action decider: %v", err)
+	}
 	storyGenerator, err := einoai.NewStoryRunGenerator(context.Background(), einoai.StoryRunGeneratorDeps{
 		Config:        cfg.AI,
 		Sessions:      repos.StorySessions,
@@ -95,6 +99,8 @@ func New(cfg config.Config) *App {
 		Chapters:      repos.Chapters,
 		Memories:      repos.Memories,
 		MemoryService: memoryService,
+		StoryEvents:   repos.StoryEvents,
+		ActionDecider: actionDecider,
 		Events:        eventStream,
 		Audit:         repos.Audit,
 		Clock:         clock,

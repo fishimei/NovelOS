@@ -23,6 +23,7 @@ type storyGeneratorDeps struct {
 	chapters      port.ChapterRepository
 	memories      port.MemoryRepository
 	memoryService port.CharacterMemoryService
+	storyEvents   port.StoryEventStore
 	events        port.GenerationEventStream
 	audit         port.AuditRepository
 }
