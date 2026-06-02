@@ -17,6 +17,9 @@ func TestResolveEventClockUsesActionEnds(t *testing.T) {
 	if want := start.Add(210 * time.Minute); !result.Clock.Equal(want) {
 		t.Fatalf("clock = %s, want %s", result.Clock, want)
 	}
+	if want := start.Add(time.Hour); !result.NextCompletion.Equal(want) {
+		t.Fatalf("next completion = %s, want %s", result.NextCompletion, want)
+	}
 }
 
 func TestResolveEventClockDetectsAppendixCollision(t *testing.T) {
@@ -146,15 +149,28 @@ func TestSceneTimeFromScheduledActionsUsesCollision(t *testing.T) {
 	}
 }
 
-func TestSceneTimeFromScheduledActionsUsesEngineClockWithoutCollision(t *testing.T) {
+func TestSceneTimeFromScheduledActionsUsesNextCompletionWithoutCollision(t *testing.T) {
 	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
 	sceneTime := sceneTimeFromScheduledActions(start, []TimedAction{
 		{CharacterID: "A", LocationKey: "loc:tavern", StartAt: start, ArriveAt: start, EndsAt: start.Add(time.Hour)},
 		{CharacterID: "B", LocationKey: "loc:dock", StartAt: start, ArriveAt: start, EndsAt: start.Add(2 * time.Hour)},
 	}, start)
 
-	if want := start.Add(2 * time.Hour); !sceneTime.Equal(want) {
-		t.Fatalf("scene time = %s, want engine clock %s", sceneTime, want)
+	if want := start.Add(time.Hour); !sceneTime.Equal(want) {
+		t.Fatalf("scene time = %s, want next completion %s", sceneTime, want)
+	}
+}
+
+func TestSceneTimeFromScheduledActionsUsesCompletionBeforeLaterCollision(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	sceneTime := sceneTimeFromScheduledActions(start, []TimedAction{
+		{CharacterID: "A", LocationKey: "loc:tavern", StartAt: start, ArriveAt: start, EndsAt: start.Add(time.Hour)},
+		{CharacterID: "B", LocationKey: "loc:dock", StartAt: start, ArriveAt: start.Add(90 * time.Minute), EndsAt: start.Add(3 * time.Hour)},
+		{CharacterID: "C", LocationKey: "loc:dock", StartAt: start, ArriveAt: start.Add(90 * time.Minute), EndsAt: start.Add(3 * time.Hour)},
+	}, start)
+
+	if want := start.Add(time.Hour); !sceneTime.Equal(want) {
+		t.Fatalf("scene time = %s, want earliest completion before later collision %s", sceneTime, want)
 	}
 }
 

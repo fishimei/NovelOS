@@ -323,8 +323,12 @@ func sceneTimeFromScheduledActions(start time.Time, actions []TimedAction, fallb
 		return fallback
 	}
 	result := ResolveEventClock(start, actions)
-	if len(result.Collisions) > 0 {
-		return result.Collisions[0]
+	next := result.NextCompletion
+	if len(result.Collisions) > 0 && (next.IsZero() || result.Collisions[0].Before(next)) {
+		next = result.Collisions[0]
+	}
+	if !next.IsZero() {
+		return next
 	}
 	return result.Clock
 }

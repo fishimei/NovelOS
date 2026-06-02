@@ -18,8 +18,9 @@ type TimedAction struct {
 }
 
 type EventEngineResult struct {
-	Clock      time.Time
-	Collisions []time.Time
+	Clock          time.Time
+	NextCompletion time.Time
+	Collisions     []time.Time
 }
 
 func ResolveEventClock(start time.Time, actions []TimedAction) EventEngineResult {
@@ -35,6 +36,9 @@ func ResolveEventClock(start time.Time, actions []TimedAction) EventEngineResult
 		if action.EndsAt.After(result.Clock) {
 			result.Clock = action.EndsAt
 		}
+		if actionCompletionIsQueued(start, action) && (result.NextCompletion.IsZero() || action.EndsAt.Before(result.NextCompletion)) {
+			result.NextCompletion = action.EndsAt
+		}
 		for j := i + 1; j < len(ordered); j++ {
 			if t, ok := collisionAt(action, ordered[j]); ok {
 				result.Collisions = append(result.Collisions, t)
@@ -43,6 +47,10 @@ func ResolveEventClock(start time.Time, actions []TimedAction) EventEngineResult
 	}
 	sort.SliceStable(result.Collisions, func(i, j int) bool { return result.Collisions[i].Before(result.Collisions[j]) })
 	return result
+}
+
+func actionCompletionIsQueued(start time.Time, action TimedAction) bool {
+	return !action.EndsAt.IsZero() && (action.EndsAt.After(start) || action.EndsAt.Equal(start))
 }
 
 func collisionAt(a, b TimedAction) (time.Time, bool) {
