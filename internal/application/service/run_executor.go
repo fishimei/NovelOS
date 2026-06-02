@@ -10,19 +10,20 @@ import (
 	"github.com/fishimei/NovelOS/internal/application/port"
 )
 
-// RunExecutor scans durable run state and dispatches claimed setup/story runs.
+// RunExecutor scans durable run state and dispatches claimed setup/story/dialogue runs.
 type RunExecutor struct {
-	repo          port.RunExecutionRepository
-	setupAdvancer *SetupSessionAdvancer
-	storyAdvancer *StorySessionAdvancer
-	settings      RunExecutorSettings
-	clock         port.Clock
-	sem           chan struct{}
+	repo             port.RunExecutionRepository
+	setupAdvancer    *SetupSessionAdvancer
+	storyAdvancer    *StorySessionAdvancer
+	dialogueAdvancer *DialogueSessionAdvancer
+	settings         RunExecutorSettings
+	clock            port.Clock
+	sem              chan struct{}
 }
 
-func NewRunExecutor(repo port.RunExecutionRepository, setupAdvancer *SetupSessionAdvancer, storyAdvancer *StorySessionAdvancer, settings RunExecutorSettings, clock port.Clock) *RunExecutor {
+func NewRunExecutor(repo port.RunExecutionRepository, setupAdvancer *SetupSessionAdvancer, storyAdvancer *StorySessionAdvancer, dialogueAdvancer *DialogueSessionAdvancer, settings RunExecutorSettings, clock port.Clock) *RunExecutor {
 	settings = settings.normalized()
-	return &RunExecutor{repo: repo, setupAdvancer: setupAdvancer, storyAdvancer: storyAdvancer, settings: settings, clock: clock, sem: make(chan struct{}, settings.batchSize())}
+	return &RunExecutor{repo: repo, setupAdvancer: setupAdvancer, storyAdvancer: storyAdvancer, dialogueAdvancer: dialogueAdvancer, settings: settings, clock: clock, sem: make(chan struct{}, settings.batchSize())}
 }
 
 func (e *RunExecutor) Start(ctx context.Context) {
@@ -89,6 +90,10 @@ func (e *RunExecutor) handle(parent context.Context, work model.RunExecutionWork
 	case port.RunKindStory:
 		if e.storyAdvancer != nil {
 			e.storyAdvancer.Generate(ctx, work.RunID)
+		}
+	case port.RunKindDialogue:
+		if e.dialogueAdvancer != nil {
+			e.dialogueAdvancer.Generate(ctx, work.RunID)
 		}
 	default:
 		log.Printf("run executor ignored unknown run kind %q for %s", work.RunKind, work.RunID)

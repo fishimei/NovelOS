@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	RunKindSetup = "setup"
-	RunKindStory = "story"
+	RunKindSetup    = "setup"
+	RunKindStory    = "story"
+	RunKindDialogue = "dialogue"
 )
 
 // RunExecutionRepository exposes durable setup/story run work discovery and claim operations.

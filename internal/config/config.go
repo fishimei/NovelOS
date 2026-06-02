@@ -54,19 +54,33 @@ type SetupAgentConfig struct {
 }
 
 type StoryAgentConfig struct {
-	MaxTurns         int    `mapstructure:"max_turns"`
-	ControllerPrompt string `mapstructure:"controller_prompt"`
-	ToolPrompt       string `mapstructure:"tool_prompt"`
-	ResultPrompt     string `mapstructure:"result_prompt"`
-	NarrativePrompt  string `mapstructure:"narrative_prompt"`
-	VariablePrompt   string `mapstructure:"variable_prompt"`
-	SimulationPrompt string `mapstructure:"simulation_prompt"`
+	MaxTurns           int    `mapstructure:"max_turns"`
+	MaxReactSteps      int    `mapstructure:"max_react_steps"`
+	MaxChapterTokens   int    `mapstructure:"max_chapter_tokens"`
+	MaxTurnTokens      int    `mapstructure:"max_turn_tokens"`
+	MaxAssemblerTokens int    `mapstructure:"max_assembler_tokens"`
+	ControllerPrompt   string `mapstructure:"controller_prompt"`
+	ToolPrompt         string `mapstructure:"tool_prompt"`
+	ResultPrompt       string `mapstructure:"result_prompt"`
+	NarrativePrompt    string `mapstructure:"narrative_prompt"`
+	VariablePrompt     string `mapstructure:"variable_prompt"`
+	SimulationPrompt   string `mapstructure:"simulation_prompt"`
 }
 
 type DialogueAgentConfig struct {
-	Prompt   string `mapstructure:"prompt"`
-	MaxSteps int    `mapstructure:"max_steps"`
+	Prompt    string `mapstructure:"prompt"`
+	MaxSteps  int    `mapstructure:"max_steps"`
+	AutoPilot bool   `mapstructure:"auto_pilot"`
 }
+
+const (
+	DefaultStoryAgentMaxTurns           = 25
+	DefaultStoryAgentMaxReactSteps      = 80
+	DefaultStoryAgentMaxChapterTokens   = 4000
+	DefaultStoryAgentMaxTurnTokens      = 1200
+	DefaultStoryAgentMaxAssemblerTokens = 4000
+	DefaultDialogueAgentMaxSteps        = 16
+)
 
 type MemoryConfig struct {
 	Provider  string          `mapstructure:"provider"`
@@ -125,7 +139,7 @@ const defaultStoryAgentControllerPrompt = `你是 NovelOS 的故事回合裁决 
 
 const defaultStoryAgentToolPrompt = `load_story_context 用于读取当前故事上下文；choose_next_story_actor 用于记录下一行动者；decide_story_stop 用于判断是否停止；finalize_story_plan 用于提交结构化摘要。不要直接编造已存在事实，不要写入数据库。`
 
-const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘要，供后端生成剧情变量、章节草稿和状态补丁。`
+const defaultStoryAgentResultPrompt = `将回合裁决结果整理为简洁摘要，供后端生成剧情变量、逐回合正文和状态补丁。`
 
 const defaultStoryAgentNarrativePrompt = `你是 NovelOS 的受限视角多角色演绎 agent。你会收到回合计划和故事上下文。生成正文时，每个角色只能依据自己的 profile、personality、voice_style、goals、fears、secrets、constraints、recent memories，以及该角色自己的 relationship view 行动；不要让角色知道全局真相、他人秘密或他人 private_attitude，除非上下文明确显示该角色已知道。输出必须是 JSON 对象。`
 
@@ -166,7 +180,11 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("ai.api_key", "")
 	v.SetDefault("ai.model", "claude-sonnet-4-6")
 	v.SetDefault("ai.setup_agent.prompt", defaultSetupAgentPrompt)
-	v.SetDefault("ai.story_agent.max_turns", 25)
+	v.SetDefault("ai.story_agent.max_turns", DefaultStoryAgentMaxTurns)
+	v.SetDefault("ai.story_agent.max_react_steps", DefaultStoryAgentMaxReactSteps)
+	v.SetDefault("ai.story_agent.max_chapter_tokens", DefaultStoryAgentMaxChapterTokens)
+	v.SetDefault("ai.story_agent.max_turn_tokens", DefaultStoryAgentMaxTurnTokens)
+	v.SetDefault("ai.story_agent.max_assembler_tokens", DefaultStoryAgentMaxAssemblerTokens)
 	v.SetDefault("ai.story_agent.controller_prompt", defaultStoryAgentControllerPrompt)
 	v.SetDefault("ai.story_agent.tool_prompt", defaultStoryAgentToolPrompt)
 	v.SetDefault("ai.story_agent.result_prompt", defaultStoryAgentResultPrompt)
@@ -174,7 +192,8 @@ func Load(configFile string) (Config, error) {
 	v.SetDefault("ai.story_agent.variable_prompt", defaultStoryAgentVariablePrompt)
 	v.SetDefault("ai.story_agent.simulation_prompt", defaultStoryAgentSimulationPrompt)
 	v.SetDefault("ai.dialogue_agent.prompt", defaultDialogueAgentPrompt)
-	v.SetDefault("ai.dialogue_agent.max_steps", 16)
+	v.SetDefault("ai.dialogue_agent.max_steps", DefaultDialogueAgentMaxSteps)
+	v.SetDefault("ai.dialogue_agent.auto_pilot", false)
 	v.SetDefault("memory.provider", "local")
 	v.SetDefault("memory.embedding.provider", "openai_compatible")
 	v.SetDefault("memory.embedding.base_url", "")

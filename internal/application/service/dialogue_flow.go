@@ -54,10 +54,12 @@ func (s *DialogueSessionAdvancer) Advance(ctx context.Context, sessionID string,
 	if err != nil {
 		return model.DialogueRun{}, err
 	}
-	if s.generator != nil {
-		go s.generate(context.Background(), run.RunID)
-	}
+	s.appendAuditEvent(ctx, run.RunID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusQueued, "progress": 0})
 	return run, nil
+}
+
+func (s *DialogueSessionAdvancer) Generate(ctx context.Context, runID string) {
+	s.generate(ctx, runID)
 }
 
 func (s *DialogueSessionAdvancer) generate(ctx context.Context, runID string) {

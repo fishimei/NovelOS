@@ -2,6 +2,7 @@ package eino
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,11 +25,12 @@ type dialogueGeneratorDeps struct {
 	storySessions    port.StorySessionRepository
 	chapters         port.ChapterRepository
 	dialogueSessions port.DialogueSessionRepository
-	actionExecutor   port.DialogueConfirmedActionExecutor
+	actionExecutor   port.DialogueActionExecutor
 	optionValidator  port.DialogueActionOptionValidator
 	events           port.GenerationEventStream
 	clock            port.Clock
 	ids              port.IDGenerator
+	autoPilot        bool
 }
 
 type dialogueRunState struct {
@@ -102,6 +104,18 @@ func newDialogueTools(deps dialogueGeneratorDeps, state *dialogueRunState) ([]to
 	if err != nil {
 		return nil, err
 	}
+	proposeStoryCutLatest, err := utils.InferTool("propose_story_cut_latest_completed_span", "Propose cutting the latest completed story run span. Creates an option only; service resolves branch and event ids.", func(ctx context.Context, input ProposeStoryCutLatestCompletedSpanInput) (dialogueToolResult, error) {
+		return proposeDialogueAction(ctx, deps, state, domain.DialogueActionStoryCutChapter, input.Label, input.Description, input.Rationale, map[string]any{"story_run_id": input.StoryRunID, "span_policy": "latest_completed", "title": input.Title, "author_note": input.AuthorNote})
+	})
+	if err != nil {
+		return nil, err
+	}
+	proposeStoryFork, err := utils.InferTool("propose_story_fork_from_event", "Propose creating a non-destructive fork from an existing story event. Creates an option only; do not use this for hard rollback.", func(ctx context.Context, input ProposeStoryForkFromEventInput) (dialogueToolResult, error) {
+		return proposeDialogueAction(ctx, deps, state, domain.DialogueActionStoryForkFromEvent, input.Label, input.Description, input.Rationale, map[string]any{"event_id": input.EventID, "story_session_id": input.StorySessionID, "name": input.Name, "author_message": input.AuthorMessage})
+	})
+	if err != nil {
+		return nil, err
+	}
 	executeConfirmed, err := utils.InferTool("execute_confirmed_action", "执行已经被用户确认的 action option。只接受 option_id；不会接受模型传入的业务 payload。", func(ctx context.Context, input ExecuteConfirmedDialogueActionInput) (model.DialogueActionOption, error) {
 		return executeConfirmedDialogueAction(ctx, deps, state, input)
 	})
@@ -114,13 +128,37 @@ func newDialogueTools(deps dialogueGeneratorDeps, state *dialogueRunState) ([]to
 	if err != nil {
 		return nil, err
 	}
-	return []tool.BaseTool{loadContext, inspectSetup, inspectStory, listPending, proposeSetupStart, proposeSetupAdvance, proposeSetupApply, proposeStoryCreate, proposeStoryAdvance, proposeStoryCut, executeConfirmed, finalizeResponse}, nil
+	tools := []tool.BaseTool{loadContext, inspectSetup, inspectStory, listPending, proposeSetupStart, proposeSetupAdvance, proposeSetupApply, proposeStoryCreate, proposeStoryAdvance, proposeStoryCut, proposeStoryCutLatest, proposeStoryFork, executeConfirmed}
+	if deps.autoPilot {
+		tools, err = appendAutoDialogueTools(tools, deps, state)
+		if err != nil {
+			return nil, err
+		}
+	}
+	tools = append(tools, finalizeResponse)
+	return tools, nil
+}
+
+func appendAutoDialogueTools(tools []tool.BaseTool, deps dialogueGeneratorDeps, state *dialogueRunState) ([]tool.BaseTool, error) {
+	autoStoryAdvance, err := utils.InferTool("auto_story_advance", "Auto-execute a low-risk story advance only when auto_pilot is enabled by policy.", func(ctx context.Context, input AutoStoryAdvanceInput) (dialogueToolResult, error) {
+		return autoExecuteDialogueAction(ctx, deps, state, domain.DialogueActionStoryAdvance, input.Label, input.Description, input.Rationale, map[string]any{"story_session_id": input.StorySessionID, "author_message": input.AuthorMessage}, input.AuthorMessage, input.PolicyReason)
+	})
+	if err != nil {
+		return nil, err
+	}
+	autoStoryCutLatest, err := utils.InferTool("auto_cut_latest_completed_span", "Auto-execute cutting the latest completed story run span only when auto_pilot is enabled by policy. Service resolves branch and event ids.", func(ctx context.Context, input AutoCutLatestCompletedSpanInput) (dialogueToolResult, error) {
+		return autoExecuteDialogueAction(ctx, deps, state, domain.DialogueActionStoryCutChapter, input.Label, input.Description, input.Rationale, map[string]any{"story_run_id": input.StoryRunID, "span_policy": "latest_completed", "title": input.Title, "author_note": input.AuthorNote}, input.AuthorNote, input.PolicyReason)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(tools, autoStoryAdvance, autoStoryCutLatest), nil
 }
 
 func loadDialogueContext(ctx context.Context, deps dialogueGeneratorDeps, state *dialogueRunState, input DialogueContextInput) (DialogueContextSnapshot, error) {
 	projectID := firstText(input.ProjectID, state.run.ProjectID, state.session.ProjectID)
 	sessionID := firstText(input.SessionID, state.session.ID)
-	snapshot := DialogueContextSnapshot{}
+	snapshot := DialogueContextSnapshot{ExecutionMode: dialogueExecutionMode(deps.autoPilot), AutoAllowedActions: autoAllowedDialogueActions(deps.autoPilot)}
 	project, err := deps.projects.GetDetail(ctx, projectID)
 	if err != nil {
 		return snapshot, err
@@ -275,6 +313,55 @@ func proposeDialogueAction(ctx context.Context, deps dialogueGeneratorDeps, stat
 	return dialogueToolResult{OK: true, Message: "option proposed", Option: option}, nil
 }
 
+func autoExecuteDialogueAction(ctx context.Context, deps dialogueGeneratorDeps, state *dialogueRunState, actionType string, label string, description string, rationale string, payload map[string]any, authorNote string, policyReason string) (dialogueToolResult, error) {
+	if !deps.autoPilot {
+		return dialogueToolResult{}, pkgerr.Validation("auto_pilot is not enabled")
+	}
+	if deps.actionExecutor == nil {
+		return dialogueToolResult{}, pkgerr.Internal("dialogue action executor is required", nil)
+	}
+	if strings.TrimSpace(policyReason) == "" {
+		return dialogueToolResult{}, pkgerr.Validation("auto policy reason is required")
+	}
+	option := model.DialogueActionOption{
+		ID:                   deps.ids.New("dopt"),
+		SessionID:            state.session.ID,
+		RunID:                state.run.RunID,
+		ProjectID:            state.run.ProjectID,
+		ActionType:           actionType,
+		Label:                firstText(label, defaultDialogueActionLabel(actionType)),
+		Description:          description,
+		Rationale:            rationale,
+		ConfirmationRequired: false,
+		Payload:              payload,
+		Status:               domain.DialogueActionStatusPending,
+		CreatedAt:            currentTimeFromPort(deps.clock),
+		UpdatedAt:            currentTimeFromPort(deps.clock),
+	}
+	if deps.optionValidator != nil {
+		if err := deps.optionValidator.ValidateOption(ctx, option); err != nil {
+			return dialogueToolResult{}, err
+		}
+	}
+	if err := deps.dialogueSessions.SaveActionOptions(ctx, []model.DialogueActionOption{option}); err != nil {
+		return dialogueToolResult{}, err
+	}
+	state.mu.Lock()
+	state.proposedOptions = append(state.proposedOptions, option)
+	state.mu.Unlock()
+	executed, err := deps.actionExecutor.ExecuteAutoApproved(ctx, option.ID, model.AutoExecuteDialogueActionInput{AuthorNote: authorNote, PolicyReason: policyReason})
+	state.mu.Lock()
+	if err == nil {
+		state.replaceOptionLocked(executed)
+	}
+	state.addTraceLocked("auto_"+actionType, "auto policy execution", err == nil)
+	state.mu.Unlock()
+	if err != nil {
+		return dialogueToolResult{}, err
+	}
+	return dialogueToolResult{OK: true, Message: "option auto executed", Option: executed}, nil
+}
+
 func executeConfirmedDialogueAction(ctx context.Context, deps dialogueGeneratorDeps, state *dialogueRunState, input ExecuteConfirmedDialogueActionInput) (model.DialogueActionOption, error) {
 	if deps.actionExecutor == nil {
 		return model.DialogueActionOption{}, pkgerr.Internal("dialogue action executor is required", nil)
@@ -326,6 +413,16 @@ func (s *dialogueRunState) addTraceLocked(toolName string, summary string, ok bo
 	s.toolTrace = append(s.toolTrace, model.DialogueToolTrace{ToolName: toolName, Summary: summary, OK: ok, CreatedAt: time.Now().UTC()})
 }
 
+func (s *dialogueRunState) replaceOptionLocked(option model.DialogueActionOption) {
+	for i := range s.proposedOptions {
+		if s.proposedOptions[i].ID == option.ID {
+			s.proposedOptions[i] = option
+			return
+		}
+	}
+	s.proposedOptions = append(s.proposedOptions, option)
+}
+
 func defaultDialogueActionLabel(actionType string) string {
 	switch actionType {
 	case domain.DialogueActionSetupStartAndAdvance:
@@ -340,6 +437,8 @@ func defaultDialogueActionLabel(actionType string) string {
 		return "继续剧情编排"
 	case domain.DialogueActionStoryCutChapter:
 		return "提交章节草稿"
+	case domain.DialogueActionStoryForkFromEvent:
+		return "从事件创建剧情分支"
 	default:
 		return "执行下一步"
 	}
@@ -350,4 +449,21 @@ func currentTimeFromPort(clock port.Clock) time.Time {
 		return clock.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func dialogueExecutionMode(autoPilot bool) string {
+	if autoPilot {
+		return domain.DialoguePolicyAutoPilot
+	}
+	return domain.DialoguePolicyManualConfirm
+}
+
+func autoAllowedDialogueActions(autoPilot bool) []string {
+	if !autoPilot {
+		return nil
+	}
+	return []string{
+		domain.DialogueActionStoryAdvance,
+		"story_cut_latest_completed_span",
+	}
 }

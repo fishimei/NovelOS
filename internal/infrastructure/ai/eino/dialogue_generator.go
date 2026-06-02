@@ -28,7 +28,7 @@ type DialogueRunGeneratorDeps struct {
 	StorySessions    port.StorySessionRepository
 	Chapters         port.ChapterRepository
 	DialogueSessions port.DialogueSessionRepository
-	ActionExecutor   port.DialogueConfirmedActionExecutor
+	ActionExecutor   port.DialogueActionExecutor
 	OptionValidator  port.DialogueActionOptionValidator
 	Events           port.GenerationEventStream
 	Clock            port.Clock
@@ -49,10 +49,7 @@ func NewDialogueRunGenerator(ctx context.Context, deps DialogueRunGeneratorDeps)
 	}
 	maxSteps := deps.Config.DialogueAgent.MaxSteps
 	if maxSteps <= 0 {
-		maxSteps = 16
-	}
-	if maxSteps > 24 {
-		maxSteps = 24
+		maxSteps = config.DefaultDialogueAgentMaxSteps
 	}
 	return &DialogueRunGenerator{
 		model: chatModel,
@@ -71,6 +68,7 @@ func NewDialogueRunGenerator(ctx context.Context, deps DialogueRunGeneratorDeps)
 			events:           deps.Events,
 			clock:            deps.Clock,
 			ids:              deps.IDs,
+			autoPilot:        deps.Config.DialogueAgent.AutoPilot,
 		},
 		prompt:   deps.Config.DialogueAgent.Prompt,
 		maxSteps: maxSteps,
@@ -111,17 +109,28 @@ func (g *DialogueRunGenerator) Generate(ctx context.Context, input port.Dialogue
 }
 
 func (g *DialogueRunGenerator) systemPrompt() string {
-	return firstText(g.prompt, `你是 NovelOS 的统一对话 Agent。每轮必须先调用 load_dialogue_context。你通过 propose_* 工具创建待确认选项，通过 finalize_dialogue_response 回复用户。用户未明确确认前，不能调用 execute_confirmed_action。`)
+	basePrompt := g.prompt
+	if strings.TrimSpace(basePrompt) == "" {
+		basePrompt = "You are the NovelOS dialogue agent. Always call load_dialogue_context first, create action options through propose tools, and finish with finalize_dialogue_response."
+	}
+	return fmt.Sprintf(`%s
+
+Execution mode: %s.
+manual_confirm: create pending options for every state-changing action and wait for user confirmation.
+auto_pilot: only auto-execute policy-approved low-risk actions: story_advance and cut latest completed story span. setup_apply, fork, rollback, delete, overwrite, and publish-frontier movement still require manual confirmation.
+When cutting the latest completed span, use propose_story_cut_latest_completed_span or auto_cut_latest_completed_span; never guess branch_id/from_event_id/to_event_id.`, basePrompt, dialogueExecutionMode(g.deps.autoPilot))
 }
 
 func (g *DialogueRunGenerator) userPrompt(input port.DialogueRunGenerationInput) string {
 	messages, _ := json.Marshal(input.Session.Messages)
 	payload, _ := json.Marshal(map[string]any{
-		"project_id":          input.Run.ProjectID,
-		"dialogue_session_id": input.Session.ID,
-		"dialogue_run_id":     input.Run.RunID,
-		"last_user_message":   input.Session.LastUserMessage,
-		"messages":            json.RawMessage(messages),
+		"project_id":           input.Run.ProjectID,
+		"dialogue_session_id":  input.Session.ID,
+		"dialogue_run_id":      input.Run.RunID,
+		"execution_mode":       dialogueExecutionMode(g.deps.autoPilot),
+		"auto_allowed_actions": autoAllowedDialogueActions(g.deps.autoPilot),
+		"last_user_message":    input.Session.LastUserMessage,
+		"messages":             json.RawMessage(messages),
 	})
 	return fmt.Sprintf(`%s
 

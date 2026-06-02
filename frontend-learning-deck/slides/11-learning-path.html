@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>学习方法</title>
+<style>
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 960pt;
+  height: 540pt;
+  overflow: hidden;
+}
+body {
+  position: relative;
+  background: #F7EFE1;
+  color: #2B2118;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+}
+h1, h2, h3, h4, p, ul, li {
+  margin: 0;
+  padding: 0;
+  letter-spacing: 0;
+}
+.slide {
+  position: relative;
+  width: 960pt;
+  height: 540pt;
+  overflow: hidden;
+}
+.paper { background: #F7EFE1; }
+.ink { background: #2B2118; color: #FFF8EB; }
+.coal { background: #3A2A1E; color: #FFF8EB; }
+.frame {
+  position: absolute;
+  left: 32pt;
+  top: 28pt;
+  width: 896pt;
+  height: 484pt;
+  border: 1.2pt solid #2B2118;
+}
+.ink .frame, .coal .frame { border-color: #FFF8EB; }
+.rule { position: absolute; height: 1.1pt; background: #2B2118; }
+.ink .rule, .coal .rule { background: #FFF8EB; }
+.v-rule { position: absolute; width: 1.1pt; background: #2B2118; }
+.ink .v-rule, .coal .v-rule { background: #FFF8EB; }
+.kicker {
+  position: absolute;
+  left: 54pt;
+  top: 42pt;
+  width: 180pt;
+  height: 18pt;
+}
+.kicker p {
+  font-size: 8.5pt;
+  line-height: 12pt;
+  font-weight: 700;
+  color: #B8752A;
+  text-transform: uppercase;
+}
+.ink .kicker p, .coal .kicker p { color: #D7A83E; }
+.slide-no {
+  position: absolute;
+  right: 54pt;
+  top: 42pt;
+  width: 80pt;
+  height: 16pt;
+}
+.slide-no p {
+  font-size: 8.5pt;
+  line-height: 12pt;
+  text-align: right;
+  color: #806F5D;
+}
+.ink .slide-no p, .coal .slide-no p { color: #8B7A67; }
+.footer {
+  position: absolute;
+  left: 54pt;
+  bottom: 30pt;
+  width: 852pt;
+  height: 14pt;
+}
+.footer p {
+  font-size: 7.5pt;
+  line-height: 10pt;
+  color: #806F5D;
+}
+.ink .footer p, .coal .footer p { color: #8B7A67; }
+.title h1 {
+  font-size: 42pt;
+  line-height: 48pt;
+  font-weight: 800;
+}
+.title h2 {
+  font-size: 29pt;
+  line-height: 36pt;
+  font-weight: 800;
+}
+.lead p {
+  font-size: 15pt;
+  line-height: 22pt;
+  font-weight: 700;
+}
+.body p, .body li {
+  font-size: 12.5pt;
+  line-height: 18pt;
+}
+.small p, .small li {
+  font-size: 9.5pt;
+  line-height: 14pt;
+}
+.caption p {
+  font-size: 8.5pt;
+  line-height: 12pt;
+  color: #806F5D;
+}
+.ink .caption p, .coal .caption p { color: #8B7A67; }
+.accent-blue { color: #B8752A; }
+.accent-red { color: #C65A3A; }
+.accent-green { color: #8bc400; }
+.accent-cyan { color: #7A8A4B; }
+.accent-lime { color: #D7A83E; }
+.box {
+  position: absolute;
+  background: #FFF8EB;
+  border: 1.1pt solid #2B2118;
+}
+.dark-box {
+  position: absolute;
+  background: #3A2A1E;
+  border: 1.1pt solid #FFF8EB;
+}
+.tag {
+  position: absolute;
+  background: #2B2118;
+  border-radius: 9pt;
+}
+.tag p {
+  font-size: 8.2pt;
+  line-height: 13pt;
+  font-weight: 700;
+  text-align: center;
+  color: #FFF8EB;
+}
+.chip {
+  position: absolute;
+  border-radius: 11pt;
+  background: #F7EFE1;
+  border: 1pt solid #2B2118;
+}
+.chip p {
+  font-size: 8.8pt;
+  line-height: 14pt;
+  font-weight: 700;
+  text-align: center;
+  color: #2B2118;
+}
+.big-num p {
+  font-family: Arial Black, Impact, "Microsoft YaHei UI", sans-serif;
+  font-size: 116pt;
+  line-height: 112pt;
+  font-weight: 900;
+}
+.mono p {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10pt;
+  line-height: 15pt;
+}
+ul {
+  list-style: disc;
+  padding-left: 18pt;
+}
+li { padding-left: 2pt; }
+
+</style>
+</head>
+<body>
+
+<div class="slide paper">
+  <div class="frame"></div>
+  <div class="kicker"><p>Learning path</p></div>
+  <div class="slide-no"><p>11 / 12</p></div>
+  <div class="footer"><p>学习前端的心得体会 · HTML source deck · NovelOS</p></div>
+
+  <div class="title" style="position:absolute; left:58pt; top:82pt; width:700pt; height:86pt;">
+    <h2>更有效的学习方式：<span class="accent-red">用作品逼出真实问题</span>。</h2>
+  </div>
+  <div class="lead" style="position:absolute; left:62pt; top:188pt; width:660pt; height:54pt;">
+    <p>只看教程会获得“我懂了”的幻觉。真正的学习发生在：需求含糊、状态混乱、样式破碎、上线失败的时候。</p>
+  </div>
+  <div class="box" style="left:84pt; top:292pt; width:176pt; height:112pt; background:#FFF8EB;"></div>
+  <div class="box" style="left:286pt; top:292pt; width:176pt; height:112pt; background:#D7A83E;"></div>
+  <div class="box" style="left:488pt; top:292pt; width:176pt; height:112pt; background:#B8752A;"></div>
+  <div class="box" style="left:690pt; top:292pt; width:176pt; height:112pt; background:#2B2118;"></div>
+  <div class="body" style="position:absolute; left:108pt; top:318pt; width:128pt; height:46pt;"><p style="font-weight:800;">做一个页面<br><span style="color:#806F5D;">练结构和布局</span></p></div>
+  <div class="body" style="position:absolute; left:310pt; top:318pt; width:128pt; height:46pt;"><p style="color:#2B2118; font-weight:800;">做一个表单<br><span style="color:#665B24;">练状态和校验</span></p></div>
+  <div class="body" style="position:absolute; left:512pt; top:318pt; width:128pt; height:46pt;"><p style="color:#FFF8EB; font-weight:800;">做一个工具<br><span style="color:#F2DEC2;">练组件和数据</span></p></div>
+  <div class="body" style="position:absolute; left:714pt; top:318pt; width:128pt; height:46pt;"><p style="color:#FFF8EB; font-weight:800;">上线给人用<br><span style="color:#F2DEC2;">练反馈和取舍</span></p></div>
+  <div class="caption" style="position:absolute; left:86pt; top:440pt; width:760pt; height:28pt;">
+    <p>复盘问题比堆项目更重要：每个作品结束后，写清楚你重构了什么、删掉了什么、为什么。</p>
+  </div>
+</div>
+</body>
+</html>

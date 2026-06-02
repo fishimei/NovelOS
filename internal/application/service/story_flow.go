@@ -216,6 +216,7 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		Payload: map[string]any{
 			"draft":                   result.Draft,
 			"memory_patch":            result.MemoryPatch,
+			"memory_scope":            domain.MemoryPatchStatusRunLocal,
 			"interaction_analysis":    result.InteractionAnalysis,
 			"interaction_transcripts": result.InteractionTranscripts,
 			"plot_variable":           result.PlotVariable,

@@ -160,6 +160,11 @@ type ConfirmDialogueActionOptionRequest struct {
 	AuthorNote string `json:"author_note"`
 }
 
+type AutoExecuteDialogueActionOptionRequest struct {
+	AuthorNote   string `json:"author_note"`
+	PolicyReason string `json:"policy_reason" binding:"required"`
+}
+
 type RejectDialogueActionOptionRequest struct {
 	Reason string `json:"reason"`
 }

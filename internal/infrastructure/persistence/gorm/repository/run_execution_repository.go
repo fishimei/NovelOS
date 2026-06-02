@@ -38,6 +38,19 @@ func (r Repositories) ListRunnableRuns(ctx context.Context, staleBefore time.Tim
 	for _, row := range storyRows {
 		works = append(works, model.RunExecutionWork{RunKind: port.RunKindStory, RunID: row.ID, SessionID: row.SessionID, ProjectID: row.ProjectID, Status: row.Status, UpdatedAt: row.UpdatedAt})
 	}
+	remaining = limit - len(works)
+	if remaining <= 0 {
+		return works, nil
+	}
+	var dialogueRows []persistencemodels.DialogueRun
+	if err := r.DialogueSessions.(*dialogueSessionRepository).dbFor(ctx).
+		Where("status = ? OR (status = ? AND updated_at < ?)", domain.RunStatusQueued, domain.RunStatusLoadingState, staleBefore).
+		Order("updated_at asc").Limit(remaining).Find(&dialogueRows).Error; err != nil {
+		return nil, mapDBError(err, "dialogue run not found")
+	}
+	for _, row := range dialogueRows {
+		works = append(works, model.RunExecutionWork{RunKind: port.RunKindDialogue, RunID: row.ID, SessionID: row.SessionID, ProjectID: row.ProjectID, Status: row.Status, UpdatedAt: row.UpdatedAt})
+	}
 	return works, nil
 }
 
@@ -59,6 +72,14 @@ func (r Repositories) ClaimRun(ctx context.Context, work model.RunExecutionWork,
 			Updates(updates)
 		if result.Error != nil {
 			return false, mapDBError(result.Error, "story run not found")
+		}
+		return result.RowsAffected > 0, nil
+	case port.RunKindDialogue:
+		result := r.DialogueSessions.(*dialogueSessionRepository).dbFor(ctx).Model(&persistencemodels.DialogueRun{}).
+			Where("id = ? AND (status = ? OR (status = ? AND updated_at < ?))", work.RunID, domain.RunStatusQueued, domain.RunStatusLoadingState, staleBefore).
+			Updates(updates)
+		if result.Error != nil {
+			return false, mapDBError(result.Error, "dialogue run not found")
 		}
 		return result.RowsAffected > 0, nil
 	default:

@@ -109,12 +109,34 @@ func (c *StoryChapterCutter) CutChapter(ctx context.Context, runID string, input
 	if err := c.flushExternalMemories(ctx, run, chapter, memories); err != nil {
 		log.Printf("story run %s external memory flush failed: %v", runID, err)
 		c.appendExternalMemoryFlushFailedEvent(ctx, runID, err)
+	} else if c.memoryService != nil && len(memories) > 0 {
+		c.appendExternalMemoryCommittedEvent(ctx, runID, chapter, len(memories))
 	}
 	updatedRun, err := c.sessions.GetRunByID(ctx, runID)
 	if err != nil {
 		return model.CutChapterResult{}, err
 	}
 	return model.CutChapterResult{Chapter: chapter, Span: span, StoryRun: updatedRun}, nil
+}
+
+func (c *StoryChapterCutter) CutLatestCompletedSpan(ctx context.Context, runID string, input model.CutChapterInput) (model.CutChapterResult, error) {
+	run, err := c.sessions.GetRunByID(ctx, runID)
+	if err != nil {
+		return model.CutChapterResult{}, err
+	}
+	if run.Status == domain.RunStatusCut || run.CutAt != nil {
+		return model.CutChapterResult{}, pkgerr.Conflict(pkgerr.CodeConflict, "story run is already cut")
+	}
+	if run.Status != domain.RunStatusCompleted {
+		return model.CutChapterResult{}, pkgerr.Validation("latest completed span requires a completed story run")
+	}
+	if run.BranchID == "" || run.BaseEventID == "" || run.HeadEventID == "" {
+		return model.CutChapterResult{}, pkgerr.Validation("completed story run has no resolvable event span")
+	}
+	input.BranchID = run.BranchID
+	input.FromEventID = run.BaseEventID
+	input.ToEventID = run.HeadEventID
+	return c.CutChapter(ctx, runID, input)
 }
 
 func (c *StoryChapterCutter) eventSpan(ctx context.Context, run model.StoryRun, input model.CutChapterInput) (model.Branch, []model.StoryEvent, error) {
@@ -182,6 +204,7 @@ func (c *StoryChapterCutter) createChapterFromEvents(ctx context.Context, run mo
 				CharacterID: update.CharacterID,
 				Content:     update.Content,
 				Importance:  update.Importance,
+				Note:        domain.MemoryScopeExternalCommitted + ":" + domain.MemoryCommitTriggerChapterCut,
 				Status:      "active",
 				CreatedAt:   currentTime(c.clock),
 			})
@@ -275,10 +298,30 @@ func (c *StoryChapterCutter) appendCutEvent(ctx context.Context, runID string, c
 			"from_event_id":  span.FromEventID,
 			"to_event_id":    span.ToEventID,
 			"author_note":    authorNote,
+			"memory_scope":   domain.MemoryScopeExternalCommitted,
+			"memory_trigger": domain.MemoryCommitTriggerChapterCut,
 		},
 		CreatedAt: currentTime(c.clock),
 	})
 	return err
+}
+
+func (c *StoryChapterCutter) appendExternalMemoryCommittedEvent(ctx context.Context, runID string, chapter model.Chapter, memoryCount int) {
+	if c.audit == nil {
+		return
+	}
+	_, _ = c.audit.AppendRunEvent(ctx, model.RunEvent{
+		RunKind:   "story",
+		RunID:     runID,
+		EventName: "external_memory_committed",
+		Payload: map[string]any{
+			"chapter_id":   chapter.ID,
+			"memory_count": memoryCount,
+			"scope":        domain.MemoryScopeExternalCommitted,
+			"trigger":      domain.MemoryCommitTriggerChapterCut,
+		},
+		CreatedAt: currentTime(c.clock),
+	})
 }
 
 func (c *StoryChapterCutter) appendExternalMemoryFlushFailedEvent(ctx context.Context, runID string, err error) {

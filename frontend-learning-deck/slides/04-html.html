@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>HTML 先把意义放对</title>
+<style>
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 960pt;
+  height: 540pt;
+  overflow: hidden;
+}
+body {
+  position: relative;
+  background: #F7EFE1;
+  color: #2B2118;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+}
+h1, h2, h3, h4, p, ul, li {
+  margin: 0;
+  padding: 0;
+  letter-spacing: 0;
+}
+.slide {
+  position: relative;
+  width: 960pt;
+  height: 540pt;
+  overflow: hidden;
+}
+.paper { background: #F7EFE1; }
+.ink { background: #2B2118; color: #FFF8EB; }
+.coal { background: #3A2A1E; color: #FFF8EB; }
+.frame {
+  position: absolute;
+  left: 32pt;
+  top: 28pt;
+  width: 896pt;
+  height: 484pt;
+  border: 1.2pt solid #2B2118;
+}
+.ink .frame, .coal .frame { border-color: #FFF8EB; }
+.rule { position: absolute; height: 1.1pt; background: #2B2118; }
+.ink .rule, .coal .rule { background: #FFF8EB; }
+.v-rule { position: absolute; width: 1.1pt; background: #2B2118; }
+.ink .v-rule, .coal .v-rule { background: #FFF8EB; }
+.kicker {
+  position: absolute;
+  left: 54pt;
+  top: 42pt;
+  width: 180pt;
+  height: 18pt;
+}
+.kicker p {
+  font-size: 8.5pt;
+  line-height: 12pt;
+  font-weight: 700;
+  color: #B8752A;
+  text-transform: uppercase;
+}
+.ink .kicker p, .coal .kicker p { color: #D7A83E; }
+.slide-no {
+  position: absolute;
+  right: 54pt;
+  top: 42pt;
+  width: 80pt;
+  height: 16pt;
+}
+.slide-no p {
+  font-size: 8.5pt;
+  line-height: 12pt;
+  text-align: right;
+  color: #806F5D;
+}
+.ink .slide-no p, .coal .slide-no p { color: #8B7A67; }
+.footer {
+  position: absolute;
+  left: 54pt;
+  bottom: 30pt;
+  width: 852pt;
+  height: 14pt;
+}
+.footer p {
+  font-size: 7.5pt;
+  line-height: 10pt;
+  color: #806F5D;
+}
+.ink .footer p, .coal .footer p { color: #8B7A67; }
+.title h1 {
+  font-size: 42pt;
+  line-height: 48pt;
+  font-weight: 800;
+}
+.title h2 {
+  font-size: 29pt;
+  line-height: 36pt;
+  font-weight: 800;
+}
+.lead p {
+  font-size: 15pt;
+  line-height: 22pt;
+  font-weight: 700;
+}
+.body p, .body li {
+  font-size: 12.5pt;
+  line-height: 18pt;
+}
+.small p, .small li {
+  font-size: 9.5pt;
+  line-height: 14pt;
+}
+.caption p {
+  font-size: 8.5pt;
+  line-height: 12pt;
+  color: #806F5D;
+}
+.ink .caption p, .coal .caption p { color: #8B7A67; }
+.accent-blue { color: #B8752A; }
+.accent-red { color: #C65A3A; }
+.accent-green { color: #8bc400; }
+.accent-cyan { color: #7A8A4B; }
+.accent-lime { color: #D7A83E; }
+.box {
+  position: absolute;
+  background: #FFF8EB;
+  border: 1.1pt solid #2B2118;
+}
+.dark-box {
+  position: absolute;
+  background: #3A2A1E;
+  border: 1.1pt solid #FFF8EB;
+}
+.tag {
+  position: absolute;
+  background: #2B2118;
+  border-radius: 9pt;
+}
+.tag p {
+  font-size: 8.2pt;
+  line-height: 13pt;
+  font-weight: 700;
+  text-align: center;
+  color: #FFF8EB;
+}
+.chip {
+  position: absolute;
+  border-radius: 11pt;
+  background: #F7EFE1;
+  border: 1pt solid #2B2118;
+}
+.chip p {
+  font-size: 8.8pt;
+  line-height: 14pt;
+  font-weight: 700;
+  text-align: center;
+  color: #2B2118;
+}
+.big-num p {
+  font-family: Arial Black, Impact, "Microsoft YaHei UI", sans-serif;
+  font-size: 116pt;
+  line-height: 112pt;
+  font-weight: 900;
+}
+.mono p {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10pt;
+  line-height: 15pt;
+}
+ul {
+  list-style: disc;
+  padding-left: 18pt;
+}
+li { padding-left: 2pt; }
+
+</style>
+</head>
+<body>
+
+<div class="slide paper">
+  <div class="frame"></div>
+  <div class="kicker"><p>Layer 01 · HTML</p></div>
+  <div class="slide-no"><p>04 / 12</p></div>
+  <div class="footer"><p>学习前端的心得体会 · HTML source deck · NovelOS</p></div>
+
+  <div class="title" style="position:absolute; left:58pt; top:82pt; width:480pt; height:90pt;">
+    <h2>HTML：先把<span class="accent-lime">意义</span>放对。</h2>
+  </div>
+  <div class="lead" style="position:absolute; left:62pt; top:184pt; width:386pt; height:72pt;">
+    <p>语义不是洁癖。它是你和浏览器、读屏器、搜索引擎、后来的维护者签的一份合同。</p>
+  </div>
+  <div class="dark-box" style="left:520pt; top:92pt; width:330pt; height:280pt; background:#3A2A1E;"></div>
+  <div class="mono" style="position:absolute; left:542pt; top:116pt; width:286pt; height:228pt;">
+    <p style="color:#D7A83E;">&lt;main aria-labelledby="draft-title"&gt;<br>  &lt;h1 id="draft-title"&gt;草稿箱&lt;/h1&gt;<br>  &lt;form&gt;<br>    &lt;label for="title"&gt;标题&lt;/label&gt;<br>    &lt;input id="title" name="title" /&gt;<br>    &lt;button&gt;保存草稿&lt;/button&gt;<br>  &lt;/form&gt;<br>&lt;/main&gt;</p>
+  </div>
+  <div class="box" style="left:64pt; top:300pt; width:124pt; height:74pt; background:#D7A83E;"></div>
+  <div class="box" style="left:208pt; top:300pt; width:124pt; height:74pt; background:#FFF8EB;"></div>
+  <div class="box" style="left:352pt; top:300pt; width:124pt; height:74pt; background:#C65A3A;"></div>
+  <div class="small" style="position:absolute; left:78pt; top:318pt; width:96pt; height:36pt;"><p style="color:#2B2118; font-weight:800;">先问<br>它是什么</p></div>
+  <div class="small" style="position:absolute; left:222pt; top:318pt; width:96pt; height:36pt;"><p style="color:#2B2118; font-weight:800;">再问<br>它怎么排</p></div>
+  <div class="small" style="position:absolute; left:366pt; top:318pt; width:96pt; height:36pt;"><p style="color:#FFF8EB; font-weight:800;">最后问<br>它好不好看</p></div>
+</div>
+</body>
+</html>

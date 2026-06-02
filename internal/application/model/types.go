@@ -840,8 +840,15 @@ type AdvanceDialogueSessionInput struct {
 }
 
 type ExecuteDialogueActionInput struct {
-	Confirm    bool   `json:"confirm"`
-	AuthorNote string `json:"author_note"`
+	Confirm       bool   `json:"confirm"`
+	AuthorNote    string `json:"author_note"`
+	ExecutionMode string `json:"execution_mode,omitempty"`
+	PolicyReason  string `json:"policy_reason,omitempty"`
+}
+
+type AutoExecuteDialogueActionInput struct {
+	AuthorNote   string `json:"author_note"`
+	PolicyReason string `json:"policy_reason"`
 }
 
 type RejectDialogueActionInput struct {

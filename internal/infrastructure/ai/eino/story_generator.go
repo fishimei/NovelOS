@@ -3,6 +3,7 @@ package eino
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -36,27 +37,25 @@ type StoryRunGeneratorDeps struct {
 }
 
 type StoryRunGenerator struct {
-	cfg             config.AIConfig
-	model           llmmodel.ToolCallingChatModel
-	deps            storyGeneratorDeps
-	clock           port.Clock
-	ids             port.IDGenerator
-	maxTurns        int
-	controller      string
-	toolPrompt      string
-	resultPrompt    string
-	narrativePrompt string
-	variablePrompt  string
+	cfg                config.AIConfig
+	model              llmmodel.ToolCallingChatModel
+	deps               storyGeneratorDeps
+	clock              port.Clock
+	ids                port.IDGenerator
+	maxTurns           int
+	controller         string
+	toolPrompt         string
+	resultPrompt       string
+	narrativePrompt    string
+	variablePrompt     string
+	maxReactSteps      int
+	maxChapterTokens   int
+	maxTurnTokens      int
+	maxAssemblerTokens int
 }
 
 func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*StoryRunGenerator, error) {
-	maxTurns := deps.Config.StoryAgent.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = 25
-	}
-	if maxTurns > 25 {
-		maxTurns = 25
-	}
+	maxTurns := positiveIntOrDefault(deps.Config.StoryAgent.MaxTurns, config.DefaultStoryAgentMaxTurns)
 	chatModel, err := newOpenAIChatModel(ctx, deps.Config)
 	if err != nil {
 		return nil, err
@@ -76,14 +75,18 @@ func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*Sto
 			events:        deps.Events,
 			audit:         deps.Audit,
 		},
-		clock:           deps.Clock,
-		ids:             deps.IDs,
-		maxTurns:        maxTurns,
-		controller:      deps.Config.StoryAgent.ControllerPrompt,
-		toolPrompt:      deps.Config.StoryAgent.ToolPrompt,
-		resultPrompt:    deps.Config.StoryAgent.ResultPrompt,
-		narrativePrompt: deps.Config.StoryAgent.NarrativePrompt,
-		variablePrompt:  deps.Config.StoryAgent.VariablePrompt,
+		clock:              deps.Clock,
+		ids:                deps.IDs,
+		maxTurns:           maxTurns,
+		controller:         deps.Config.StoryAgent.ControllerPrompt,
+		toolPrompt:         deps.Config.StoryAgent.ToolPrompt,
+		resultPrompt:       deps.Config.StoryAgent.ResultPrompt,
+		narrativePrompt:    deps.Config.StoryAgent.NarrativePrompt,
+		variablePrompt:     deps.Config.StoryAgent.VariablePrompt,
+		maxReactSteps:      positiveIntOrDefault(deps.Config.StoryAgent.MaxReactSteps, config.DefaultStoryAgentMaxReactSteps),
+		maxChapterTokens:   positiveIntOrDefault(deps.Config.StoryAgent.MaxChapterTokens, config.DefaultStoryAgentMaxChapterTokens),
+		maxTurnTokens:      positiveIntOrDefault(deps.Config.StoryAgent.MaxTurnTokens, config.DefaultStoryAgentMaxTurnTokens),
+		maxAssemblerTokens: positiveIntOrDefault(deps.Config.StoryAgent.MaxAssemblerTokens, config.DefaultStoryAgentMaxAssemblerTokens),
 	}
 	return generator, nil
 }
@@ -111,7 +114,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	agent, err := react.NewAgent(ctx, &react.AgentConfig{
 		ToolCallingModel: g.model,
 		ToolsConfig:      compose.ToolsNodeConfig{Tools: tools},
-		MaxStep:          g.maxTurns*3 + 5,
+		MaxStep:          g.reactStepLimit(),
 		ToolReturnDirectly: map[string]struct{}{
 			"finalize_story_plan": {},
 		},
@@ -442,11 +445,51 @@ func minInt(a int, b int) int {
 	return b
 }
 
+func positiveIntOrDefault(value int, defaultValue int) int {
+	if value > 0 {
+		return value
+	}
+	return defaultValue
+}
+
+func (g *StoryRunGenerator) reactStepLimit() int {
+	return positiveIntOrDefault(g.maxReactSteps, config.DefaultStoryAgentMaxReactSteps)
+}
+
+func (g *StoryRunGenerator) chapterTokenLimit() int {
+	return positiveIntOrDefault(g.maxChapterTokens, config.DefaultStoryAgentMaxChapterTokens)
+}
+
+func (g *StoryRunGenerator) turnTokenLimit() int {
+	return positiveIntOrDefault(g.maxTurnTokens, config.DefaultStoryAgentMaxTurnTokens)
+}
+
+func (g *StoryRunGenerator) assemblerTokenLimit() int {
+	return positiveIntOrDefault(g.maxAssemblerTokens, config.DefaultStoryAgentMaxAssemblerTokens)
+}
+
 func (g *StoryRunGenerator) generateNarrative(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) (StoryNarrativeResult, error) {
-	return g.generateNarrativeSummary(ctx, input, snapshot, plan, variable), nil
+	renderedPlan := plan
+	renderedPlan.Turns = make([]StoryTurnPlan, 0, len(plan.Turns))
+	for _, turn := range plan.Turns {
+		rendered, err := g.generateTurnContent(ctx, input, snapshot, renderedPlan, renderedPlan.Turns, turn, variable)
+		if err != nil {
+			if ctx.Err() != nil {
+				return StoryNarrativeResult{}, ctx.Err()
+			}
+			rendered = fallbackTurnContent(turn)
+		}
+		renderedPlan.Turns = append(renderedPlan.Turns, rendered)
+	}
+	metadata := g.generateNarrativeMetadata(ctx, input, snapshot, renderedPlan, variable)
+	assembled := g.assembleChapterDraft(ctx, input, snapshot, renderedPlan, metadata)
+	return mergeNarrativeResult(input, renderedPlan, variable, metadata, assembled), nil
 }
 
 func (g *StoryRunGenerator) generateTurnContent(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, previousTurns []StoryTurnPlan, turn StoryTurnPlan, variable StoryVariablePlan) (StoryTurnPlan, error) {
+	if g.model == nil {
+		return StoryTurnPlan{}, errors.New("story model is not configured")
+	}
 	promptInput := map[string]any{
 		"session":         input.Session,
 		"author_bible":    snapshot.AuthorBible,
@@ -462,7 +505,7 @@ func (g *StoryRunGenerator) generateTurnContent(ctx context.Context, input port.
 	msg, err := g.model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.turnNarrativePrompt()),
 		schema.UserMessage(string(payload)),
-	}, maxTokensOption(g.cfg.Model, 1200))
+	}, maxTokensOption(g.cfg.Model, g.turnTokenLimit()))
 	if err != nil {
 		return StoryTurnPlan{}, err
 	}
@@ -476,7 +519,10 @@ func (g *StoryRunGenerator) generateTurnContent(ctx context.Context, input port.
 	return turn, nil
 }
 
-func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) StoryNarrativeResult {
+func (g *StoryRunGenerator) generateNarrativeMetadata(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) StoryNarrativeResult {
+	if g.model == nil {
+		return fallbackNarrativeMetadata(input, plan, variable)
+	}
 	promptInput := map[string]any{
 		"session":                 input.Session,
 		"author_bible":            snapshot.AuthorBible,
@@ -492,25 +538,59 @@ func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input 
 	}
 	payload, _ := json.Marshal(promptInput)
 	msg, err := g.model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(g.summaryPrompt()),
+		schema.SystemMessage(g.statePatchPrompt()),
 		schema.UserMessage(string(payload)),
-	}, maxTokensOption(g.cfg.Model, 4000))
+	}, maxTokensOption(g.cfg.Model, g.chapterTokenLimit()))
 	if err == nil {
 		var out StoryNarrativeResult
 		if decodeModelJSON(msg.Content, &out) == nil && storyNarrativeResultUsable(out) {
+			out.Content = ""
 			if len(out.Turns) == 0 {
 				out.Turns = plan.Turns
-			}
-			if out.Content == "" {
-				out.Content = formatDraftContent(StoryPlanResult{Summary: out.Summary, StopReason: plan.StopReason, Turns: out.Turns})
 			}
 			return out
 		}
 	}
+	return fallbackNarrativeMetadata(input, plan, variable)
+}
+
+func (g *StoryRunGenerator) assembleChapterDraft(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, metadata StoryNarrativeResult) StoryNarrativeResult {
+	if g.model == nil {
+		return fallbackAssembledDraft(input, plan, metadata)
+	}
+	promptInput := map[string]any{
+		"session":          input.Session,
+		"author_bible":     snapshot.AuthorBible,
+		"recent_chapters":  snapshot.RecentChapters,
+		"metadata_title":   metadata.Title,
+		"metadata_summary": metadata.Summary,
+		"turns":            plan.Turns,
+		"stop_reason":      plan.StopReason,
+	}
+	payload, _ := json.Marshal(promptInput)
+	msg, err := g.model.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(g.chapterAssemblerPrompt()),
+		schema.UserMessage(string(payload)),
+	}, maxTokensOption(g.cfg.Model, g.assemblerTokenLimit()))
+	if err == nil {
+		var out StoryNarrativeResult
+		if decodeModelJSON(msg.Content, &out) == nil && storyNarrativeResultUsable(out) {
+			out.Turns = plan.Turns
+			if out.Content == "" {
+				out.Content = formatDraftContent(plan)
+			}
+			out.PlotVariable = StoryNarrativePlotVariable{}
+			out.MemoryPatch = StoryNarrativeMemoryPatch{}
+			return out
+		}
+	}
+	return fallbackAssembledDraft(input, plan, metadata)
+}
+
+func fallbackNarrativeMetadata(input port.StoryRunGenerationInput, plan StoryPlanResult, variable StoryVariablePlan) StoryNarrativeResult {
 	return StoryNarrativeResult{
 		Title:   firstText(input.Session.Title, "未命名章节"),
 		Summary: plan.Summary,
-		Content: formatDraftContent(plan),
 		PlotVariable: firstVariable(variable.PlotVariable, StoryNarrativePlotVariable{
 			PressureSource:      firstText(input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "当前故事压力"),
 			FocalCharacterID:    firstActorID(plan.Turns),
@@ -519,6 +599,43 @@ func (g *StoryRunGenerator) generateNarrativeSummary(ctx context.Context, input 
 		}),
 		Review: StoryNarrativeReview{Pass: true},
 		Turns:  plan.Turns,
+	}
+}
+
+func fallbackAssembledDraft(input port.StoryRunGenerationInput, plan StoryPlanResult, metadata StoryNarrativeResult) StoryNarrativeResult {
+	return StoryNarrativeResult{
+		Title:   firstText(metadata.Title, input.Session.Title, "未命名章节"),
+		Summary: firstText(metadata.Summary, plan.Summary),
+		Content: formatDraftContent(plan),
+		Review:  StoryNarrativeReview{Pass: true},
+		Turns:   plan.Turns,
+	}
+}
+
+func fallbackTurnContent(turn StoryTurnPlan) StoryTurnPlan {
+	turn.Content = firstText(turn.Content, turn.Speech, turn.ActionSummary, turn.Intent, turn.Rationale)
+	return turn
+}
+
+func mergeNarrativeResult(input port.StoryRunGenerationInput, plan StoryPlanResult, variable StoryVariablePlan, metadata StoryNarrativeResult, assembled StoryNarrativeResult) StoryNarrativeResult {
+	return StoryNarrativeResult{
+		Title:        firstText(assembled.Title, metadata.Title, input.Session.Title, "未命名章节"),
+		Summary:      firstText(assembled.Summary, metadata.Summary, plan.Summary),
+		Content:      firstText(assembled.Content, formatDraftContent(plan)),
+		PlotVariable: firstVariable(variable.PlotVariable, metadata.PlotVariable),
+		MemoryPatch:  metadata.MemoryPatch,
+		Review:       mergeNarrativeReview(metadata.Review, assembled.Review),
+		Turns:        plan.Turns,
+	}
+}
+
+func mergeNarrativeReview(metadata StoryNarrativeReview, assembled StoryNarrativeReview) StoryNarrativeReview {
+	return StoryNarrativeReview{
+		Pass:             metadata.Pass && assembled.Pass,
+		HardViolations:   append(metadata.HardViolations, assembled.HardViolations...),
+		ContinuityIssues: append(metadata.ContinuityIssues, assembled.ContinuityIssues...),
+		StyleIssues:      append(metadata.StyleIssues, assembled.StyleIssues...),
+		SuggestedFixes:   append(metadata.SuggestedFixes, assembled.SuggestedFixes...),
 	}
 }
 
@@ -542,10 +659,16 @@ func (g *StoryRunGenerator) turnNarrativePrompt() string {
 本次只生成 current_turn 的正文。禁止使用 perspective 之外的秘密、private_attitude 或全局真相。可使用 perspective.variable_view 中该角色可感知的变量切片，但不能使用其他角色切片或全局隐藏信息。speak 写角色台词和必要动作；action 写可观察动作；silence/observe 写沉默或观察；narration 写短叙事。只输出 JSON。`
 }
 
-func (g *StoryRunGenerator) summaryPrompt() string {
+func (g *StoryRunGenerator) statePatchPrompt() string {
 	return firstText(g.resultPrompt, "整理故事演绎结果。") + `
 
-根据已完成的 event_plan、interaction_analysis、interaction_transcripts、turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、content、plot_variable、memory_patch、review、turns。运行中的事件和 turns 只是素材，不是章节正文；content 必须在本阶段统一写成连贯完整章节正文，不要只列提纲。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容。relationship_updates 可填 pair_id、summary、tension_delta、events；交涉造成的关系变化应写入 events，event_type 可用 negotiation 或 interaction_outcome。只输出 JSON。`
+根据已完成的 event_plan、interaction_analysis、interaction_transcripts、turns 和 story_variable 输出 JSON 对象，字段包括 title、summary、plot_variable、memory_patch、review、turns。不要输出 content；章节正文由 assembler 阶段根据逐回合 content 生成。memory_patch 只记录本章实际发生且角色会记住/世界会改变的内容，不能根据润色需要新增事件。relationship_updates 可填 pair_id、summary、tension_delta、events；交涉造成的关系变化应写入 events，event_type 可用 negotiation 或 interaction_outcome。只输出 JSON。`
+}
+
+func (g *StoryRunGenerator) chapterAssemblerPrompt() string {
+	return firstText(g.narrativePrompt, "你是 NovelOS 的章节 assembler。只整合已给出的逐回合正文，输出 JSON。") + `
+
+把 turns[*].content 组装成连贯章节。只能润色衔接和调整段落节奏，不得新增事件事实，不得改变角色知道什么，不得新增 memory_patch、world_state、relationship state delta，不得改写 event_plan 或 interaction_analysis。输出 JSON 对象，字段只包括 title、summary、content、review、turns。content 必须来自 turns[*].content 的整合结果；如果某个 turn 没有 content，只能使用该 turn 的 intent/action_summary 作为保守占位。`
 }
 
 func (g *StoryRunGenerator) perspectiveForTurn(snapshot StoryContextSnapshot, turn StoryTurnPlan, variable StoryVariablePlan) *CharacterPerspective {
@@ -616,7 +739,7 @@ func (g *StoryRunGenerator) buildResult(ctx context.Context, input port.StoryRun
 		},
 		MemoryPatch: model.MemoryPatch{
 			ID:                     g.newID("patch"),
-			Status:                 "draft",
+			Status:                 domain.MemoryPatchStatusRunLocal,
 			CharacterMemoryUpdates: toCharacterMemoryUpdates(narrative.MemoryPatch.CharacterMemoryUpdates),
 			RelationshipUpdates:    toRelationshipUpdates(narrative.MemoryPatch.RelationshipUpdates),
 			WorldStateUpdates:      toWorldStateUpdates(narrative.MemoryPatch.WorldStateUpdates),

@@ -124,7 +124,7 @@ func New(cfg config.Config) *App {
 		idGenerator,
 	)
 	storyEventLog := service.NewStoryEventLogService(repos.StorySessions, repos.StoryEvents, storyAdvancer, clock)
-	dialogueValidator := service.NewDialogueActionValidator(repos.SetupSessions, repos.StorySessions)
+	dialogueValidator := service.NewDialogueActionValidator(repos.SetupSessions, repos.StorySessions, repos.StoryEvents)
 	dialogueExecutor := service.NewDialogueActionExecutor(
 		repos.DialogueSessions,
 		setupStarter,
@@ -133,6 +133,7 @@ func New(cfg config.Config) *App {
 		storyStarter,
 		storyAdvancer,
 		storyCutter,
+		storyEventLog,
 		repos.Audit,
 		dialogueValidator,
 		clock,
@@ -163,6 +164,7 @@ func New(cfg config.Config) *App {
 		repos,
 		setupAdvancer,
 		storyAdvancer,
+		dialogueAdvancer,
 		service.RunExecutorSettings{
 			Enabled:             cfg.RunExecutor.Enabled,
 			PollIntervalSeconds: cfg.RunExecutor.PollIntervalSeconds,
@@ -181,6 +183,7 @@ func New(cfg config.Config) *App {
 		SetupSessions:    handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
 		DialogueSessions: handler.NewDialogueSessionsHandler(repos.DialogueSessions, repos.Audit, eventStream, dialogueStarter, dialogueAdvancer, dialogueExecutor),
 		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCutter, storyEventLog),
+		World:            handler.NewWorldHandler(repos.Projects, repos.StoryEvents),
 		Chapters:         handler.NewChaptersHandler(repos.Chapters),
 		Memories:         handler.NewMemoriesHandler(repos.Memories),
 	}

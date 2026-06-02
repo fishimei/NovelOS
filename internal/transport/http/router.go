@@ -21,6 +21,7 @@ type Handlers struct {
 	SetupSessions    handler.SetupSessionsHandler
 	DialogueSessions handler.DialogueSessionsHandler
 	StorySessions    handler.StorySessionsHandler
+	World            handler.WorldHandler
 	Chapters         handler.ChaptersHandler
 	Memories         handler.MemoriesHandler
 }
@@ -77,6 +78,7 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.GET("/dialogue-runs/:run_id/event-history", handlers.DialogueSessions.GetRunEventHistory)
 		api.GET("/dialogue-runs/:run_id/events", handlers.DialogueSessions.Subscribe)
 		api.POST("/dialogue-action-options/:option_id/confirm", handlers.DialogueSessions.ConfirmActionOption)
+		api.POST("/dialogue-action-options/:option_id/auto-execute", handlers.DialogueSessions.AutoExecuteActionOption)
 		api.POST("/dialogue-action-options/:option_id/reject", handlers.DialogueSessions.RejectActionOption)
 
 		api.POST("/projects/:project_id/story-sessions", handlers.StorySessions.Create)
@@ -90,6 +92,11 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.GET("/story-events/:event_id", handlers.StorySessions.GetEvent)
 		api.GET("/story-events/:event_id/state", handlers.StorySessions.GetEventState)
 		api.POST("/story-events/:event_id/fork", handlers.StorySessions.ForkEvent)
+		api.GET("/projects/:project_id/world-map", handlers.World.GetMap)
+		api.GET("/projects/:project_id/world-map/tiles", handlers.World.ListMapTiles)
+		api.GET("/projects/:project_id/locations", handlers.World.ListLocations)
+		api.GET("/projects/:project_id/faction-influences", handlers.World.ListFactionInfluences)
+		api.GET("/story-branches/:branch_id/in-flight-actions", handlers.World.ListInFlightActions)
 		api.GET("/story-runs/:run_id", handlers.StorySessions.GetRun)
 		api.GET("/story-runs/:run_id/result", handlers.StorySessions.GetRunResult)
 		api.GET("/story-runs/:run_id/event-history", handlers.StorySessions.GetRunEventHistory)

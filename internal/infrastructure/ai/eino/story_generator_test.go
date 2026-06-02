@@ -2,13 +2,18 @@ package eino
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	llmmodel "github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
+
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/config"
+	"github.com/fishimei/NovelOS/internal/domain"
 )
 
 type fakeChapterRepository struct{}
@@ -35,6 +40,31 @@ type fakeIDGenerator struct{}
 
 func (fakeIDGenerator) New(prefix string) string {
 	return prefix + "_id"
+}
+
+type fakeStoryChatModel struct {
+	responses     []string
+	systemPrompts []string
+}
+
+func (m *fakeStoryChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...llmmodel.Option) (*schema.Message, error) {
+	if len(m.responses) == 0 {
+		return nil, errors.New("unexpected model call")
+	}
+	if len(input) > 0 {
+		m.systemPrompts = append(m.systemPrompts, input[0].Content)
+	}
+	content := m.responses[0]
+	m.responses = m.responses[1:]
+	return schema.AssistantMessage(content, nil), nil
+}
+
+func (m *fakeStoryChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...llmmodel.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, errors.New("stream is not supported")
+}
+
+func (m *fakeStoryChatModel) WithTools(tools []*schema.ToolInfo) (llmmodel.ToolCallingChatModel, error) {
+	return m, nil
 }
 
 func TestBuildResultUsesNarrativeOutput(t *testing.T) {
@@ -99,6 +129,9 @@ func TestBuildResultUsesNarrativeOutput(t *testing.T) {
 	if result.MemoryPatch.ID == "" {
 		t.Fatal("expected memory patch id")
 	}
+	if result.MemoryPatch.Status != domain.MemoryPatchStatusRunLocal {
+		t.Fatalf("memory patch status = %q, want %q", result.MemoryPatch.Status, domain.MemoryPatchStatusRunLocal)
+	}
 	if len(result.MemoryPatch.CharacterMemoryUpdates) != 1 {
 		t.Fatalf("unexpected memory updates: %#v", result.MemoryPatch.CharacterMemoryUpdates)
 	}
@@ -158,6 +191,73 @@ func TestBuildResultPrefersPreGeneratedVariable(t *testing.T) {
 	}
 	if result.Draft.Summary != result.PlotVariable.CoreChoice {
 		t.Fatalf("expected draft summary to follow pre-generated variable, got %q", result.Draft.Summary)
+	}
+}
+
+func TestGenerateNarrativeRendersTurnsBeforeAssembler(t *testing.T) {
+	chatModel := &fakeStoryChatModel{responses: []string{
+		`{"content":"林澈把密信压进袖口。"} `,
+		`{"content":"沈砚停在雨里，没有移开视线。"}`,
+		`{"title":"雨巷密信","summary":"两人在雨巷围绕密信互相试探。","plot_variable":{"core_choice":"是否暴露密信下落"},"memory_patch":{"character_memory_updates":[{"character_id":"character_1","type":"episodic","content":"林澈在雨巷藏起密信","importance":4}]},"review":{"pass":true}}`,
+		`{"title":"雨巷密信","summary":"两人在雨巷围绕密信互相试探。","content":"林澈把密信压进袖口。\n\n沈砚停在雨里，没有移开视线。","review":{"pass":true}}`,
+	}}
+	generator := &StoryRunGenerator{
+		cfg:   config.AIConfig{Model: "test-model"},
+		model: chatModel,
+	}
+	plan := StoryPlanResult{
+		Summary:    "雨巷试探",
+		StopReason: "试探完成",
+		Turns: []StoryTurnPlan{
+			{TurnIndex: 1, ActorID: "character_1", ActorName: "林澈", ActionType: "action", Intent: "藏起密信"},
+			{TurnIndex: 2, ActorID: "character_2", ActorName: "沈砚", ActionType: "observe", Intent: "观察林澈"},
+		},
+	}
+
+	narrative, err := generator.generateNarrative(context.Background(), port.StoryRunGenerationInput{
+		Session: modelStorySession(),
+	}, StoryContextSnapshot{
+		Characters: []model.Character{
+			{ID: "character_1", Name: "林澈"},
+			{ID: "character_2", Name: "沈砚"},
+		},
+	}, plan, StoryVariablePlan{PlotVariable: StoryNarrativePlotVariable{
+		CoreChoice: "是否暴露密信下落",
+	}})
+	if err != nil {
+		t.Fatalf("generateNarrative returned error: %v", err)
+	}
+	if len(narrative.Turns) != 2 {
+		t.Fatalf("expected two rendered turns, got %#v", narrative.Turns)
+	}
+	if narrative.Turns[0].Content != "林澈把密信压进袖口。" {
+		t.Fatalf("expected first turn content from turn renderer, got %q", narrative.Turns[0].Content)
+	}
+	if !strings.Contains(narrative.Content, "沈砚停在雨里") {
+		t.Fatalf("expected draft content from assembler, got %q", narrative.Content)
+	}
+	if len(narrative.MemoryPatch.CharacterMemoryUpdates) != 1 {
+		t.Fatalf("expected memory patch from metadata stage, got %#v", narrative.MemoryPatch)
+	}
+	if len(chatModel.systemPrompts) != 4 {
+		t.Fatalf("expected four model calls, got %d", len(chatModel.systemPrompts))
+	}
+	if !strings.Contains(chatModel.systemPrompts[0], "本次只生成 current_turn") {
+		t.Fatalf("expected first model call to render a turn, got %q", chatModel.systemPrompts[0])
+	}
+	if !strings.Contains(chatModel.systemPrompts[2], "不要输出 content") {
+		t.Fatalf("expected third model call to generate metadata, got %q", chatModel.systemPrompts[2])
+	}
+	if !strings.Contains(chatModel.systemPrompts[3], "组装成连贯章节") {
+		t.Fatalf("expected fourth model call to assemble chapter, got %q", chatModel.systemPrompts[3])
+	}
+}
+
+func modelStorySession() model.StorySession {
+	return model.StorySession{
+		Title:             "雨巷密信",
+		OpeningSituation:  "雨巷里有人截获密信",
+		LastAuthorMessage: "推进雨巷密信试探",
 	}
 }
 

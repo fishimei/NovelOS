@@ -109,8 +109,9 @@ type DialogueRunGenerationInput struct {
 	Session model.DialogueSession
 }
 
-type DialogueConfirmedActionExecutor interface {
+type DialogueActionExecutor interface {
 	ExecuteConfirmed(ctx context.Context, optionID string, input model.ExecuteDialogueActionInput) (model.DialogueActionOption, error)
+	ExecuteAutoApproved(ctx context.Context, optionID string, input model.AutoExecuteDialogueActionInput) (model.DialogueActionOption, error)
 }
 
 type DialogueActionOptionValidator interface {

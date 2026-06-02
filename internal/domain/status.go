@@ -66,3 +66,15 @@ const (
 	DialogueActionStoryForkFromEvent    = "story_fork_from_event"
 	DialogueActionStoryRollbackToEvent  = "story_rollback_to_event"
 )
+
+const (
+	DialoguePolicyManualConfirm = "manual_confirm"
+	DialoguePolicyAutoPilot     = "auto_pilot"
+)
+
+const (
+	MemoryPatchStatusRunLocal             = "run_local"
+	MemoryScopeExternalCommitted          = "external_committed"
+	MemoryCommitTriggerChapterCut         = "chapter_cut"
+	MemoryCommitTriggerExplicitCheckpoint = "explicit_checkpoint"
+)

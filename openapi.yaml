@@ -30,6 +30,7 @@ tags:
   - name: StoryRuns
   - name: StoryEvents
     description: Event-log endpoints for branches, events, resolved state, forks, and chapter cuts.
+  - name: World
   - name: Chapters
   - name: Memories
 
@@ -559,6 +560,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/StandardResponse"
 
+  /dialogue-action-options/{option_id}/auto-execute:
+    post:
+      tags: [DialogueActions]
+      summary: Execute an auto-approved dialogue action option under policy
+      operationId: autoExecuteDialogueActionOption
+      parameters:
+        - name: option_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoExecuteDialogueActionOptionRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardResponse"
+
   /dialogue-action-options/{option_id}/reject:
     post:
       tags: [DialogueActions]
@@ -750,6 +776,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StoryBranchResponse"
+
+  /projects/{project_id}/world-map:
+    get:
+      tags: [World]
+      summary: Get project world map
+      operationId: getProjectWorldMap
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorldMapResponse"
+
+  /projects/{project_id}/world-map/tiles:
+    get:
+      tags: [World]
+      summary: List project map tiles
+      operationId: listProjectMapTiles
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapTileListResponse"
+
+  /projects/{project_id}/locations:
+    get:
+      tags: [World]
+      summary: List project locations
+      operationId: listProjectLocations
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationStateListResponse"
+
+  /projects/{project_id}/faction-influences:
+    get:
+      tags: [World]
+      summary: List project faction influences
+      operationId: listProjectFactionInfluences
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactionInfluenceListResponse"
+
+  /story-branches/{branch_id}/in-flight-actions:
+    get:
+      tags: [World]
+      summary: List in-flight actions at story time
+      description: Requires explicit story time. This endpoint never falls back to wall-clock time.
+      operationId: listStoryBranchInFlightActions
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - $ref: "#/components/parameters/StoryTimeAt"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OngoingActionListResponse"
 
   /story-runs/{run_id}:
     get:
@@ -988,6 +1091,15 @@ components:
         default: 20
         minimum: 1
         maximum: 100
+
+    StoryTimeAt:
+      name: at
+      in: query
+      required: true
+      description: RFC3339 story time, not wall-clock time.
+      schema:
+        type: string
+        format: date-time
 
   schemas:
     StandardResponse:
@@ -1369,6 +1481,15 @@ components:
         confirm:
           type: boolean
         author_note:
+          type: string
+
+    AutoExecuteDialogueActionOptionRequest:
+      type: object
+      required: [policy_reason]
+      properties:
+        author_note:
+          type: string
+        policy_reason:
           type: string
 
     RejectDialogueActionOptionRequest:
@@ -1965,6 +2086,39 @@ components:
           type: string
           format: date-time
 
+    MapTile:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        map_id:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        altitude:
+          type: integer
+        temperature:
+          type: integer
+        humidity:
+          type: integer
+        is_ocean:
+          type: boolean
+        terrain:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     LocationState:
       type: object
       properties:
@@ -2335,6 +2489,54 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/WorldSnapshot"
+
+    WorldMapResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/WorldMap"
+
+    MapTileListResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapTile"
+
+    LocationStateListResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/LocationState"
+
+    FactionInfluenceListResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/FactionInfluence"
+
+    OngoingActionListResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/OngoingAction"
 
     StoryEventLogResponse:
       allOf:

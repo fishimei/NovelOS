@@ -143,6 +143,19 @@ func (h DialogueSessionsHandler) ConfirmActionOption(c *gin.Context) {
 	presenter.Data(c, http.StatusOK, result)
 }
 
+func (h DialogueSessionsHandler) AutoExecuteActionOption(c *gin.Context) {
+	var req dto.AutoExecuteDialogueActionOptionRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	result, err := h.executor.ExecuteAutoApproved(c.Request.Context(), c.Param("option_id"), model.AutoExecuteDialogueActionInput{AuthorNote: req.AuthorNote, PolicyReason: req.PolicyReason})
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+	presenter.Data(c, http.StatusOK, result)
+}
+
 func (h DialogueSessionsHandler) RejectActionOption(c *gin.Context) {
 	var req dto.RejectDialogueActionOptionRequest
 	if !bindJSON(c, &req) {

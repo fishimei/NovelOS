@@ -9,6 +9,8 @@ type DialogueContextInput struct {
 
 type DialogueContextSnapshot struct {
 	Project            model.ProjectDetail          `json:"project"`
+	ExecutionMode      string                       `json:"execution_mode"`
+	AutoAllowedActions []string                     `json:"auto_allowed_actions,omitempty"`
 	HasAuthorBible     bool                         `json:"has_author_bible"`
 	AuthorBibleSummary string                       `json:"author_bible_summary"`
 	WorldStateCount    int                          `json:"world_state_count"`
@@ -118,6 +120,44 @@ type ProposeStoryCutChapterInput struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
 	Rationale   string `json:"rationale"`
+}
+
+type ProposeStoryCutLatestCompletedSpanInput struct {
+	StoryRunID  string `json:"story_run_id"`
+	Title       string `json:"title"`
+	AuthorNote  string `json:"author_note"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Rationale   string `json:"rationale"`
+}
+
+type ProposeStoryForkFromEventInput struct {
+	EventID        string `json:"event_id"`
+	StorySessionID string `json:"story_session_id"`
+	Name           string `json:"name"`
+	AuthorMessage  string `json:"author_message"`
+	Label          string `json:"label"`
+	Description    string `json:"description"`
+	Rationale      string `json:"rationale"`
+}
+
+type AutoStoryAdvanceInput struct {
+	StorySessionID string `json:"story_session_id"`
+	AuthorMessage  string `json:"author_message"`
+	PolicyReason   string `json:"policy_reason"`
+	Label          string `json:"label"`
+	Description    string `json:"description"`
+	Rationale      string `json:"rationale"`
+}
+
+type AutoCutLatestCompletedSpanInput struct {
+	StoryRunID   string `json:"story_run_id"`
+	Title        string `json:"title"`
+	AuthorNote   string `json:"author_note"`
+	PolicyReason string `json:"policy_reason"`
+	Label        string `json:"label"`
+	Description  string `json:"description"`
+	Rationale    string `json:"rationale"`
 }
 
 type ExecuteConfirmedDialogueActionInput struct {
