@@ -168,18 +168,20 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		return result, nil
 	}
 	parentEventID := run.BaseEventID
-	storyTime := run.CreatedAt
+	baseStoryTime := run.CreatedAt
 	if parentEventID != "" {
 		parent, err := s.store.GetEvent(ctx, parentEventID)
 		if err != nil {
 			return model.StoryRunResult{}, err
 		}
-		storyTime = parent.StoryTime
+		baseStoryTime = parent.StoryTime
 	}
+	storyTime := baseStoryTime
 	written := make([]model.StoryEvent, 0, len(result.EventPlan)+1)
 	branch := model.Branch{ID: run.BranchID, ProjectID: run.ProjectID, SessionID: run.SessionID}
+	timedActions := make([]TimedAction, 0, len(result.EventPlan))
 	for _, planned := range orderedStoryEventPlans(result.EventPlan) {
-		eventTime := storyTime.Add(time.Duration(maxInt(planned.TimeIndex, 0)) * time.Hour)
+		eventTime := storyEventPlanTime(baseStoryTime, planned)
 		action := ongoingActionFromPlan(planned, eventTime)
 		eventInput := StoryEventFromAction(branch, action, parentEventID)
 		eventInput.Payload["event_plan"] = planned
@@ -190,10 +192,11 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 			return model.StoryRunResult{}, err
 		}
 		written = append(written, event)
+		timedActions = append(timedActions, timedActionFrom(action))
 		parentEventID = event.ID
 		storyTime = event.StoryTime
 	}
-	sceneTime := storyTime
+	sceneTime := sceneTimeFromScheduledActions(baseStoryTime, timedActions, storyTime)
 	if sceneTime.IsZero() {
 		sceneTime = run.CreatedAt
 	}
@@ -293,6 +296,10 @@ func orderedStoryEventPlans(events []model.StoryEventPlan) []model.StoryEventPla
 	return out
 }
 
+func storyEventPlanTime(baseStoryTime time.Time, event model.StoryEventPlan) time.Time {
+	return baseStoryTime.Add(time.Duration(maxInt(event.TimeIndex, 0)) * time.Hour)
+}
+
 func ongoingActionFromPlan(event model.StoryEventPlan, eventTime time.Time) model.OngoingAction {
 	return model.OngoingAction{
 		CharacterID:       event.CharacterID,
@@ -308,6 +315,17 @@ func ongoingActionFromPlan(event model.StoryEventPlan, eventTime time.Time) mode
 		Status:            "ongoing",
 		Rationale:         event.Intent,
 	}
+}
+
+func sceneTimeFromScheduledActions(start time.Time, actions []TimedAction, fallback time.Time) time.Time {
+	if len(actions) == 0 {
+		return fallback
+	}
+	result := ResolveEventClock(start, actions)
+	if len(result.Collisions) > 0 {
+		return result.Collisions[0]
+	}
+	return result.Clock
 }
 
 func actorIDsForPlan(event model.StoryEventPlan) []string {

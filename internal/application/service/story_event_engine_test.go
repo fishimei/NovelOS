@@ -120,6 +120,43 @@ func TestOngoingActionFromPlanBuildsActionPayload(t *testing.T) {
 	}
 }
 
+func TestStoryEventPlanTimeUsesBaseClock(t *testing.T) {
+	base := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	first := storyEventPlanTime(base, model.StoryEventPlan{TimeIndex: 1})
+	second := storyEventPlanTime(base, model.StoryEventPlan{TimeIndex: 2})
+
+	if !first.Equal(base.Add(time.Hour)) {
+		t.Fatalf("first event time = %s, want %s", first, base.Add(time.Hour))
+	}
+	if !second.Equal(base.Add(2 * time.Hour)) {
+		t.Fatalf("second event time = %s, want %s", second, base.Add(2*time.Hour))
+	}
+}
+
+func TestSceneTimeFromScheduledActionsUsesCollision(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	sceneTime := sceneTimeFromScheduledActions(start, []TimedAction{
+		{CharacterID: "A", LocationKey: "loc:tavern", StartAt: start, ArriveAt: start.Add(15 * time.Minute), EndsAt: start.Add(time.Hour)},
+		{CharacterID: "B", LocationKey: "loc:tavern", StartAt: start, ArriveAt: start.Add(30 * time.Minute), EndsAt: start.Add(time.Hour)},
+	}, start)
+
+	if want := start.Add(30 * time.Minute); !sceneTime.Equal(want) {
+		t.Fatalf("scene time = %s, want collision %s", sceneTime, want)
+	}
+}
+
+func TestSceneTimeFromScheduledActionsUsesEngineClockWithoutCollision(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	sceneTime := sceneTimeFromScheduledActions(start, []TimedAction{
+		{CharacterID: "A", LocationKey: "loc:tavern", StartAt: start, ArriveAt: start, EndsAt: start.Add(time.Hour)},
+		{CharacterID: "B", LocationKey: "loc:dock", StartAt: start, ArriveAt: start, EndsAt: start.Add(2 * time.Hour)},
+	}, start)
+
+	if want := start.Add(2 * time.Hour); !sceneTime.Equal(want) {
+		t.Fatalf("scene time = %s, want engine clock %s", sceneTime, want)
+	}
+}
+
 func hasString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
