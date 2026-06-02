@@ -46,15 +46,46 @@ func ResolveEventClock(start time.Time, actions []TimedAction) EventEngineResult
 }
 
 func collisionAt(a, b TimedAction) (time.Time, bool) {
-	if a.LocationKey == "" || b.LocationKey == "" || a.LocationKey != b.LocationKey {
+	start, _, ok := collisionWindow(a, b)
+	if !ok {
 		return time.Time{}, false
 	}
-	start := maxTime(a.ArriveAt, b.ArriveAt)
-	end := minTime(a.EndsAt, b.EndsAt)
-	if start.Before(end) || start.Equal(end) {
+	if sameActionLocation(a, b) || actionTargetsCharacter(a, b.CharacterID) || actionTargetsCharacter(b, a.CharacterID) {
 		return start, true
 	}
 	return time.Time{}, false
+}
+
+func collisionWindow(a, b TimedAction) (time.Time, time.Time, bool) {
+	start := maxTime(actionCollisionStart(a), actionCollisionStart(b))
+	end := minTime(a.EndsAt, b.EndsAt)
+	if start.Before(end) || start.Equal(end) {
+		return start, end, true
+	}
+	return time.Time{}, time.Time{}, false
+}
+
+func actionCollisionStart(action TimedAction) time.Time {
+	if !action.ArriveAt.IsZero() {
+		return action.ArriveAt
+	}
+	return action.StartAt
+}
+
+func sameActionLocation(a, b TimedAction) bool {
+	return a.LocationKey != "" && b.LocationKey != "" && a.LocationKey == b.LocationKey
+}
+
+func actionTargetsCharacter(action TimedAction, characterID string) bool {
+	if characterID == "" {
+		return false
+	}
+	for _, participantID := range action.ParticipantIDs {
+		if participantID == characterID {
+			return true
+		}
+	}
+	return false
 }
 
 func maxTime(a, b time.Time) time.Time {

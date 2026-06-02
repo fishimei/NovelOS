@@ -33,6 +33,32 @@ func TestResolveEventClockDetectsAppendixCollision(t *testing.T) {
 	}
 }
 
+func TestResolveEventClockDetectsIntentCollisionAcrossLocations(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	result := ResolveEventClock(start, []TimedAction{
+		{CharacterID: "A", LocationKey: "loc:tavern", ParticipantIDs: []string{"B"}, StartAt: start, ArriveAt: start.Add(20 * time.Minute), EndsAt: start.Add(2 * time.Hour)},
+		{CharacterID: "B", LocationKey: "loc:dock", StartAt: start, ArriveAt: start, EndsAt: start.Add(time.Hour)},
+		{CharacterID: "C", LocationKey: "loc:gate", StartAt: start, ArriveAt: start, EndsAt: start.Add(time.Hour)},
+	})
+	if len(result.Collisions) != 1 {
+		t.Fatalf("collisions = %d, want 1", len(result.Collisions))
+	}
+	if want := start.Add(20 * time.Minute); !result.Collisions[0].Equal(want) {
+		t.Fatalf("collision = %s, want %s", result.Collisions[0], want)
+	}
+}
+
+func TestResolveEventClockIgnoresUnrelatedCrossLocationActions(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	result := ResolveEventClock(start, []TimedAction{
+		{CharacterID: "A", LocationKey: "loc:tavern", ParticipantIDs: []string{"B"}, StartAt: start, ArriveAt: start, EndsAt: start.Add(time.Hour)},
+		{CharacterID: "C", LocationKey: "loc:dock", StartAt: start, ArriveAt: start, EndsAt: start.Add(time.Hour)},
+	})
+	if len(result.Collisions) != 0 {
+		t.Fatalf("collisions = %d, want 0", len(result.Collisions))
+	}
+}
+
 func TestResolveEventClockNoCollisionAfterActionEnds(t *testing.T) {
 	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
 	result := ResolveEventClock(start, []TimedAction{
