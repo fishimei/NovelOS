@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
@@ -213,6 +214,20 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		written = append(written, event)
 		parentEventID = event.ID
 	}
+	if !storyRunResultHasRenderedScene(result) {
+		result.Events = written
+		result.HeadEventID = parentEventID
+		if parentEventID == "" {
+			return result, nil
+		}
+		if err := s.store.UpdateBranchHead(ctx, run.BranchID, parentEventID); err != nil {
+			return model.StoryRunResult{}, err
+		}
+		if err := s.sessions.UpdateRunHead(ctx, run.RunID, parentEventID); err != nil {
+			return model.StoryRunResult{}, err
+		}
+		return result, nil
+	}
 	sceneEvent, err := s.store.AppendEvent(ctx, model.StoryEvent{
 		ProjectID:     run.ProjectID,
 		SessionID:     run.SessionID,
@@ -251,6 +266,19 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		return model.StoryRunResult{}, err
 	}
 	return result, nil
+}
+
+func storyRunResultHasRenderedScene(result model.StoryRunResult) bool {
+	return strings.TrimSpace(result.Draft.Content) != "" ||
+		len(result.Turns) > 0 ||
+		len(result.InteractionAnalysis.LocationGroups) > 0 ||
+		len(result.InteractionAnalysis.InteractionGroups) > 0 ||
+		len(result.InteractionTranscripts) > 0 ||
+		storyRunMemoryPatchHasUpdates(result.MemoryPatch)
+}
+
+func storyRunMemoryPatchHasUpdates(patch model.MemoryPatch) bool {
+	return len(patch.CharacterMemoryUpdates) > 0 || len(patch.RelationshipUpdates) > 0 || len(patch.WorldStateUpdates) > 0
 }
 
 func (s *StorySessionAdvancer) commitCharacterMemories(ctx context.Context, run model.StoryRun, result model.StoryRunResult) {

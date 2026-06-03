@@ -46,6 +46,64 @@ func TestStorySessionAdvancerCommitCharacterMemoriesTagsRunCompletion(t *testing
 	}
 }
 
+func TestStorySessionAdvancerSkipsSceneResolvedForCompletionOnlyResult(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	store := &completionOnlyStoryEventStore{}
+	sessions := &completionOnlyStorySessions{}
+	advancer := &StorySessionAdvancer{
+		store:    store,
+		sessions: sessions,
+		clock:    fixedServiceClock{now: start.Add(3 * time.Hour)},
+	}
+	run := model.StoryRun{
+		RunID:     "run_1",
+		ProjectID: "project_1",
+		SessionID: "story_1",
+		BranchID:  "branch_1",
+		CreatedAt: start,
+	}
+	result := model.StoryRunResult{
+		SceneSummary: "advance split watches",
+		EventPlan: []model.StoryEventPlan{{
+			ID:            "planned_action_1",
+			TimeIndex:     1,
+			DurationHours: 1,
+			CharacterID:   "character_1",
+			LocationKey:   "tower",
+			ActionType:    "observe",
+			Summary:       "Lin watches the tower",
+		}},
+	}
+
+	persisted, err := advancer.persistResultEvents(context.Background(), run, result)
+	if err != nil {
+		t.Fatalf("persistResultEvents() error = %v", err)
+	}
+	if len(store.appended) != 2 {
+		t.Fatalf("events = %#v, want scheduled plus completed", store.appended)
+	}
+	if store.appended[0].Kind != model.EventKindActionScheduled || store.appended[1].Kind != model.EventKindActionCompleted {
+		t.Fatalf("unexpected event kinds: %#v", store.appended)
+	}
+	if !store.appended[0].StoryTime.Equal(start.Add(time.Hour)) || !store.appended[1].StoryTime.Equal(start.Add(2*time.Hour)) {
+		t.Fatalf("unexpected story times: %#v", store.appended)
+	}
+	for _, event := range store.appended {
+		if event.Kind == model.EventKindSceneResolved {
+			t.Fatalf("completion-only result should not append scene_resolved: %#v", store.appended)
+		}
+	}
+	if persisted.HeadEventID != "completed_1" || len(persisted.Events) != 2 {
+		t.Fatalf("persisted head/events = (%q, %#v)", persisted.HeadEventID, persisted.Events)
+	}
+	if store.branchID != "branch_1" || store.branchHeadID != "completed_1" {
+		t.Fatalf("branch head not advanced to completion: %#v", store)
+	}
+	if sessions.runID != "run_1" || sessions.headEventID != "completed_1" {
+		t.Fatalf("run head not advanced to completion: %#v", sessions)
+	}
+}
+
 type recordingCharacterMemoryService struct {
 	input port.CharacterMemoryCommitInput
 }
@@ -71,4 +129,42 @@ type fixedServiceIDs struct{}
 
 func (fixedServiceIDs) New(prefix string) string {
 	return prefix + "_1"
+}
+
+type completionOnlyStoryEventStore struct {
+	forkActionStoryEventStore
+	appended     []model.StoryEvent
+	branchID     string
+	branchHeadID string
+}
+
+func (s *completionOnlyStoryEventStore) AppendEvent(_ context.Context, event model.StoryEvent) (model.StoryEvent, error) {
+	switch event.Kind {
+	case model.EventKindActionScheduled:
+		event.ID = "scheduled_1"
+	case model.EventKindActionCompleted:
+		event.ID = "completed_1"
+	default:
+		event.ID = "unexpected_1"
+	}
+	s.appended = append(s.appended, event)
+	return event, nil
+}
+
+func (s *completionOnlyStoryEventStore) UpdateBranchHead(_ context.Context, branchID string, headEventID string) error {
+	s.branchID = branchID
+	s.branchHeadID = headEventID
+	return nil
+}
+
+type completionOnlyStorySessions struct {
+	latestSpanStorySessions
+	runID       string
+	headEventID string
+}
+
+func (s *completionOnlyStorySessions) UpdateRunHead(_ context.Context, runID string, headEventID string) error {
+	s.runID = runID
+	s.headEventID = headEventID
+	return nil
 }
