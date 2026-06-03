@@ -109,6 +109,11 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return model.StoryRunResult{}, fmt.Errorf("plan character actions: %w", err)
 	}
 	seedPlannedActionEvents(state, plannedActions)
+	if len(plannedActions) > 0 && !plannedActionsHaveRenderableEncounter(plannedActions) {
+		plan := actionCompletionTickPlan(state, variable)
+		reflection := fallbackReflectionResult(plan, variable)
+		return g.assembleStoryRunResult(input, plan, reflection, variable), nil
+	}
 	sceneCharacterIDs := sceneCharacterIDsForContext(variable, snapshot.Characters, plannedActions)
 	if err := loadRecentMemoriesForCharacters(ctx, g.deps, state, &snapshot, input.Run.ProjectID, sceneCharacterIDs); err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("load scene memories: %w", err)
@@ -599,6 +604,36 @@ func plannedActionsAllowTurn(plannedActions []ScenePlannedAction, actorID string
 		}
 	}
 	return true
+}
+
+func plannedActionsHaveRenderableEncounter(plannedActions []ScenePlannedAction) bool {
+	for i, left := range plannedActions {
+		for j := i + 1; j < len(plannedActions); j++ {
+			right := plannedActions[j]
+			if plannedActionsShareLocation(left, right) || plannedActionTargetsCharacter(left, right.CharacterID) || plannedActionTargetsCharacter(right, left.CharacterID) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func plannedActionsShareLocation(left, right ScenePlannedAction) bool {
+	leftLocation := strings.TrimSpace(left.TargetLocationKey)
+	rightLocation := strings.TrimSpace(right.TargetLocationKey)
+	return leftLocation != "" && rightLocation != "" && leftLocation == rightLocation
+}
+
+func plannedActionTargetsCharacter(action ScenePlannedAction, characterID string) bool {
+	if characterID == "" {
+		return false
+	}
+	for _, participantID := range action.ParticipantIDs {
+		if participantID == characterID {
+			return true
+		}
+	}
+	return false
 }
 
 func privateAttitudesForCharacter(relationships []model.Relationship, characterID string) []map[string]string {
@@ -1393,6 +1428,22 @@ func seedPlannedActionEvents(state *storyRunState, plannedActions []ScenePlanned
 	state.events = events
 	state.locationGroups = buildStoryLocationGroups(events)
 	state.mu.Unlock()
+}
+
+func actionCompletionTickPlan(state *storyRunState, variable StoryVariablePlan) StoryPlanResult {
+	state.mu.Lock()
+	events := append([]model.StoryEventPlan(nil), state.events...)
+	locationGroups := copyStoryLocationGroups(state.locationGroups)
+	state.mu.Unlock()
+	summary := firstText(variable.PlotVariable.CoreChoice, "advanced to next action completion")
+	return StoryPlanResult{
+		Summary:    summary,
+		StopReason: "advanced to next action completion",
+		EventPlan:  events,
+		InteractionAnalysis: model.StoryInteractionAnalysis{
+			LocationGroups: locationGroups,
+		},
+	}
 }
 
 func eventPlanFromPlannedActions(plannedActions []ScenePlannedAction) []model.StoryEventPlan {

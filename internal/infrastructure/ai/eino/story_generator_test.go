@@ -31,6 +31,108 @@ func (fakeChapterRepository) Create(context.Context, model.Chapter) (model.Chapt
 	return model.Chapter{}, nil
 }
 
+type fakeAuthorBibleRepository struct {
+	bible model.AuthorBible
+}
+
+func (r fakeAuthorBibleRepository) GetByProjectID(_ context.Context, projectID string) (model.AuthorBible, error) {
+	bible := r.bible
+	if bible.ProjectID == "" {
+		bible.ProjectID = projectID
+	}
+	return bible, nil
+}
+
+func (r fakeAuthorBibleRepository) UpdateByProjectID(_ context.Context, projectID string, _ model.UpdateAuthorBibleInput) (model.AuthorBible, error) {
+	bible := r.bible
+	bible.ProjectID = projectID
+	return bible, nil
+}
+
+func (fakeAuthorBibleRepository) Upsert(_ context.Context, bible model.AuthorBible) (model.AuthorBible, error) {
+	return bible, nil
+}
+
+type fakeWorldStateRepository struct {
+	entries []model.WorldStateEntry
+}
+
+func (r fakeWorldStateRepository) ListByProjectID(context.Context, string) ([]model.WorldStateEntry, error) {
+	return append([]model.WorldStateEntry(nil), r.entries...), nil
+}
+
+func (fakeWorldStateRepository) UpsertEntries(context.Context, string, []model.WorldStateEntry) error {
+	return nil
+}
+
+type fakeCharacterRepository struct {
+	characters []model.Character
+}
+
+func (fakeCharacterRepository) Create(_ context.Context, projectID string, input model.CreateCharacterInput) (model.Character, error) {
+	return model.Character{ProjectID: projectID, Name: input.Name, Role: input.Role, Status: "active"}, nil
+}
+
+func (r fakeCharacterRepository) ListByProjectID(context.Context, string, model.PageInput) (model.ListResult[model.Character], error) {
+	characters := append([]model.Character(nil), r.characters...)
+	return model.ListResult[model.Character]{Items: characters, Total: len(characters)}, nil
+}
+
+func (r fakeCharacterRepository) GetByID(_ context.Context, id string) (model.Character, error) {
+	for _, character := range r.characters {
+		if character.ID == id {
+			return character, nil
+		}
+	}
+	return model.Character{}, errors.New("character not found")
+}
+
+func (fakeCharacterRepository) Update(_ context.Context, id string, input model.UpdateCharacterInput) (model.Character, error) {
+	return model.Character{ID: id, Name: input.Name, Role: input.Role, Status: "active"}, nil
+}
+
+func (fakeCharacterRepository) Upsert(_ context.Context, character model.Character) (model.Character, error) {
+	return character, nil
+}
+
+type fakeRelationshipRepository struct {
+	relationships []model.Relationship
+}
+
+func (fakeRelationshipRepository) Create(_ context.Context, projectID string, input model.CreateRelationshipInput) (model.Relationship, error) {
+	return model.Relationship{Pair: model.RelationshipPair{ProjectID: projectID, LeftCharacterID: input.CharacterAID, RightCharacterID: input.CharacterBID, Summary: input.Summary}}, nil
+}
+
+func (r fakeRelationshipRepository) ListByProjectID(context.Context, string, model.PageInput) (model.ListResult[model.Relationship], error) {
+	relationships := append([]model.Relationship(nil), r.relationships...)
+	return model.ListResult[model.Relationship]{Items: relationships, Total: len(relationships)}, nil
+}
+
+func (r fakeRelationshipRepository) GetByID(_ context.Context, id string) (model.Relationship, error) {
+	for _, relationship := range r.relationships {
+		if relationship.Pair.ID == id {
+			return relationship, nil
+		}
+	}
+	return model.Relationship{}, errors.New("relationship not found")
+}
+
+func (fakeRelationshipRepository) Update(_ context.Context, id string, input model.UpdateRelationshipInput) (model.Relationship, error) {
+	return model.Relationship{Pair: model.RelationshipPair{ID: id, Summary: input.Summary}}, nil
+}
+
+func (fakeRelationshipRepository) UpsertPair(_ context.Context, pair model.RelationshipPair) (model.RelationshipPair, error) {
+	return pair, nil
+}
+
+func (fakeRelationshipRepository) UpsertViews(context.Context, string, []model.RelationshipView) error {
+	return nil
+}
+
+func (fakeRelationshipRepository) AddEvent(_ context.Context, event model.RelationshipEvent) (model.RelationshipEvent, error) {
+	return event, nil
+}
+
 type fakeClock struct{}
 
 func (fakeClock) Now() time.Time {
@@ -57,6 +159,29 @@ func (d *fakeCharacterActionDecider) Decide(_ context.Context, input model.Chara
 }
 
 func (d *fakeCharacterActionDecider) inputsSnapshot() []model.CharacterActionDecisionInput {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]model.CharacterActionDecisionInput(nil), d.inputs...)
+}
+
+type scriptedCharacterActionDecider struct {
+	mu        sync.Mutex
+	decisions map[string]model.CharacterActionDecision
+	inputs    []model.CharacterActionDecisionInput
+}
+
+func (d *scriptedCharacterActionDecider) Decide(_ context.Context, input model.CharacterActionDecisionInput) (model.CharacterActionDecision, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.inputs = append(d.inputs, input)
+	decision, ok := d.decisions[input.Character.ID]
+	if !ok {
+		return model.CharacterActionDecision{}, errors.New("missing scripted character action decision")
+	}
+	return decision, nil
+}
+
+func (d *scriptedCharacterActionDecider) inputsSnapshot() []model.CharacterActionDecisionInput {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return append([]model.CharacterActionDecisionInput(nil), d.inputs...)
@@ -683,6 +808,125 @@ func TestBuildSceneContextUsesPlannedActionParticipants(t *testing.T) {
 	}
 }
 
+func TestGenerateSkipsSceneWhenPlannedActionsHaveNoEncounter(t *testing.T) {
+	characters := []model.Character{
+		{ID: "character_1", ProjectID: "project_1", Name: "Lin", Status: "active"},
+		{ID: "character_2", ProjectID: "project_1", Name: "Shen", Status: "active"},
+	}
+	decider := &scriptedCharacterActionDecider{decisions: map[string]model.CharacterActionDecision{
+		"character_1": {
+			ActionType:        "observe",
+			Description:       "Lin watches the tower",
+			TargetLocationKey: "tower",
+			DurationHours:     1,
+			Rationale:         "confirm whether the signal changes",
+		},
+		"character_2": {
+			ActionType:        "observe",
+			Description:       "Shen watches the dock",
+			TargetLocationKey: "dock",
+			DurationHours:     2,
+			Rationale:         "check whether the courier returns",
+		},
+	}}
+	chatModel := &fakeStoryChatModel{}
+	generator := &StoryRunGenerator{
+		cfg:           config.AIConfig{Model: "test-model"},
+		model:         chatModel,
+		actionDecider: decider,
+		deps: storyGeneratorDeps{
+			authorBibles:  fakeAuthorBibleRepository{},
+			worldState:    fakeWorldStateRepository{},
+			characters:    fakeCharacterRepository{characters: characters},
+			relationships: fakeRelationshipRepository{},
+			chapters:      fakeChapterRepository{},
+		},
+		clock:    fakeClock{},
+		ids:      fakeIDGenerator{},
+		maxTurns: 5,
+	}
+	input := port.StoryRunGenerationInput{
+		Run: model.StoryRun{
+			RunID:     "run_1",
+			SessionID: "story_1",
+			ProjectID: "project_1",
+			CreatedAt: time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC),
+		},
+		Session: model.StorySession{
+			ID:                "story_1",
+			ProjectID:         "project_1",
+			Title:             "No encounter",
+			OpeningSituation:  "two observers split up",
+			LastAuthorMessage: "advance the split watches",
+		},
+	}
+
+	result, err := generator.Generate(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(chatModel.systemPrompts) != 0 {
+		t.Fatalf("completion tick should not call scene or reflection model, got prompts %#v", chatModel.systemPrompts)
+	}
+	inputs := decider.inputsSnapshot()
+	if len(inputs) != 2 {
+		t.Fatalf("decider calls = %d, want two idle characters", len(inputs))
+	}
+	if result.Status != domain.RunStatusCompleted {
+		t.Fatalf("status = %q", result.Status)
+	}
+	if len(result.EventPlan) != 2 {
+		t.Fatalf("event plan = %#v, want two planned actions", result.EventPlan)
+	}
+	linEvent := eventPlanByCharacterID(result.EventPlan, "character_1")
+	if linEvent == nil || linEvent.LocationKey != "tower" || linEvent.DurationHours != 1 {
+		t.Fatalf("Lin event = %#v", linEvent)
+	}
+	shenEvent := eventPlanByCharacterID(result.EventPlan, "character_2")
+	if shenEvent == nil || shenEvent.LocationKey != "dock" || shenEvent.DurationHours != 2 {
+		t.Fatalf("Shen event = %#v", shenEvent)
+	}
+	if len(result.Turns) != 0 {
+		t.Fatalf("completion tick should not render turns, got %#v", result.Turns)
+	}
+	if len(result.InteractionAnalysis.InteractionGroups) != 0 {
+		t.Fatalf("completion tick should not select interactions, got %#v", result.InteractionAnalysis.InteractionGroups)
+	}
+	if len(result.InteractionTranscripts) != 0 {
+		t.Fatalf("completion tick should not write transcripts, got %#v", result.InteractionTranscripts)
+	}
+	if strings.TrimSpace(result.SceneSummary) == "" || result.Draft.Summary != result.SceneSummary {
+		t.Fatalf("fallback summary was not assembled: %#v", result)
+	}
+}
+
+func TestPlannedActionsHaveRenderableEncounterUsesLocationOrParticipantIntent(t *testing.T) {
+	if !plannedActionsHaveRenderableEncounter([]ScenePlannedAction{
+		{CharacterID: "character_1", TargetLocationKey: " dock "},
+		{CharacterID: "character_2", TargetLocationKey: "dock"},
+	}) {
+		t.Fatal("same non-empty location should be renderable")
+	}
+	if !plannedActionsHaveRenderableEncounter([]ScenePlannedAction{
+		{CharacterID: "character_1", ParticipantIDs: []string{"character_2"}},
+		{CharacterID: "character_2", TargetLocationKey: "dock"},
+	}) {
+		t.Fatal("participant intent should be renderable")
+	}
+	if plannedActionsHaveRenderableEncounter([]ScenePlannedAction{
+		{CharacterID: "character_1", TargetLocationKey: "tower"},
+		{CharacterID: "character_2", TargetLocationKey: "dock"},
+	}) {
+		t.Fatal("different locations without participant intent should not be renderable")
+	}
+	if plannedActionsHaveRenderableEncounter([]ScenePlannedAction{
+		{CharacterID: "character_1"},
+		{CharacterID: "character_2"},
+	}) {
+		t.Fatal("empty locations alone should not be renderable")
+	}
+}
+
 func TestPlanCharacterActionsUsesVisibleDecisionInput(t *testing.T) {
 	decider := &fakeCharacterActionDecider{decision: model.CharacterActionDecision{
 		ActionType:        "action",
@@ -830,6 +1074,15 @@ func decisionInputByCharacterID(inputs []model.CharacterActionDecisionInput, cha
 	for i := range inputs {
 		if inputs[i].Character.ID == characterID {
 			return &inputs[i]
+		}
+	}
+	return nil
+}
+
+func eventPlanByCharacterID(events []model.StoryEventPlan, characterID string) *model.StoryEventPlan {
+	for i := range events {
+		if events[i].CharacterID == characterID {
+			return &events[i]
 		}
 	}
 	return nil
