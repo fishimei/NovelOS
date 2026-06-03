@@ -66,7 +66,7 @@ func TestStorySessionAdvancerSkipsSceneResolvedForCompletionOnlyResult(t *testin
 		SceneSummary: "advance split watches",
 		EventPlan: []model.StoryEventPlan{{
 			ID:            "planned_action_1",
-			TimeIndex:     1,
+			TimeIndex:     0,
 			DurationHours: 1,
 			CharacterID:   "character_1",
 			LocationKey:   "tower",
@@ -85,7 +85,7 @@ func TestStorySessionAdvancerSkipsSceneResolvedForCompletionOnlyResult(t *testin
 	if store.appended[0].Kind != model.EventKindActionScheduled || store.appended[1].Kind != model.EventKindActionCompleted {
 		t.Fatalf("unexpected event kinds: %#v", store.appended)
 	}
-	if !store.appended[0].StoryTime.Equal(start.Add(time.Hour)) || !store.appended[1].StoryTime.Equal(start.Add(2*time.Hour)) {
+	if !store.appended[0].StoryTime.Equal(start) || !store.appended[1].StoryTime.Equal(start.Add(time.Hour)) {
 		t.Fatalf("unexpected story times: %#v", store.appended)
 	}
 	for _, event := range store.appended {

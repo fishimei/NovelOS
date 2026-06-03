@@ -1460,7 +1460,7 @@ func eventPlanFromPlannedActions(plannedActions []ScenePlannedAction) []model.St
 		}
 		events = append(events, model.StoryEventPlan{
 			ID:             fmt.Sprintf("planned_action_%d", len(events)+1),
-			TimeIndex:      1,
+			TimeIndex:      0,
 			DurationHours:  durationHours,
 			CharacterID:    characterID,
 			CharacterName:  strings.TrimSpace(action.CharacterName),

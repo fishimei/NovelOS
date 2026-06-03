@@ -879,11 +879,11 @@ func TestGenerateSkipsSceneWhenPlannedActionsHaveNoEncounter(t *testing.T) {
 		t.Fatalf("event plan = %#v, want two planned actions", result.EventPlan)
 	}
 	linEvent := eventPlanByCharacterID(result.EventPlan, "character_1")
-	if linEvent == nil || linEvent.LocationKey != "tower" || linEvent.DurationHours != 1 {
+	if linEvent == nil || linEvent.LocationKey != "tower" || linEvent.DurationHours != 1 || linEvent.TimeIndex != 0 {
 		t.Fatalf("Lin event = %#v", linEvent)
 	}
 	shenEvent := eventPlanByCharacterID(result.EventPlan, "character_2")
-	if shenEvent == nil || shenEvent.LocationKey != "dock" || shenEvent.DurationHours != 2 {
+	if shenEvent == nil || shenEvent.LocationKey != "dock" || shenEvent.DurationHours != 2 || shenEvent.TimeIndex != 0 {
 		t.Fatalf("Shen event = %#v", shenEvent)
 	}
 	if len(result.Turns) != 0 {
