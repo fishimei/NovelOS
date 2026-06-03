@@ -331,6 +331,32 @@ func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 	}
 }
 
+func TestStoryRunStopRequestPersists(t *testing.T) {
+	_, repos, _, _, _ := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "stop request"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	if err != nil {
+		t.Fatalf("create story run: %v", err)
+	}
+	if run.StopRequested {
+		t.Fatalf("new run should not have stop requested: %#v", run)
+	}
+	if err := repos.StorySessions.RequestRunStop(context.Background(), run.RunID); err != nil {
+		t.Fatalf("request run stop: %v", err)
+	}
+	stopped, err := repos.StorySessions.GetRunByID(context.Background(), run.RunID)
+	if err != nil {
+		t.Fatalf("get stopped run: %v", err)
+	}
+	if !stopped.StopRequested {
+		t.Fatalf("stop request was not persisted: %#v", stopped)
+	}
+}
+
 func TestStoryEventStoreGenesisForkAndResolveState(t *testing.T) {
 	_, repos, _, _, clock := testRepos(t)
 	project := createProject(t, repos)

@@ -939,18 +939,19 @@ func (r *storySessionRepository) CreateRun(ctx context.Context, sessionID string
 		return model.StoryRun{}, mapDBError(err, "story run not found")
 	}
 	return model.StoryRun{
-		RunID:       row.ID,
-		SessionID:   row.SessionID,
-		ProjectID:   row.ProjectID,
-		BranchID:    row.BranchID,
-		BaseEventID: row.BaseEventID,
-		HeadEventID: row.HeadEventID,
-		Status:      row.Status,
-		CurrentStep: row.CurrentStep,
-		Progress:    row.Progress,
-		Error:       row.Error,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		RunID:         row.ID,
+		SessionID:     row.SessionID,
+		ProjectID:     row.ProjectID,
+		BranchID:      row.BranchID,
+		BaseEventID:   row.BaseEventID,
+		HeadEventID:   row.HeadEventID,
+		Status:        row.Status,
+		CurrentStep:   row.CurrentStep,
+		Progress:      row.Progress,
+		Error:         row.Error,
+		StopRequested: row.StopRequested,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}, nil
 }
 
@@ -960,19 +961,20 @@ func (r *storySessionRepository) GetRunByID(ctx context.Context, runID string) (
 		return model.StoryRun{}, mapDBError(err, "story run not found")
 	}
 	return model.StoryRun{
-		RunID:       row.ID,
-		SessionID:   row.SessionID,
-		ProjectID:   row.ProjectID,
-		BranchID:    row.BranchID,
-		BaseEventID: row.BaseEventID,
-		HeadEventID: row.HeadEventID,
-		Status:      row.Status,
-		CurrentStep: row.CurrentStep,
-		Progress:    row.Progress,
-		Error:       row.Error,
-		CutAt:       row.CutAt,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		RunID:         row.ID,
+		SessionID:     row.SessionID,
+		ProjectID:     row.ProjectID,
+		BranchID:      row.BranchID,
+		BaseEventID:   row.BaseEventID,
+		HeadEventID:   row.HeadEventID,
+		Status:        row.Status,
+		CurrentStep:   row.CurrentStep,
+		Progress:      row.Progress,
+		Error:         row.Error,
+		StopRequested: row.StopRequested,
+		CutAt:         row.CutAt,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}, nil
 }
 
@@ -1067,6 +1069,13 @@ func (r *storySessionRepository) UpdateRunHead(ctx context.Context, runID string
 	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
 		"head_event_id": headEventID,
 		"updated_at":    r.now(),
+	}).Error, "story run not found")
+}
+
+func (r *storySessionRepository) RequestRunStop(ctx context.Context, runID string) error {
+	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
+		"stop_requested": true,
+		"updated_at":     r.now(),
 	}).Error, "story run not found")
 }
 

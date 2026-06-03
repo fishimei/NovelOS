@@ -214,19 +214,20 @@ type StoryMessage struct {
 func (StoryMessage) TableName() string { return "story_messages" }
 
 type StoryRun struct {
-	ID          string `gorm:"primaryKey;size:64"`
-	SessionID   string `gorm:"not null;index"`
-	ProjectID   string `gorm:"not null;index"`
-	BranchID    string `gorm:"not null;default:'';index"`
-	BaseEventID string `gorm:"not null;default:'';index"`
-	HeadEventID string `gorm:"not null;default:'';index"`
-	Status      string `gorm:"not null;default:''"`
-	CurrentStep string `gorm:"not null;default:''"`
-	Progress    int    `gorm:"not null;default:0"`
-	Error       string `gorm:"not null;default:''"`
-	CutAt       *time.Time
-	CreatedAt   time.Time `gorm:"not null"`
-	UpdatedAt   time.Time `gorm:"not null"`
+	ID            string `gorm:"primaryKey;size:64"`
+	SessionID     string `gorm:"not null;index"`
+	ProjectID     string `gorm:"not null;index"`
+	BranchID      string `gorm:"not null;default:'';index"`
+	BaseEventID   string `gorm:"not null;default:'';index"`
+	HeadEventID   string `gorm:"not null;default:'';index"`
+	Status        string `gorm:"not null;default:''"`
+	CurrentStep   string `gorm:"not null;default:''"`
+	Progress      int    `gorm:"not null;default:0"`
+	Error         string `gorm:"not null;default:''"`
+	StopRequested bool   `gorm:"not null;default:false"`
+	CutAt         *time.Time
+	CreatedAt     time.Time `gorm:"not null"`
+	UpdatedAt     time.Time `gorm:"not null"`
 }
 
 func (StoryRun) TableName() string { return "story_runs" }
@@ -269,12 +270,12 @@ type StoryEvent struct {
 	Kind           string    `gorm:"not null;default:'';index"`
 	ActorIDsJSON   JSONB     `gorm:"type:jsonb;not null"`
 	LocationKey    string    `gorm:"not null;default:'';index"`
-	ResourceJSON    JSONB     `gorm:"type:jsonb;not null"`
-	Summary         string    `gorm:"not null;default:''"`
-	PayloadJSON     JSONB     `gorm:"type:jsonb;not null"`
-	StateDeltaJSON  JSONB     `gorm:"type:jsonb;not null"`
-	Published       bool      `gorm:"not null;default:false;index"`
-	CreatedAt       time.Time `gorm:"not null"`
+	ResourceJSON   JSONB     `gorm:"type:jsonb;not null"`
+	Summary        string    `gorm:"not null;default:''"`
+	PayloadJSON    JSONB     `gorm:"type:jsonb;not null"`
+	StateDeltaJSON JSONB     `gorm:"type:jsonb;not null"`
+	Published      bool      `gorm:"not null;default:false;index"`
+	CreatedAt      time.Time `gorm:"not null"`
 }
 
 func (StoryEvent) TableName() string { return "story_events" }

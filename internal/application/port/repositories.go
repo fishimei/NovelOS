@@ -102,6 +102,7 @@ type StorySessionRepository interface {
 	SaveRunResult(ctx context.Context, runID string, result model.StoryRunResult) error
 	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
 	UpdateRunHead(ctx context.Context, runID string, headEventID string) error
+	RequestRunStop(ctx context.Context, runID string) error
 	MarkCut(ctx context.Context, runID string) error
 }
 

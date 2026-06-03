@@ -166,6 +166,10 @@ func (s *latestSpanStorySessions) UpdateRunHead(context.Context, string, string)
 	return errors.New("not implemented")
 }
 
+func (s *latestSpanStorySessions) RequestRunStop(context.Context, string) error {
+	return errors.New("not implemented")
+}
+
 func (s *latestSpanStorySessions) MarkCut(context.Context, string) error {
 	s.markedCut = true
 	s.run.Status = domain.RunStatusCut

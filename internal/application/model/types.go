@@ -424,19 +424,20 @@ type StorySession struct {
 // StoryRun 是故事运行的模型。
 // 每次用户推进故事会话时创建一个运行，跟踪 AI 内容生成进度。
 type StoryRun struct {
-	RunID       string     `json:"run_id"`     // 运行唯一标识符
-	SessionID   string     `json:"session_id"` // 所属会话 ID
-	ProjectID   string     `json:"project_id"` // 所属项目 ID
-	BranchID    string     `json:"branch_id,omitempty"`
-	BaseEventID string     `json:"base_event_id,omitempty"`
-	HeadEventID string     `json:"head_event_id,omitempty"`
-	Status      string     `json:"status"`       // 运行状态
-	CurrentStep string     `json:"current_step"` // 当前步骤
-	Progress    int        `json:"progress"`     // 进度百分比
-	Error       string     `json:"error,omitempty"`
-	CutAt       *time.Time `json:"cut_at"`     // 裁章时间（如果有）
-	CreatedAt   time.Time  `json:"created_at"` // 创建时间
-	UpdatedAt   time.Time  `json:"updated_at"` // 最后更新时间
+	RunID         string     `json:"run_id"`     // 运行唯一标识符
+	SessionID     string     `json:"session_id"` // 所属会话 ID
+	ProjectID     string     `json:"project_id"` // 所属项目 ID
+	BranchID      string     `json:"branch_id,omitempty"`
+	BaseEventID   string     `json:"base_event_id,omitempty"`
+	HeadEventID   string     `json:"head_event_id,omitempty"`
+	Status        string     `json:"status"`       // 运行状态
+	CurrentStep   string     `json:"current_step"` // 当前步骤
+	Progress      int        `json:"progress"`     // 进度百分比
+	Error         string     `json:"error,omitempty"`
+	StopRequested bool       `json:"stop_requested"`
+	CutAt         *time.Time `json:"cut_at"`     // 裁章时间（如果有）
+	CreatedAt     time.Time  `json:"created_at"` // 创建时间
+	UpdatedAt     time.Time  `json:"updated_at"` // 最后更新时间
 }
 
 // Draft 是生成的章节草稿。
