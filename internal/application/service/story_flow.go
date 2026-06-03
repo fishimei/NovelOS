@@ -164,6 +164,20 @@ func (s *StorySessionAdvancer) Generate(ctx context.Context, runID string) {
 	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusCompleted, "result_available": true})
 }
 
+func (s *StorySessionAdvancer) RequestStop(ctx context.Context, runID string) (model.StoryRun, error) {
+	if err := s.sessions.RequestRunStop(ctx, runID); err != nil {
+		return model.StoryRun{}, err
+	}
+	run, err := s.sessions.GetRunByID(ctx, runID)
+	if err != nil {
+		return model.StoryRun{}, err
+	}
+	event := map[string]any{"step": "stop_requested", "run_id": runID}
+	s.appendAuditEvent(ctx, runID, domain.EventGenerationStep, event)
+	s.publish(ctx, runID, domain.EventGenerationStep, event)
+	return run, nil
+}
+
 func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run model.StoryRun, result model.StoryRunResult) (model.StoryRunResult, error) {
 	if s.store == nil || run.BranchID == "" {
 		return result, nil

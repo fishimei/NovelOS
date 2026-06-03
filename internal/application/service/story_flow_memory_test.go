@@ -104,6 +104,22 @@ func TestStorySessionAdvancerSkipsSceneResolvedForCompletionOnlyResult(t *testin
 	}
 }
 
+func TestStorySessionAdvancerRequestStopMarksRun(t *testing.T) {
+	sessions := &stopRequestStorySessions{latestSpanStorySessions: latestSpanStorySessions{run: model.StoryRun{RunID: "run_1"}}}
+	advancer := &StorySessionAdvancer{sessions: sessions}
+
+	run, err := advancer.RequestStop(context.Background(), "run_1")
+	if err != nil {
+		t.Fatalf("RequestStop() error = %v", err)
+	}
+	if sessions.requestedRunID != "run_1" {
+		t.Fatalf("stop request run id = %q", sessions.requestedRunID)
+	}
+	if !run.StopRequested {
+		t.Fatalf("returned run should be stop requested: %#v", run)
+	}
+}
+
 type recordingCharacterMemoryService struct {
 	input port.CharacterMemoryCommitInput
 }
@@ -166,5 +182,16 @@ type completionOnlyStorySessions struct {
 func (s *completionOnlyStorySessions) UpdateRunHead(_ context.Context, runID string, headEventID string) error {
 	s.runID = runID
 	s.headEventID = headEventID
+	return nil
+}
+
+type stopRequestStorySessions struct {
+	latestSpanStorySessions
+	requestedRunID string
+}
+
+func (s *stopRequestStorySessions) RequestRunStop(_ context.Context, runID string) error {
+	s.requestedRunID = runID
+	s.run.StopRequested = true
 	return nil
 }

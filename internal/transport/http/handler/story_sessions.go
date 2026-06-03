@@ -201,6 +201,15 @@ func (h StorySessionsHandler) GetRunResult(c *gin.Context) {
 	presenter.Data(c, http.StatusOK, result)
 }
 
+func (h StorySessionsHandler) StopRun(c *gin.Context) {
+	result, err := h.advancer.RequestStop(c.Request.Context(), c.Param("run_id"))
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+	presenter.Data(c, http.StatusAccepted, result)
+}
+
 func (h StorySessionsHandler) GetRunEventHistory(c *gin.Context) {
 	result, err := h.audit.ListRunEvents(c.Request.Context(), "story", c.Param("run_id"))
 	if err != nil {

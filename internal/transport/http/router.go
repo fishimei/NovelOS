@@ -99,6 +99,7 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.GET("/story-branches/:branch_id/in-flight-actions", handlers.World.ListInFlightActions)
 		api.GET("/story-runs/:run_id", handlers.StorySessions.GetRun)
 		api.GET("/story-runs/:run_id/result", handlers.StorySessions.GetRunResult)
+		api.POST("/story-runs/:run_id/stop", handlers.StorySessions.StopRun)
 		api.GET("/story-runs/:run_id/event-history", handlers.StorySessions.GetRunEventHistory)
 		api.GET("/story-runs/:run_id/events", handlers.StorySessions.Subscribe)
 		api.POST("/story-runs/:run_id/cut-chapter", handlers.StorySessions.CutChapter)
