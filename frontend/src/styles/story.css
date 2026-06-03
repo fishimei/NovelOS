@@ -263,7 +263,7 @@
   padding: 10px;
 }
 
-.commit-box {
+.chapter-cut-box {
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;

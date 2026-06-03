@@ -16,8 +16,8 @@ const actions = [
   { to: 'bible', label: '作者圣经', icon: BookMarked, description: '维护主题、文风、禁区与世界规则，统一创作边界。' },
   { to: 'characters', label: '角色档案', icon: Users, description: '集中编辑角色画像、目标、恐惧、秘密与约束。' },
   { to: 'relationships', label: '关系网络', icon: GitBranch, description: '整理人物之间的摘要、锚点和张力变化。' },
-  { to: 'story', label: '继续写作', icon: FileText, description: '推进会话、生成正文草稿、审校并提交为正式章节。' },
-  { to: 'chapters', label: '章节卷轴', icon: ScrollText, description: '按时间线查看已提交章节与最新创作进度。' },
+  { to: 'story', label: '继续写作', icon: FileText, description: '推进会话、生成正文草稿，并从事件段裁出正式章节。' },
+  { to: 'chapters', label: '章节卷轴', icon: ScrollText, description: '按时间线查看已发布章节与最新创作进度。' },
 ];
 
 export function ProjectOverviewPage() {
@@ -88,7 +88,7 @@ export function ProjectOverviewPage() {
     {
       label: '章节',
       value: project?.stats?.chapter_count ?? 0,
-      meta: latestChapter ? `最近一章 ${formatRelativeTime(latestChapter.updated_at ?? latestChapter.created_at)}` : '尚未提交正文',
+      meta: latestChapter ? `最近一章 ${formatRelativeTime(latestChapter.updated_at ?? latestChapter.created_at)}` : '尚未发布正文',
     },
     {
       label: '最新进度',
@@ -210,7 +210,7 @@ export function ProjectOverviewPage() {
             <h2>最近章节</h2>
           </div>
           {chapters.length === 0 ? (
-            <p className="muted">还没有正式章节。完成一次写作提交后，这里会出现你的章节卷轴。</p>
+            <p className="muted">还没有正式章节。完成一次裁章后，这里会出现你的章节卷轴。</p>
           ) : (
             <div className="recent-story-list">
               {chapters.slice(0, 3).map((chapter) => (

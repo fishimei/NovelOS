@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -10,8 +11,10 @@ import (
 	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/application/service"
 	"github.com/fishimei/NovelOS/internal/config"
+	"github.com/fishimei/NovelOS/internal/domain"
 	gormstore "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm"
 	persistencemodels "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm/models"
+	"github.com/fishimei/NovelOS/internal/pkgerr"
 	"gorm.io/gorm"
 )
 
@@ -50,18 +53,13 @@ func resetTables(t *testing.T, db *gorm.DB) {
 	tables := []any{
 		&persistencemodels.StateRevision{},
 		&persistencemodels.RunEvent{},
-		&persistencemodels.SimulationSnapshot{},
-		&persistencemodels.SimulationEvent{},
-		&persistencemodels.CharacterSimulationState{},
 		&persistencemodels.FactionInfluence{},
 		&persistencemodels.LocationState{},
 		&persistencemodels.MapTile{},
 		&persistencemodels.WorldMap{},
-		&persistencemodels.StoryTickRun{},
-		&persistencemodels.StoryTimeline{},
-		&persistencemodels.StoryTickStateRef{},
-		&persistencemodels.StoryStateVersion{},
-		&persistencemodels.StoryTick{},
+		&persistencemodels.ChapterEventSpan{},
+		&persistencemodels.StorySnapshot{},
+		&persistencemodels.StoryEvent{},
 		&persistencemodels.StoryBranch{},
 		&persistencemodels.StoryRunResult{},
 		&persistencemodels.StoryRun{},
@@ -284,46 +282,40 @@ func TestRunEventHistoryOrdersBySequence(t *testing.T) {
 	}
 }
 
-func TestStoryRunResultRoundTripsSimulationFields(t *testing.T) {
+func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 	_, repos, _, _, _ := testRepos(t)
 	project := createProject(t, repos)
-	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "事件模拟"})
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "event run"})
 	if err != nil {
 		t.Fatalf("create story session: %v", err)
 	}
-	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "推进"})
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
 	if err != nil {
 		t.Fatalf("create story run: %v", err)
 	}
+	collisionAt := time.Date(2026, 5, 14, 13, 0, 0, 0, time.UTC)
 	if err := repos.StorySessions.SaveRunResult(context.Background(), run.RunID, model.StoryRunResult{
-		RunID:     run.RunID,
-		SessionID: session.ID,
-		Status:    "review_required",
-		EventTimeline: []model.StoryTimelineEvent{
-			{ID: "event_1", TimeIndex: 1, CharacterID: "character_1", CharacterName: "林澈", LocationKey: "old_dock", LocationName: "旧码头", ActionType: "action", Summary: "林澈抵达旧码头", Intent: "寻找密信", TargetActorIDs: []string{"character_2"}},
+		RunID:       run.RunID,
+		SessionID:   session.ID,
+		Status:      "completed",
+		BranchID:    "branch_1",
+		BaseEventID: "event_base",
+		HeadEventID: "event_head",
+		EventPlan: []model.StoryEventPlan{
+			{ID: "plan_1", TimeIndex: 1, CharacterID: "character_1", LocationKey: "old_dock", ActionType: "action", Summary: "arrive", TargetActorIDs: []string{"character_2"}},
 		},
-		InteractionAnalysis: model.StoryInteractionAnalysis{
-			LocationGroups: []model.StoryLocationGroup{
-				{ID: "location_old_dock", LocationKey: "old_dock", LocationName: "旧码头", CharacterIDs: []string{"character_1", "character_2"}, EventIDs: []string{"event_1", "event_2"}},
-			},
-			InteractionGroups: []model.StoryInteractionGroup{
-				{ID: "interaction_1", LocationKey: "old_dock", LocationName: "旧码头", CharacterIDs: []string{"character_1", "character_2"}, EventIDs: []string{"event_1", "event_2"}, ShouldInteract: true, InteractionType: "negotiation", Stakes: "密信归属", Rationale: "同地点且目标冲突", Priority: 1},
-			},
+		Turns: []model.StoryTurn{
+			{TurnIndex: 1, ActorID: "character_1", ActionType: "speak", Speech: "arrived", LocationKey: "old_dock"},
 		},
-		InteractionTranscripts: []model.StoryInteractionTranscript{
-			{
-				GroupID:        "interaction_1",
-				LocationKey:    "old_dock",
-				LocationName:   "旧码头",
-				CharacterIDs:   []string{"character_1", "character_2"},
-				OutcomeSummary: "暂时互相试探",
-				Turns: []model.StoryInteractionTurn{
-					{TurnIndex: 1, InteractionGroupID: "interaction_1", ActorID: "character_1", ActorName: "林澈", ActionType: "speak", Speech: "密信不在我这里。", ActionSummary: "避开视线", TargetActorIDs: []string{"character_2"}, Intent: "试探", LocationKey: "old_dock", LocationName: "旧码头"},
-				},
-			},
+		SceneSummary: "scene summary",
+		Draft:        model.Draft{ID: "draft_1", Title: "event run", ChapterNumber: 1, Content: "body", Summary: "summary"},
+		MemoryPatch:  model.MemoryPatch{ID: "patch_1"},
+		Events: []model.StoryEvent{
+			{ID: "event_head", Kind: model.EventKindSceneResolved, Summary: "summary"},
 		},
-		Draft:       model.Draft{ID: "draft_1", Title: "事件模拟", ChapterNumber: 1, Content: "正文", Summary: "摘要"},
-		MemoryPatch: model.MemoryPatch{ID: "patch_1"},
+		CompletedActions:  []model.OngoingAction{{ID: "action_done", CharacterID: "character_1", Status: "completed"}},
+		SupersededActions: []model.OngoingAction{{ID: "action_superseded", CharacterID: "character_2", Status: "superseded"}},
+		CollisionAt:       &collisionAt,
 	}); err != nil {
 		t.Fatalf("save story result: %v", err)
 	}
@@ -332,312 +324,33 @@ func TestStoryRunResultRoundTripsSimulationFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get story result: %v", err)
 	}
-	if len(got.EventTimeline) != 1 || got.EventTimeline[0].TargetActorIDs[0] != "character_2" {
-		t.Fatalf("unexpected event timeline: %#v", got.EventTimeline)
+	if got.BaseEventID != "event_base" || got.HeadEventID != "event_head" {
+		t.Fatalf("unexpected event ids: %#v", got)
 	}
-	if len(got.InteractionAnalysis.LocationGroups) != 1 || len(got.InteractionAnalysis.InteractionGroups) != 1 {
-		t.Fatalf("unexpected interaction analysis: %#v", got.InteractionAnalysis)
+	if len(got.EventPlan) != 1 || got.EventPlan[0].TargetActorIDs[0] != "character_2" {
+		t.Fatalf("unexpected event plan: %#v", got.EventPlan)
 	}
-	if got.InteractionAnalysis.InteractionGroups[0].Stakes != "密信归属" {
-		t.Fatalf("unexpected interaction group: %#v", got.InteractionAnalysis.InteractionGroups[0])
+	if got.SceneSummary != "scene summary" || len(got.Turns) != 1 || got.Turns[0].Speech != "arrived" {
+		t.Fatalf("unexpected scene fields: %#v", got)
 	}
-	if len(got.InteractionTranscripts) != 1 || got.InteractionTranscripts[0].Turns[0].Speech != "密信不在我这里。" {
-		t.Fatalf("unexpected interaction transcripts: %#v", got.InteractionTranscripts)
+	if len(got.Events) != 1 || got.Events[0].ID != "event_head" {
+		t.Fatalf("unexpected events: %#v", got.Events)
 	}
-}
-
-func TestStoryTimelineBranchForkAndResolveState(t *testing.T) {
-	_, repos, _, _, clock := testRepos(t)
-	project := createProject(t, repos)
-	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "Timeline"})
-	if err != nil {
-		t.Fatalf("create story session: %v", err)
+	if len(got.CompletedActions) != 1 || got.CompletedActions[0].ID != "action_done" {
+		t.Fatalf("unexpected completed actions: %#v", got.CompletedActions)
 	}
-	branch, err := repos.StoryTimeline.CreateBranch(context.Background(), model.StoryBranch{
-		ProjectID: project.ID,
-		SessionID: session.ID,
-		Name:      "main",
-		Status:    "active",
-		CreatedAt: clock.Now(),
-		UpdatedAt: clock.Now(),
-	})
-	if err != nil {
-		t.Fatalf("create branch: %v", err)
+	if len(got.SupersededActions) != 1 || got.SupersededActions[0].ID != "action_superseded" {
+		t.Fatalf("unexpected superseded actions: %#v", got.SupersededActions)
 	}
-	first, err := repos.StoryTimeline.AppendTick(context.Background(), model.StoryTick{
-		ID:        "tick_first",
-		ProjectID: project.ID,
-		SessionID: session.ID,
-		BranchID:  branch.ID,
-		Sequence:  1,
-		Kind:      "event",
-		Summary:   "天气转雨",
-		Payload:   map[string]any{"summary": "天气转雨"},
-		CreatedAt: clock.Now(),
-	}, []model.StoryTickStateRef{
-		{TickID: "tick_first", ProjectID: project.ID, EntityType: "world_state", EntityID: "weather", VersionID: "version_weather_1"},
-	}, []model.StoryStateVersion{
-		{ID: "version_weather_1", ProjectID: project.ID, EntityType: "world_state", EntityID: "weather", SourceTickID: "tick_first", Snapshot: map[string]any{"value": "rain"}, CreatedAt: clock.Now()},
-	})
-	if err != nil {
-		t.Fatalf("append first tick: %v", err)
-	}
-	second, err := repos.StoryTimeline.AppendTick(context.Background(), model.StoryTick{
-		ID:           "tick_second",
-		ProjectID:    project.ID,
-		SessionID:    session.ID,
-		BranchID:     branch.ID,
-		ParentTickID: first.ID,
-		Sequence:     2,
-		Kind:         "interaction",
-		Summary:      "关系升温",
-		Payload:      map[string]any{"summary": "关系升温"},
-		CreatedAt:    clock.Now(),
-	}, []model.StoryTickStateRef{
-		{TickID: "tick_second", ProjectID: project.ID, EntityType: "relationship", EntityID: "pair_1", VersionID: "version_pair_1"},
-	}, []model.StoryStateVersion{
-		{ID: "version_pair_1", ProjectID: project.ID, EntityType: "relationship", EntityID: "pair_1", SourceTickID: "tick_second", Snapshot: map[string]any{"summary": "关系升温"}, CreatedAt: clock.Now()},
-	})
-	if err != nil {
-		t.Fatalf("append second tick: %v", err)
-	}
-	if err := repos.StoryTimeline.UpdateBranchHead(context.Background(), branch.ID, second.ID); err != nil {
-		t.Fatalf("update branch head: %v", err)
-	}
-	state, err := repos.StoryTimeline.ResolveTickState(context.Background(), second.ID)
-	if err != nil {
-		t.Fatalf("resolve tick state: %v", err)
-	}
-	if len(state.Refs) != 2 || len(state.Versions) != 2 {
-		t.Fatalf("expected inherited and local state refs, got refs=%#v versions=%#v", state.Refs, state.Versions)
-	}
-	fork, err := repos.StoryTimeline.CreateBranch(context.Background(), model.StoryBranch{
-		ProjectID:  project.ID,
-		SessionID:  session.ID,
-		Name:       "fork",
-		BaseTickID: first.ID,
-		HeadTickID: first.ID,
-		Status:     "active",
-		CreatedAt:  clock.Now(),
-		UpdatedAt:  clock.Now(),
-	})
-	if err != nil {
-		t.Fatalf("fork branch: %v", err)
-	}
-	if fork.HeadTickID != first.ID || fork.BaseTickID != first.ID {
-		t.Fatalf("expected fork to point at base tick, got %#v", fork)
-	}
-	forkTicks, err := repos.StoryTimeline.ListTicksByBranchID(context.Background(), fork.ID)
-	if err != nil {
-		t.Fatalf("list fork ticks: %v", err)
-	}
-	if len(forkTicks) != 0 {
-		t.Fatalf("fork should not copy existing ticks, got %#v", forkTicks)
+	if got.CollisionAt == nil || !got.CollisionAt.Equal(collisionAt) {
+		t.Fatalf("unexpected collision_at: %#v", got.CollisionAt)
 	}
 }
 
-func TestStoryCommitRunPersistsChapterMemoryRelationshipAndWorldState(t *testing.T) {
-	_, repos, txm, ids, clock := testRepos(t)
+func TestStoryRunStopRequestPersists(t *testing.T) {
+	_, repos, _, _, _ := testRepos(t)
 	project := createProject(t, repos)
-	charA, _ := repos.Characters.Create(context.Background(), project.ID, model.CreateCharacterInput{Name: "唐三", Role: "lead"})
-	charB, _ := repos.Characters.Create(context.Background(), project.ID, model.CreateCharacterInput{Name: "小舞", Role: "lead"})
-	committer := service.NewStoryRunCommitter(
-		repos.StorySessions,
-		repos.StoryTimeline,
-		repos.Chapters,
-		repos.Memories,
-		repos.WorldState,
-		repos.Relationships,
-		repos.Audit,
-		nil,
-		txm,
-		clock,
-		ids,
-	)
-
-	if err := repos.WorldState.UpsertEntries(context.Background(), project.ID, []model.WorldStateEntry{
-		{ID: "world_weather", Key: "station_weather", Value: "clear", Note: "旧天气", Importance: 5, Volatility: 4, Status: "active"},
-	}); err != nil {
-		t.Fatalf("seed world state: %v", err)
-	}
-
-	session, _ := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "第一章"})
-	branch, err := repos.StoryTimeline.CreateBranch(context.Background(), model.StoryBranch{
-		ProjectID: project.ID,
-		SessionID: session.ID,
-		Name:      "main",
-		Status:    "active",
-		CreatedAt: clock.Now(),
-		UpdatedAt: clock.Now(),
-	})
-	if err != nil {
-		t.Fatalf("create story branch: %v", err)
-	}
-	run, _ := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "推进", BranchID: branch.ID})
-	if _, err := repos.Audit.AppendRunEvent(context.Background(), model.RunEvent{
-		RunKind:   "story",
-		RunID:     run.RunID,
-		EventName: "story_event_planned",
-		Payload:   map[string]any{"step": "simulating_events"},
-	}); err != nil {
-		t.Fatalf("seed story run event: %v", err)
-	}
-	if err := repos.StorySessions.SaveRunResult(context.Background(), run.RunID, model.StoryRunResult{
-		RunID:     run.RunID,
-		SessionID: session.ID,
-		Status:    "review_required",
-		Draft: model.Draft{
-			ID:            "draft_1",
-			Title:         "第一章 雨夜",
-			ChapterNumber: 1,
-			Content:       "正文",
-			Summary:       "摘要",
-			WordCount:     1200,
-		},
-		MemoryPatch: model.MemoryPatch{
-			ID: "patch_1",
-			CharacterMemoryUpdates: []model.CharacterMemoryUpdate{
-				{CharacterID: charA.ID, Content: "记住重逢", Importance: 8},
-			},
-			RelationshipUpdates: []model.RelationshipUpdate{
-				{
-					Pair: &model.RelationshipPair{
-						ID:               "pair_story",
-						ProjectID:        project.ID,
-						LeftCharacterID:  charA.ID,
-						RightCharacterID: charB.ID,
-						Summary:          "暧昧试探",
-						Status:           "active",
-					},
-					Views: []model.RelationshipViewUpdate{
-						{
-							ViewID:            "view_story_a",
-							SourceCharacterID: charA.ID,
-							TargetCharacterID: charB.ID,
-							PublicAttitude:    "克制",
-							PrivateAttitude:   "动摇",
-							MaskingStrategy:   "压抑",
-						},
-					},
-					Events: []model.RelationshipEvent{
-						{ID: "event_story", EventType: "beat", Summary: "擦肩试探"},
-					},
-				},
-			},
-			WorldStateUpdates: []model.WorldStateUpdate{
-				{Key: "station_weather", Operation: "upsert", Value: "storm"},
-			},
-		},
-	}); err != nil {
-		t.Fatalf("save story result: %v", err)
-	}
-
-	commitResult, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
-		DraftID:       "draft_1",
-		MemoryPatchID: "patch_1",
-		AuthorNote:    "通过",
-	})
-	if err != nil {
-		t.Fatalf("commit run: %v", err)
-	}
-	if commitResult.Chapter.ChapterNumber != 1 {
-		t.Fatalf("unexpected chapter number: %d", commitResult.Chapter.ChapterNumber)
-	}
-	memories, err := repos.Memories.ListByCharacterID(context.Background(), charA.ID, 10)
-	if err != nil {
-		t.Fatalf("list memories: %v", err)
-	}
-	if len(memories) != 1 {
-		t.Fatalf("expected 1 memory, got %d", len(memories))
-	}
-	relationship, err := repos.Relationships.GetByID(context.Background(), "pair_story")
-	if err != nil {
-		t.Fatalf("get relationship after commit: %v", err)
-	}
-	if relationship.Pair.Summary != "暧昧试探" {
-		t.Fatalf("unexpected relationship summary: %s", relationship.Pair.Summary)
-	}
-	world, err := repos.WorldState.ListByProjectID(context.Background(), project.ID)
-	if err != nil {
-		t.Fatalf("list world state: %v", err)
-	}
-	if len(world) != 1 || world[0].Key != "station_weather" {
-		t.Fatalf("unexpected world state: %+v", world)
-	}
-	if world[0].Importance != 5 || world[0].Volatility != 4 {
-		t.Fatalf("expected world state weight to be preserved, got importance=%d volatility=%d", world[0].Importance, world[0].Volatility)
-	}
-	runEvents, err := repos.Audit.ListRunEvents(context.Background(), "story", run.RunID)
-	if err != nil {
-		t.Fatalf("list story run events: %v", err)
-	}
-	if len(runEvents) != 2 || runEvents[1].EventName != "story_run_committed" || runEvents[1].Sequence != 2 {
-		t.Fatalf("expected commit event to follow existing run events, got %#v", runEvents)
-	}
-	updatedRun, err := repos.StorySessions.GetRunByID(context.Background(), run.RunID)
-	if err != nil {
-		t.Fatalf("get committed run: %v", err)
-	}
-	if updatedRun.HeadTickID == "" {
-		t.Fatalf("expected commit to set run head tick")
-	}
-	updatedBranch, err := repos.StoryTimeline.GetBranchByID(context.Background(), branch.ID)
-	if err != nil {
-		t.Fatalf("get updated branch: %v", err)
-	}
-	if updatedBranch.HeadTickID != updatedRun.HeadTickID {
-		t.Fatalf("expected branch head to match run head, branch=%s run=%s", updatedBranch.HeadTickID, updatedRun.HeadTickID)
-	}
-	commitTick, err := repos.StoryTimeline.GetTickByID(context.Background(), updatedRun.HeadTickID)
-	if err != nil {
-		t.Fatalf("get commit tick: %v", err)
-	}
-	if commitTick.Kind != "commit" {
-		t.Fatalf("expected commit tick, got %#v", commitTick)
-	}
-	commitState, err := repos.StoryTimeline.ResolveTickState(context.Background(), commitTick.ID)
-	if err != nil {
-		t.Fatalf("resolve commit state: %v", err)
-	}
-	foundRelationshipSnapshot := false
-	for _, version := range commitState.Versions {
-		if version.EntityType == "relationship" && version.EntityID == "pair_story" {
-			if _, ok := version.Snapshot["entity"]; !ok {
-				t.Fatalf("expected relationship version to store committed entity snapshot, got %#v", version.Snapshot)
-			}
-			foundRelationshipSnapshot = true
-		}
-	}
-	if !foundRelationshipSnapshot {
-		t.Fatalf("expected commit state to include relationship snapshot, got %#v", commitState.Versions)
-	}
-	if _, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
-		DraftID:       "draft_1",
-		MemoryPatchID: "patch_1",
-		AuthorNote:    "重复提交",
-	}); err == nil {
-		t.Fatalf("expected duplicate commit to be rejected")
-	}
-}
-
-func TestStoryCommitRunRejectsMismatchedDraftOrPatchID(t *testing.T) {
-	_, repos, txm, ids, clock := testRepos(t)
-	project := createProject(t, repos)
-	committer := service.NewStoryRunCommitter(
-		repos.StorySessions,
-		repos.StoryTimeline,
-		repos.Chapters,
-		repos.Memories,
-		repos.WorldState,
-		repos.Relationships,
-		repos.Audit,
-		nil,
-		txm,
-		clock,
-		ids,
-	)
-
-	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "Mismatch"})
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "stop request"})
 	if err != nil {
 		t.Fatalf("create story session: %v", err)
 	}
@@ -645,42 +358,263 @@ func TestStoryCommitRunRejectsMismatchedDraftOrPatchID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create story run: %v", err)
 	}
-	if err := repos.StorySessions.SaveRunResult(context.Background(), run.RunID, model.StoryRunResult{
+	if run.StopRequested {
+		t.Fatalf("new run should not have stop requested: %#v", run)
+	}
+	if err := repos.StorySessions.RequestRunStop(context.Background(), run.RunID); err != nil {
+		t.Fatalf("request run stop: %v", err)
+	}
+	stopped, err := repos.StorySessions.GetRunByID(context.Background(), run.RunID)
+	if err != nil {
+		t.Fatalf("get stopped run: %v", err)
+	}
+	if !stopped.StopRequested {
+		t.Fatalf("stop request was not persisted: %#v", stopped)
+	}
+	if stopped.Status != domain.RunStatusCancelled {
+		t.Fatalf("queued stop should cancel run, got %#v", stopped)
+	}
+}
+
+func TestStoryRunLeasePreventsStaleResultOverwrite(t *testing.T) {
+	db, repos, _, ids, clock := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "story"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	if err != nil {
+		t.Fatalf("create story run: %v", err)
+	}
+
+	execRepos := New(db, ids, clock)
+	work := model.RunExecutionWork{RunKind: port.RunKindStory, RunID: run.RunID}
+	lease1 := port.RunLease{Owner: "worker-1", Duration: time.Minute}
+	claimed, err := execRepos.ClaimRun(context.Background(), work, lease1, clock.now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("claim lease1: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected first claim")
+	}
+
+	expired := clock.now.Add(-time.Second)
+	if err := db.Model(&persistencemodels.StoryRun{}).Where("id = ?", run.RunID).Update("lease_expires_at", expired).Error; err != nil {
+		t.Fatalf("expire lease: %v", err)
+	}
+	lease2 := port.RunLease{Owner: "worker-2", Duration: time.Minute}
+	claimed, err = execRepos.ClaimRun(context.Background(), work, lease2, clock.now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("claim lease2: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected expired run to be reclaimed")
+	}
+
+	oldCtx := port.ContextWithRunLease(context.Background(), lease1)
+	err = repos.StorySessions.SaveRunResult(oldCtx, run.RunID, model.StoryRunResult{
 		RunID:     run.RunID,
 		SessionID: session.ID,
-		Status:    "review_required",
-		Draft: model.Draft{
-			ID:            "draft_1",
-			Title:         "Mismatch",
-			ChapterNumber: 1,
-			Content:       "body",
-			Summary:       "summary",
-			WordCount:     10,
-		},
-		MemoryPatch: model.MemoryPatch{ID: "patch_1"},
-	}); err != nil {
-		t.Fatalf("save story result: %v", err)
+		Status:    domain.RunStatusCompleted,
+	})
+	if !isRunLeaseLostForTest(err) {
+		t.Fatalf("SaveRunResult with old lease error = %v, want run lease lost", err)
 	}
-
-	// Commit validation must match the reviewed candidate result before any canon writes happen.
-	if _, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
-		DraftID:       "draft_bad",
-		MemoryPatchID: "patch_1",
-	}); err == nil {
-		t.Fatalf("expected draft id mismatch")
-	}
-	if _, err := committer.Commit(context.Background(), run.RunID, model.CommitStoryRunInput{
-		DraftID:       "draft_1",
-		MemoryPatchID: "patch_bad",
-	}); err == nil {
-		t.Fatalf("expected memory patch id mismatch")
-	}
-
-	chapters, err := repos.Chapters.ListByProjectID(context.Background(), project.ID, model.PageInput{Page: 1, PageSize: 10})
+	current, err := repos.StorySessions.GetRunByID(context.Background(), run.RunID)
 	if err != nil {
-		t.Fatalf("list chapters: %v", err)
+		t.Fatalf("get run: %v", err)
 	}
-	if chapters.Total != 0 {
-		t.Fatalf("expected no chapters after rejected commits, got %d", chapters.Total)
+	if current.Status == domain.RunStatusCompleted {
+		t.Fatal("stale worker completed a run after losing lease")
+	}
+}
+
+func isRunLeaseLostForTest(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeConflict && appErr.Message == "run lease lost"
+}
+
+func TestStoryEventStoreGenesisForkAndResolveState(t *testing.T) {
+	_, repos, _, _, clock := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "events"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	genesis, err := repos.StoryEvents.InitGenesis(context.Background(), project.ID, session.ID, model.WorldSnapshot{
+		StoryTime: clock.Now(),
+		WorldState: map[string]model.WorldStateEntry{
+			"weather": {Key: "weather", Value: "clear", Note: "seed"},
+		},
+		Characters: map[string]model.CharacterRuntimeState{
+			"character_1": {CharacterID: "character_1", LocationKey: "town", X: 1, Y: 2, Status: "active"},
+		},
+		Relationships: map[string]model.Relationship{},
+	})
+	if err != nil {
+		t.Fatalf("init genesis: %v", err)
+	}
+	branches, err := repos.StoryEvents.ListBranchesBySession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("list branches: %v", err)
+	}
+	if len(branches) != 1 || branches[0].HeadEventID != genesis.ID {
+		t.Fatalf("unexpected branches: %#v", branches)
+	}
+	resolved, err := repos.StoryEvents.ResolveStateAt(context.Background(), genesis.ID)
+	if err != nil {
+		t.Fatalf("resolve genesis: %v", err)
+	}
+	if resolved.WorldState["weather"].Value != "clear" || resolved.Characters["character_1"].LocationKey != "town" {
+		t.Fatalf("unexpected resolved state: %#v", resolved)
+	}
+	child, err := repos.StoryEvents.AppendEvent(context.Background(), model.StoryEvent{
+		ProjectID:     project.ID,
+		SessionID:     session.ID,
+		BranchID:      branches[0].ID,
+		ParentEventID: genesis.ID,
+		StoryTime:     clock.Now().Add(time.Hour),
+		Kind:          model.EventKindSceneResolved,
+		Summary:       "rain starts",
+		StateDelta: model.EventStateDelta{MemoryPatch: model.MemoryPatch{WorldStateUpdates: []model.WorldStateUpdate{
+			{Key: "weather", Operation: "set", Value: "rain"},
+		}}},
+		CreatedAt: clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("append event: %v", err)
+	}
+	if err := repos.StoryEvents.UpdateBranchHead(context.Background(), branches[0].ID, child.ID); err != nil {
+		t.Fatalf("update branch head: %v", err)
+	}
+	resolved, err = repos.StoryEvents.ResolveStateAt(context.Background(), child.ID)
+	if err != nil {
+		t.Fatalf("resolve child: %v", err)
+	}
+	if resolved.WorldState["weather"].Value != "rain" {
+		t.Fatalf("expected weather rain, got %#v", resolved.WorldState["weather"])
+	}
+	fork, err := repos.StoryEvents.CreateBranch(context.Background(), model.Branch{ProjectID: project.ID, SessionID: session.ID, Name: "fork", BaseEventID: genesis.ID, HeadEventID: genesis.ID, Status: "active", CreatedAt: clock.Now(), UpdatedAt: clock.Now()})
+	if err != nil {
+		t.Fatalf("fork branch: %v", err)
+	}
+	if fork.BaseEventID != genesis.ID || fork.HeadEventID != genesis.ID {
+		t.Fatalf("unexpected fork: %#v", fork)
+	}
+}
+
+func TestStoryEventStoreInFlightActionsStopAtCompletionEvent(t *testing.T) {
+	_, repos, _, _, clock := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "in-flight actions"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	genesis, err := repos.StoryEvents.InitGenesis(context.Background(), project.ID, session.ID, model.WorldSnapshot{
+		StoryTime:     clock.Now(),
+		WorldState:    map[string]model.WorldStateEntry{},
+		Characters:    map[string]model.CharacterRuntimeState{},
+		Relationships: map[string]model.Relationship{},
+	})
+	if err != nil {
+		t.Fatalf("init genesis: %v", err)
+	}
+	branches, err := repos.StoryEvents.ListBranchesBySession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("list branches: %v", err)
+	}
+	branch := branches[0]
+	start := clock.Now()
+	action := model.OngoingAction{
+		CharacterID:       "character_1",
+		ActionType:        "observe",
+		Description:       "Lin watches the dock",
+		TargetLocationKey: "old_dock",
+		StartAt:           start,
+		ArriveAt:          start,
+		EffectAt:          start,
+		EndsAt:            start.Add(time.Hour),
+		ResourceKeys:      []string{"character:character_1", "location:old_dock"},
+		Status:            "ongoing",
+	}
+	scheduledInput := service.StoryEventFromAction(branch, action, genesis.ID)
+	scheduledInput.CreatedAt = clock.Now()
+	scheduled, err := repos.StoryEvents.AppendEvent(context.Background(), scheduledInput)
+	if err != nil {
+		t.Fatalf("append scheduled action: %v", err)
+	}
+	completionInput := service.StoryEventFromActionCompletion(branch, action, scheduled.ID)
+	completionInput.CreatedAt = clock.Now()
+	if _, err := repos.StoryEvents.AppendEvent(context.Background(), completionInput); err != nil {
+		t.Fatalf("append completed action: %v", err)
+	}
+
+	inFlight, err := repos.StoryEvents.InFlightActionsAt(context.Background(), branch.ID, start.Add(30*time.Minute))
+	if err != nil {
+		t.Fatalf("in-flight before completion: %v", err)
+	}
+	if len(inFlight) != 1 || inFlight[0].CharacterID != "character_1" {
+		t.Fatalf("expected action in flight before completion, got %#v", inFlight)
+	}
+	inFlight, err = repos.StoryEvents.InFlightActionsAt(context.Background(), branch.ID, start.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("in-flight at completion: %v", err)
+	}
+	if len(inFlight) != 0 {
+		t.Fatalf("expected action released at completion, got %#v", inFlight)
+	}
+}
+
+func TestStoryChapterCutCreatesChapterSpanWithoutStateWrites(t *testing.T) {
+	_, repos, txm, ids, clock := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "cut"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	genesis, err := repos.StoryEvents.InitGenesis(context.Background(), project.ID, session.ID, model.WorldSnapshot{StoryTime: clock.Now(), WorldState: map[string]model.WorldStateEntry{}, Characters: map[string]model.CharacterRuntimeState{}, Relationships: map[string]model.Relationship{}})
+	if err != nil {
+		t.Fatalf("init genesis: %v", err)
+	}
+	branches, err := repos.StoryEvents.ListBranchesBySession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("list branches: %v", err)
+	}
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance", BranchID: branches[0].ID, BaseEventID: genesis.ID})
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	scene, err := repos.StoryEvents.AppendEvent(context.Background(), model.StoryEvent{
+		ProjectID:     project.ID,
+		SessionID:     session.ID,
+		BranchID:      branches[0].ID,
+		ParentEventID: genesis.ID,
+		StoryTime:     clock.Now().Add(time.Hour),
+		Kind:          model.EventKindSceneResolved,
+		Summary:       "scene summary",
+		Payload:       map[string]any{"draft": model.Draft{Title: "Cut title", ChapterNumber: 1, Content: "Scene body.", Summary: "scene summary", WordCount: 11}},
+		StateDelta:    model.EventStateDelta{MemoryPatch: model.MemoryPatch{CharacterMemoryUpdates: []model.CharacterMemoryUpdate{{CharacterID: "character_1", Content: "saw rain", Importance: 5}}}},
+		CreatedAt:     clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("append scene: %v", err)
+	}
+	if err := repos.StoryEvents.UpdateBranchHead(context.Background(), branches[0].ID, scene.ID); err != nil {
+		t.Fatalf("update branch head: %v", err)
+	}
+	if err := repos.StorySessions.UpdateRunHead(context.Background(), run.RunID, scene.ID); err != nil {
+		t.Fatalf("update run head: %v", err)
+	}
+	cutter := service.NewStoryChapterCutter(repos.StorySessions, repos.StoryEvents, repos.Chapters, repos.Audit, nil, txm, clock, ids)
+	cut, err := cutter.CutChapter(context.Background(), run.RunID, model.CutChapterInput{BranchID: branches[0].ID, FromEventID: genesis.ID, ToEventID: scene.ID, AuthorNote: "publish"})
+	if err != nil {
+		t.Fatalf("cut chapter: %v", err)
+	}
+	if cut.Chapter.Title != "Cut title" || cut.Span.ToEventID != scene.ID {
+		t.Fatalf("unexpected cut result: %#v", cut)
+	}
+	if _, err := cutter.CutChapter(context.Background(), run.RunID, model.CutChapterInput{BranchID: branches[0].ID, FromEventID: genesis.ID, ToEventID: scene.ID}); err == nil {
+		t.Fatalf("expected duplicate event span cut to fail")
 	}
 }

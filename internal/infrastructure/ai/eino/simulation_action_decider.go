@@ -3,7 +3,6 @@ package eino
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	llmmodel "github.com/cloudwego/eino/components/model"
@@ -30,13 +29,12 @@ func NewCharacterActionDecider(ctx context.Context, cfg config.AIConfig) (*Chara
 func (d *CharacterActionDecider) Decide(ctx context.Context, input model.CharacterActionDecisionInput) (model.CharacterActionDecision, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	payload, _ := json.Marshal(input)
+	sharedPayload, _ := json.Marshal(buildActionDecisionSharedPrompt(input.World))
+	characterPayload, _ := json.Marshal(buildActionDecisionCharacterPrompt(input))
 	msg, err := d.model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(d.prompt),
-		schema.UserMessage(fmt.Sprintf(`请基于以下 JSON 决定该角色的下一步行动：
-%s
-
-只返回 JSON 对象，字段为 action_type、description、duration_hours、rationale。duration_hours 必须是正整数。`, string(payload))),
+		schema.UserMessage("shared_context:\n" + string(sharedPayload)),
+		schema.UserMessage("character_context:\n" + string(characterPayload)),
 	}, maxTokensOption(d.modelName, 800))
 	if err != nil {
 		return model.CharacterActionDecision{}, err

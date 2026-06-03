@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
@@ -54,10 +55,12 @@ func (s *DialogueSessionAdvancer) Advance(ctx context.Context, sessionID string,
 	if err != nil {
 		return model.DialogueRun{}, err
 	}
-	if s.generator != nil {
-		go s.generate(context.Background(), run.RunID)
-	}
+	s.appendAuditEvent(ctx, run.RunID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusQueued, "progress": 0})
 	return run, nil
+}
+
+func (s *DialogueSessionAdvancer) Generate(ctx context.Context, runID string) {
+	s.generate(ctx, runID)
 }
 
 func (s *DialogueSessionAdvancer) generate(ctx context.Context, runID string) {
@@ -83,17 +86,16 @@ func (s *DialogueSessionAdvancer) generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	defer stopHeartbeat()
+	go s.heartbeatRun(heartbeatCtx, runID)
 	result, err := s.generator.Generate(ctx, port.DialogueRunGenerationInput{Run: run, Session: session})
 	if err != nil {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
 	if result.Status == "" {
-		if len(result.ActionOptions) > 0 {
-			result.Status = domain.RunStatusReviewRequired
-		} else {
-			result.Status = domain.RunStatusCompleted
-		}
+		result.Status = domain.RunStatusCompleted
 	}
 	if result.AssistantMessage != "" {
 		if _, err := s.sessions.AppendMessage(ctx, session.ID, "assistant", result.AssistantMessage, map[string]any{"run_id": runID}); err != nil {
@@ -120,11 +122,36 @@ func (s *DialogueSessionAdvancer) generate(ctx context.Context, runID string) {
 		s.failRun(ctx, runID, session, err)
 		return
 	}
-	s.publish(ctx, runID, domain.EventReviewRequired, map[string]any{"run_id": runID, "result_available": true, "action_options": len(result.ActionOptions)})
+	s.publish(ctx, runID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusCompleted, "run_id": runID, "result_available": true, "action_options": len(result.ActionOptions)})
+}
+
+func (s *DialogueSessionAdvancer) heartbeatRun(ctx context.Context, runID string) {
+	if s.sessions == nil {
+		return
+	}
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.sessions.UpdateRunHeartbeat(ctx, runID); err != nil {
+				log.Printf("dialogue run %s heartbeat failed: %v", runID, err)
+			}
+		}
+	}
 }
 
 func (s *DialogueSessionAdvancer) failRun(ctx context.Context, runID string, session model.DialogueSession, err error) {
-	_ = s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusFailed, domain.RunStatusFailed, 100, err.Error())
+	if isRunLeaseLost(err) {
+		log.Printf("dialogue run %s lease lost; not marking failed", runID)
+		return
+	}
+	if updateErr := s.sessions.UpdateRunStatus(ctx, runID, domain.RunStatusFailed, domain.RunStatusFailed, 100, err.Error()); isRunLeaseLost(updateErr) {
+		log.Printf("dialogue run %s lease lost; not marking failed", runID)
+		return
+	}
 	if session.ID != "" {
 		session.Status = domain.SessionStatusFailed
 		_, _ = s.sessions.UpdateSession(ctx, session)

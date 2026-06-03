@@ -17,7 +17,7 @@ type SetupRunApplier struct {
 	characters       port.CharacterRepository
 	relationships    port.RelationshipRepository
 	audit            port.AuditRepository
-	simulation       port.SimulationRepository
+	events           port.StoryEventStore
 	worldInitializer port.WorldInitializer
 	world            WorldInitializationSettings
 	tx               port.TxManager
@@ -43,7 +43,7 @@ func NewSetupRunApplier(
 	tx port.TxManager,
 	clock port.Clock,
 	ids port.IDGenerator,
-	simulation port.SimulationRepository,
+	events port.StoryEventStore,
 	worldInitializer port.WorldInitializer,
 	world WorldInitializationSettings,
 ) *SetupRunApplier {
@@ -54,7 +54,7 @@ func NewSetupRunApplier(
 		characters:       characters,
 		relationships:    relationships,
 		audit:            audit,
-		simulation:       simulation,
+		events:           events,
 		worldInitializer: worldInitializer,
 		world:            world,
 		tx:               tx,
@@ -178,15 +178,15 @@ func (a *SetupRunApplier) applyCharacters(ctx context.Context, run model.SetupRu
 }
 
 func (a *SetupRunApplier) applyWorldInitialization(ctx context.Context, run model.SetupRun, draft model.SetupDraft) error {
-	if !a.world.Enabled || a.simulation == nil || a.worldInitializer == nil {
+	if !a.world.Enabled || a.events == nil || a.worldInitializer == nil {
 		return nil
 	}
-	if _, err := a.simulation.GetWorldMapByProjectID(ctx, run.ProjectID); err == nil {
+	if _, err := a.events.GetWorldMapByProjectID(ctx, run.ProjectID); err == nil {
 		return nil
 	} else if !isNotFound(err) {
 		return err
 	}
-	locations, err := a.simulation.ListLocationsByProjectID(ctx, run.ProjectID)
+	locations, err := a.events.ListLocationsByProjectID(ctx, run.ProjectID)
 	if err != nil {
 		return err
 	}
@@ -212,22 +212,19 @@ func (a *SetupRunApplier) applyWorldInitialization(ctx context.Context, run mode
 	if err != nil {
 		return err
 	}
-	if _, err := a.simulation.UpsertWorldMap(ctx, result.Map); err != nil {
+	if _, err := a.events.UpsertWorldMap(ctx, result.Map); err != nil {
 		return err
 	}
-	if err := a.simulation.UpsertMapTiles(ctx, run.ProjectID, result.Tiles); err != nil {
+	if err := a.events.UpsertMapTiles(ctx, run.ProjectID, result.Tiles); err != nil {
 		return err
 	}
-	if err := a.simulation.UpsertLocations(ctx, run.ProjectID, result.Locations); err != nil {
+	if err := a.events.UpsertLocations(ctx, run.ProjectID, result.Locations); err != nil {
 		return err
 	}
-	if err := a.simulation.UpsertFactionInfluences(ctx, run.ProjectID, result.Factions); err != nil {
+	if err := a.events.UpsertFactionInfluences(ctx, run.ProjectID, result.Factions); err != nil {
 		return err
 	}
-	if err := a.simulation.UpsertCharacterStates(ctx, run.ProjectID, result.CharacterStates); err != nil {
-		return err
-	}
-	_, err = a.simulation.UpsertTimeline(ctx, result.Timeline)
+	_, err = a.events.InitGenesis(ctx, run.ProjectID, run.SessionID, result.Snapshot)
 	return err
 }
 
@@ -293,7 +290,6 @@ func (a *SetupRunApplier) appendAppliedEvent(ctx context.Context, sessionID stri
 		RunKind:   "setup",
 		RunID:     run.RunID,
 		EventName: "setup_run_applied",
-		Sequence:  1,
 		Payload: map[string]any{
 			"session_id":           sessionID,
 			"accept_author_bible":  input.AcceptAuthorBible,

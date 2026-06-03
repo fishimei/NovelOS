@@ -8,9 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
-
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/domain"
@@ -26,6 +23,7 @@ type storyGeneratorDeps struct {
 	chapters      port.ChapterRepository
 	memories      port.MemoryRepository
 	memoryService port.CharacterMemoryService
+	storyEvents   port.StoryEventStore
 	events        port.GenerationEventStream
 	audit         port.AuditRepository
 }
@@ -36,54 +34,15 @@ type storyRunState struct {
 	session                model.StorySession
 	maxTurns               int
 	characters             []model.Character
+	plannedActions         []ScenePlannedAction
 	turns                  []StoryTurnPlan
-	events                 []model.StoryTimelineEvent
+	events                 []model.StoryEventPlan
 	locationGroups         []model.StoryLocationGroup
 	interactionGroups      []model.StoryInteractionGroup
 	interactionTranscripts []model.StoryInteractionTranscript
 	stopReason             string
 	summary                string
 	variable               StoryVariablePlan
-}
-
-func newStoryTools(deps storyGeneratorDeps, state *storyRunState) ([]tool.BaseTool, error) {
-	loadContext, err := utils.InferTool("load_story_context", "读取当前 story run 的项目状态、角色、关系、世界状态、章节和近期记忆。", func(ctx context.Context, input LoadStoryContextInput) (StoryContextSnapshot, error) {
-		return loadStoryContext(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	recordEvent, err := utils.InferTool("record_story_event", "记录事件模拟阶段中某个角色在某个地点的行动。必须提供 location_key、action_type 和 summary。", func(ctx context.Context, input RecordStoryEventInput) (StoryEventRecordResult, error) {
-		return recordStoryEvent(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	selectInteraction, err := utils.InferTool("select_story_interaction", "从同地点候选组中选择会实际发生交涉的角色组。角色必须来自同一个候选地点。", func(ctx context.Context, input SelectStoryInteractionInput) (model.StoryInteractionGroup, error) {
-		return selectStoryInteraction(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	chooseActor, err := utils.InferTool("choose_next_story_actor", "记录后续剧情阶段产生的角色回合，并实时推送给前端。只提交哪个角色说了什么、做了什么，不要提交完整章节正文或关系分析。", func(ctx context.Context, input ChooseNextStoryActorInput) (StoryTurnPlan, error) {
-		return chooseNextStoryActor(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	decideStop, err := utils.InferTool("decide_story_stop", "判断当前演绎是否应该停止。达到最大回合数时工具会强制停止。", func(ctx context.Context, input DecideStoryStopInput) (StoryStopDecision, error) {
-		return decideStoryStop(ctx, deps, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	finalizePlan, err := utils.InferTool("finalize_story_plan", "提交本次回合裁决的结构化摘要。停止时必须调用。", func(ctx context.Context, input FinalizeStoryPlanInput) (StoryPlanResult, error) {
-		return finalizeStoryPlan(ctx, state, input)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return []tool.BaseTool{loadContext, recordEvent, selectInteraction, chooseActor, decideStop, finalizePlan}, nil
 }
 
 func loadStoryContext(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, input LoadStoryContextInput) (StoryContextSnapshot, error) {
@@ -134,17 +93,36 @@ func loadStoryContext(ctx context.Context, deps storyGeneratorDeps, state *story
 	} else if !isNotFound(err) {
 		return StoryContextSnapshot{}, err
 	}
-	query := storyMemoryRecallQuery(session, snapshot.WorldState, snapshot.RecentChapters)
-	for _, character := range snapshot.Characters {
-		memories, err := recallCharacterMemories(ctx, deps, state.run.RunID, projectID, character.ID, query)
+	return snapshot, nil
+}
+
+func loadRecentMemoriesForCharacters(ctx context.Context, deps storyGeneratorDeps, state *storyRunState, snapshot *StoryContextSnapshot, projectID string, characterIDs []string) error {
+	if snapshot == nil {
+		return nil
+	}
+	if projectID == "" {
+		projectID = state.run.ProjectID
+	}
+	if snapshot.RecentMemories == nil {
+		snapshot.RecentMemories = map[string][]model.Memory{}
+	}
+	query := storyMemoryRecallQuery(snapshot.Session, snapshot.WorldState, snapshot.RecentChapters)
+	for _, characterID := range uniqueStoryIDs(characterIDs) {
+		if characterID == "" {
+			continue
+		}
+		if _, ok := snapshot.RecentMemories[characterID]; ok {
+			continue
+		}
+		memories, err := recallCharacterMemories(ctx, deps, state.run.RunID, projectID, characterID, query)
 		if err != nil && !isNotFound(err) {
-			return StoryContextSnapshot{}, err
+			return err
 		}
 		if len(memories) > 0 {
-			snapshot.RecentMemories[character.ID] = memories
+			snapshot.RecentMemories[characterID] = memories
 		}
 	}
-	return snapshot, nil
+	return nil
 }
 
 func recallCharacterMemories(ctx context.Context, deps storyGeneratorDeps, runID string, projectID string, characterID string, query string) ([]model.Memory, error) {
@@ -215,7 +193,7 @@ func recordStoryEvent(ctx context.Context, deps storyGeneratorDeps, state *story
 	if timeIndex <= 0 {
 		timeIndex = len(state.events) + 1
 	}
-	event := model.StoryTimelineEvent{
+	event := model.StoryEventPlan{
 		ID:             fmt.Sprintf("story_event_%d", len(state.events)+1),
 		TimeIndex:      timeIndex,
 		CharacterID:    actorID,
@@ -227,6 +205,7 @@ func recordStoryEvent(ctx context.Context, deps storyGeneratorDeps, state *story
 		Intent:         strings.TrimSpace(input.Intent),
 		Visibility:     strings.TrimSpace(input.Visibility),
 		TargetActorIDs: targetActorIDs,
+		ResourceKeys:   uniqueStoryIDs(input.ResourceKeys),
 	}
 	state.events = append(state.events, event)
 	state.locationGroups = buildStoryLocationGroups(state.events)
@@ -494,7 +473,7 @@ func isNotFound(err error) bool {
 	return ok && appErr.Code == pkgerr.CodeNotFound
 }
 
-func buildStoryLocationGroups(events []model.StoryTimelineEvent) []model.StoryLocationGroup {
+func buildStoryLocationGroups(events []model.StoryEventPlan) []model.StoryLocationGroup {
 	byLocation := map[string]*model.StoryLocationGroup{}
 	for _, event := range events {
 		if event.LocationKey == "" || event.CharacterID == "" {
@@ -505,7 +484,9 @@ func buildStoryLocationGroups(events []model.StoryTimelineEvent) []model.StoryLo
 			group = &model.StoryLocationGroup{ID: fmt.Sprintf("location_group_%d", len(byLocation)+1), LocationKey: event.LocationKey, LocationName: event.LocationName}
 			byLocation[event.LocationKey] = group
 		}
-		group.CharacterIDs = appendUniqueString(group.CharacterIDs, event.CharacterID)
+		for _, characterID := range storyEventPlanCharacterIDs(event) {
+			group.CharacterIDs = appendUniqueString(group.CharacterIDs, characterID)
+		}
 		group.EventIDs = appendUniqueString(group.EventIDs, event.ID)
 		if group.LocationName == "" {
 			group.LocationName = event.LocationName
@@ -518,6 +499,15 @@ func buildStoryLocationGroups(events []model.StoryTimelineEvent) []model.StoryLo
 		}
 	}
 	return groups
+}
+
+func storyEventPlanCharacterIDs(event model.StoryEventPlan) []string {
+	ids := make([]string, 0, 1+len(event.TargetActorIDs))
+	ids = appendUniqueString(ids, event.CharacterID)
+	for _, targetID := range event.TargetActorIDs {
+		ids = appendUniqueString(ids, targetID)
+	}
+	return ids
 }
 
 func locationGroupByKey(groups []model.StoryLocationGroup, locationKey string) (model.StoryLocationGroup, bool) {
@@ -656,7 +646,7 @@ func (s *storyRunState) planResult() StoryPlanResult {
 	defer s.mu.Unlock()
 	turns := make([]StoryTurnPlan, len(s.turns))
 	copy(turns, s.turns)
-	events := make([]model.StoryTimelineEvent, len(s.events))
+	events := make([]model.StoryEventPlan, len(s.events))
 	copy(events, s.events)
 	locationGroups := copyStoryLocationGroups(s.locationGroups)
 	interactionGroups := copyStoryInteractionGroups(s.interactionGroups)
@@ -669,5 +659,5 @@ func (s *storyRunState) planResult() StoryPlanResult {
 	if stopReason == "" {
 		stopReason = "回合裁决结束"
 	}
-	return StoryPlanResult{Summary: summary, StopReason: stopReason, Turns: turns, EventTimeline: events, InteractionAnalysis: model.StoryInteractionAnalysis{LocationGroups: locationGroups, InteractionGroups: interactionGroups}, InteractionTranscripts: transcripts}
+	return StoryPlanResult{Summary: summary, StopReason: stopReason, Turns: turns, EventPlan: events, InteractionAnalysis: model.StoryInteractionAnalysis{LocationGroups: locationGroups, InteractionGroups: interactionGroups}, InteractionTranscripts: transcripts}
 }

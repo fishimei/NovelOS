@@ -8,7 +8,18 @@ export type SseMessage = {
   data: unknown;
 };
 
-const STORY_EVENTS = ['generation_step', 'story_orchestration_started', 'plot_variable', 'character_turn', 'draft_delta', 'review_required'];
+const STORY_EVENTS = [
+  'generation_step',
+  'story_orchestration_started',
+  'plot_variable',
+  'story_event_planned',
+  'same_location_candidates',
+  'interaction_analysis',
+  'interaction_selected',
+  'negotiation_turn',
+  'character_turn',
+  'draft_delta',
+];
 
 export function useEventSource(options: {
   url?: string;

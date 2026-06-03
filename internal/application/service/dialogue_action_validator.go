@@ -12,10 +12,11 @@ import (
 type DialogueActionValidator struct {
 	setupSessions port.SetupSessionRepository
 	storySessions port.StorySessionRepository
+	storyEvents   port.StoryEventStore
 }
 
-func NewDialogueActionValidator(setupSessions port.SetupSessionRepository, storySessions port.StorySessionRepository) *DialogueActionValidator {
-	return &DialogueActionValidator{setupSessions: setupSessions, storySessions: storySessions}
+func NewDialogueActionValidator(setupSessions port.SetupSessionRepository, storySessions port.StorySessionRepository, storyEvents port.StoryEventStore) *DialogueActionValidator {
+	return &DialogueActionValidator{setupSessions: setupSessions, storySessions: storySessions, storyEvents: storyEvents}
 }
 
 func (v *DialogueActionValidator) ValidateOption(ctx context.Context, option model.DialogueActionOption) error {
@@ -72,35 +73,96 @@ func (v *DialogueActionValidator) ValidateOption(ctx context.Context, option mod
 			return pkgerr.Validation("story session does not belong to project")
 		}
 		return nil
-	case domain.DialogueActionStoryCommit:
-		runID := stringValue(option.Payload, "story_run_id")
-		if runID == "" {
-			return pkgerr.Validation("story run id is required")
+	case domain.DialogueActionStoryCutChapter:
+		return v.validateStoryCutChapter(ctx, option)
+	case domain.DialogueActionStoryForkFromEvent:
+		eventID := stringValue(option.Payload, "event_id")
+		if eventID == "" {
+			return pkgerr.Validation("event id is required")
 		}
-		run, err := v.storySessions.GetRunByID(ctx, runID)
+		if v.storyEvents == nil {
+			return pkgerr.Internal("story event store is required", nil)
+		}
+		event, err := v.storyEvents.GetEvent(ctx, eventID)
 		if err != nil {
 			return err
 		}
-		if run.ProjectID != option.ProjectID {
-			return pkgerr.Validation("story run does not belong to project")
+		if event.ProjectID != option.ProjectID {
+			return pkgerr.Validation("story event does not belong to project")
 		}
-		if run.Status == domain.RunStatusCommitted || run.CommittedAt != nil {
-			return pkgerr.Conflict(pkgerr.CodeRunAlreadyCommitted, "story run already committed")
+		sessionID := stringValue(option.Payload, "story_session_id")
+		if sessionID != "" && event.SessionID != sessionID {
+			return pkgerr.Validation("story event does not belong to session")
 		}
-		result, err := v.storySessions.GetRunResultByID(ctx, runID)
-		if err != nil {
-			return err
+		if len(stringValue(option.Payload, "name")) > 100 {
+			return pkgerr.Validation("fork name is too long")
 		}
-		if draftID := stringValue(option.Payload, "draft_id"); draftID != "" && draftID != result.Draft.ID {
-			return pkgerr.Validation("draft id mismatch")
-		}
-		if patchID := stringValue(option.Payload, "memory_patch_id"); patchID != "" && patchID != result.MemoryPatch.ID {
-			return pkgerr.Validation("memory patch id mismatch")
+		if len(stringValue(option.Payload, "author_message")) > 2000 {
+			return pkgerr.Validation("fork author message is too long")
 		}
 		return nil
 	default:
 		return pkgerr.Validation("unsupported dialogue action type")
 	}
+}
+
+func (v *DialogueActionValidator) ValidateAutoApproved(_ context.Context, option model.DialogueActionOption) error {
+	return validateAutoApprovedDialogueAction(option)
+}
+
+func validateAutoApprovedDialogueAction(option model.DialogueActionOption) error {
+	if option.ConfirmationRequired {
+		return pkgerr.Validation("dialogue action option requires manual confirmation")
+	}
+	switch option.ActionType {
+	case domain.DialogueActionStoryAdvance:
+		return nil
+	case domain.DialogueActionStoryCutChapter:
+		if stringValue(option.Payload, "span_policy") != "latest_completed" {
+			return pkgerr.Validation("auto story cut must use latest_completed span policy")
+		}
+		if stringValue(option.Payload, "branch_id") != "" || stringValue(option.Payload, "from_event_id") != "" || stringValue(option.Payload, "to_event_id") != "" {
+			return pkgerr.Validation("auto story cut latest completed span must not include event ids")
+		}
+		return nil
+	default:
+		return pkgerr.Validation("dialogue action type requires manual confirmation")
+	}
+}
+
+func (v *DialogueActionValidator) validateStoryCutChapter(ctx context.Context, option model.DialogueActionOption) error {
+	runID := stringValue(option.Payload, "story_run_id")
+	if runID == "" {
+		return pkgerr.Validation("story run id is required")
+	}
+	run, err := v.storySessions.GetRunByID(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.ProjectID != option.ProjectID {
+		return pkgerr.Validation("story run does not belong to project")
+	}
+	if run.Status == domain.RunStatusCut || run.CutAt != nil {
+		return pkgerr.Conflict(pkgerr.CodeConflict, "story run is already cut")
+	}
+	if stringValue(option.Payload, "span_policy") == "latest_completed" {
+		if run.Status != domain.RunStatusCompleted {
+			return pkgerr.Validation("latest completed span requires a completed story run")
+		}
+		if stringValue(option.Payload, "branch_id") != "" || stringValue(option.Payload, "from_event_id") != "" || stringValue(option.Payload, "to_event_id") != "" {
+			return pkgerr.Validation("latest completed span is resolved by service and must not include event ids")
+		}
+	}
+	if stringValue(option.Payload, "branch_id") == "" && run.BranchID == "" {
+		return pkgerr.Validation("branch id is required")
+	}
+	if stringValue(option.Payload, "from_event_id") == "" && run.BaseEventID == "" {
+		return pkgerr.Validation("from event id is required")
+	}
+	if stringValue(option.Payload, "to_event_id") == "" && run.HeadEventID == "" {
+		return pkgerr.Validation("to event id is required")
+	}
+	return nil
 }
 
 func stringValue(payload map[string]any, key string) string {

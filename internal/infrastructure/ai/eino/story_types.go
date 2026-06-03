@@ -3,6 +3,7 @@ package eino
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 )
@@ -57,13 +58,14 @@ type StoryPlanResult struct {
 	Summary                string                             `json:"summary"`
 	StopReason             string                             `json:"stop_reason"`
 	Turns                  []StoryTurnPlan                    `json:"turns"`
-	EventTimeline          []model.StoryTimelineEvent         `json:"event_timeline,omitempty"`
+	EventPlan              []model.StoryEventPlan             `json:"event_plan,omitempty"`
 	InteractionAnalysis    model.StoryInteractionAnalysis     `json:"interaction_analysis,omitempty"`
 	InteractionTranscripts []model.StoryInteractionTranscript `json:"interaction_transcripts,omitempty"`
+	ContinuityIssues       []string                           `json:"continuity_issues,omitempty"`
 }
 
 type StoryEventRecordResult struct {
-	Event                  model.StoryTimelineEvent       `json:"event"`
+	Event                  model.StoryEventPlan           `json:"event"`
 	SameLocationCandidates []model.StoryLocationGroup     `json:"same_location_candidates"`
 	InteractionAnalysis    model.StoryInteractionAnalysis `json:"interaction_analysis"`
 }
@@ -71,6 +73,129 @@ type StoryEventRecordResult struct {
 type StoryVariablePlan struct {
 	PlotVariable   StoryNarrativePlotVariable `json:"plot_variable"`
 	CharacterViews []CharacterVariableView    `json:"character_views"`
+}
+
+type SceneContext struct {
+	StoryRunID        string                  `json:"story_run_id"`
+	ProjectID         string                  `json:"project_id"`
+	SessionID         string                  `json:"session_id"`
+	Session           SceneSessionContext     `json:"session"`
+	AuthorBible       map[string]any          `json:"author_bible,omitempty"`
+	PlotVariableSeed  StoryVariablePlan       `json:"plot_variable_seed"`
+	PlannedActions    []ScenePlannedAction    `json:"planned_actions,omitempty"`
+	InFlightActions   []model.OngoingAction   `json:"in_flight_actions,omitempty"`
+	CompletedActions  []model.OngoingAction   `json:"completed_actions,omitempty"`
+	SupersededActions []model.OngoingAction   `json:"superseded_actions,omitempty"`
+	CollisionAt       string                  `json:"collision_at,omitempty"`
+	SharedObservable  SharedObservableContext `json:"shared_observable"`
+	CharacterViews    []SceneCharacterView    `json:"character_views"`
+	Constraints       SceneConstraints        `json:"constraints"`
+}
+
+type ScenePlannedAction struct {
+	CharacterID       string     `json:"character_id"`
+	CharacterName     string     `json:"character_name,omitempty"`
+	ActionType        string     `json:"action_type"`
+	Description       string     `json:"description"`
+	TargetLocationKey string     `json:"target_location_key,omitempty"`
+	DurationHours     int        `json:"duration_hours"`
+	StartAt           *time.Time `json:"start_at,omitempty"`
+	ArriveAt          *time.Time `json:"arrive_at,omitempty"`
+	EffectAt          *time.Time `json:"effect_at,omitempty"`
+	EndsAt            *time.Time `json:"ends_at,omitempty"`
+	ParticipantIDs    []string   `json:"participant_ids,omitempty"`
+	ResourceKeys      []string   `json:"resource_keys,omitempty"`
+	Rationale         string     `json:"rationale,omitempty"`
+}
+
+type SceneSessionContext struct {
+	Title               string `json:"title"`
+	OpeningSituation    string `json:"opening_situation"`
+	AuthorIntent        string `json:"author_intent"`
+	LastAuthorMessage   string `json:"last_author_message"`
+	CurrentPlotVariable string `json:"current_plot_variable"`
+}
+
+type SharedObservableContext struct {
+	LocationHints    []map[string]any `json:"location_hints"`
+	PublicWorldState []map[string]any `json:"public_world_state"`
+	RecentChapters   []map[string]any `json:"recent_chapters"`
+}
+
+type SceneCharacterView struct {
+	CharacterID       string                  `json:"character_id"`
+	Identity          map[string]any          `json:"identity"`
+	KnownFacts        []string                `json:"known_facts"`
+	Secrets           []string                `json:"secrets"`
+	Misreadings       []string                `json:"misreadings"`
+	PrivateAttitude   []map[string]string     `json:"private_attitude"`
+	RecentMemories    []string                `json:"recent_memories"`
+	VisibleWorld      []model.WorldStateEntry `json:"visible_world"`
+	EmotionalPressure string                  `json:"emotional_pressure"`
+	ActionBias        string                  `json:"action_bias"`
+}
+
+type SceneConstraints struct {
+	MaxTurns        int `json:"max_turns"`
+	MaxInteractions int `json:"max_interactions"`
+}
+
+type sceneRecord struct {
+	Type             string                      `json:"type"`
+	PlotVariable     StoryNarrativePlotVariable  `json:"plot_variable"`
+	Event            model.StoryEventPlan        `json:"event"`
+	InteractionGroup model.StoryInteractionGroup `json:"interaction_group"`
+	Turn             StoryTurnPlan               `json:"turn"`
+	StopReason       string                      `json:"stop_reason"`
+}
+
+type sceneBatchResult struct {
+	PlotVariable      StoryNarrativePlotVariable    `json:"plot_variable"`
+	Events            []model.StoryEventPlan        `json:"events"`
+	EventPlan         []model.StoryEventPlan        `json:"event_plan"`
+	InteractionGroups []model.StoryInteractionGroup `json:"interaction_groups"`
+	Turns             []StoryTurnPlan               `json:"turns"`
+	StopReason        string                        `json:"stop_reason"`
+}
+
+type ReflectionContext struct {
+	Scene           ReflectionScene        `json:"scene"`
+	Characters      []ReflectionCharacter  `json:"characters"`
+	PerceptionIndex []PerceptionIndexEntry `json:"perception_index"`
+	PriorMemories   map[string][]string    `json:"prior_memories"`
+	Relationships   []map[string]any       `json:"relationships"`
+	WorldState      []map[string]any       `json:"world_state"`
+}
+
+type ReflectionScene struct {
+	PlotVariable           StoryNarrativePlotVariable         `json:"plot_variable"`
+	Events                 []model.StoryEventPlan             `json:"events"`
+	Turns                  []model.StoryTurn                  `json:"turns"`
+	InteractionTranscripts []model.StoryInteractionTranscript `json:"interaction_transcripts"`
+	StopReason             string                             `json:"stop_reason"`
+}
+
+type ReflectionCharacter struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role,omitempty"`
+}
+
+type PerceptionIndexEntry struct {
+	CharacterID          string   `json:"character_id"`
+	WitnessedTurnIndexes []int    `json:"witnessed_turn_indexes"`
+	WitnessedEventIDs    []string `json:"witnessed_event_ids"`
+}
+
+type SceneReflectionResult struct {
+	Summary            string                        `json:"summary"`
+	CharacterTakeaways []CharacterReflectionTakeaway `json:"character_takeaways"`
+	MemoryPatch        StoryNarrativeMemoryPatch     `json:"memory_patch"`
+}
+
+type CharacterReflectionTakeaway struct {
+	CharacterID string `json:"character_id"`
+	Summary     string `json:"summary"`
 }
 
 type CharacterVariableView struct {
@@ -113,6 +238,7 @@ type RecordStoryEventInput struct {
 	Intent         string   `json:"intent"`
 	Visibility     string   `json:"visibility"`
 	TargetActorIDs []string `json:"target_actor_ids"`
+	ResourceKeys   []string `json:"resource_keys"`
 }
 
 type SelectStoryInteractionInput struct {
@@ -135,16 +261,6 @@ type DecideStoryStopInput struct {
 type FinalizeStoryPlanInput struct {
 	Summary    string `json:"summary" jsonschema:"required"`
 	StopReason string `json:"stop_reason" jsonschema:"required"`
-}
-
-type StoryNarrativeResult struct {
-	Title        string                     `json:"title"`
-	Summary      string                     `json:"summary"`
-	Content      string                     `json:"content"`
-	PlotVariable StoryNarrativePlotVariable `json:"plot_variable"`
-	MemoryPatch  StoryNarrativeMemoryPatch  `json:"memory_patch"`
-	Review       StoryNarrativeReview       `json:"review"`
-	Turns        []StoryTurnPlan            `json:"turns"`
 }
 
 type flexibleStrings []string
@@ -243,28 +359,4 @@ type StoryNarrativeWorldStateUpdate struct {
 	Operation string `json:"operation"`
 	Value     any    `json:"value"`
 	Note      string `json:"note"`
-}
-
-type StoryNarrativeReview struct {
-	Pass             bool     `json:"pass"`
-	HardViolations   []string `json:"hard_violations"`
-	ContinuityIssues []string `json:"continuity_issues"`
-	StyleIssues      []string `json:"style_issues"`
-	SuggestedFixes   []string `json:"suggested_fixes"`
-}
-
-type CharacterPerspective struct {
-	Character         model.Character          `json:"character"`
-	VisibleWorld      []model.WorldStateEntry  `json:"visible_world"`
-	RecentMemories    []model.Memory           `json:"recent_memories"`
-	RelationshipViews []model.RelationshipView `json:"relationship_views"`
-	VariableView      *CharacterVariableView   `json:"variable_view,omitempty"`
-}
-
-type StoryNarrativeInput struct {
-	Session        model.StorySession     `json:"session"`
-	AuthorBible    *model.AuthorBible     `json:"author_bible,omitempty"`
-	RecentChapters []model.Chapter        `json:"recent_chapters"`
-	Plan           StoryPlanResult        `json:"plan"`
-	Perspectives   []CharacterPerspective `json:"perspectives"`
 }

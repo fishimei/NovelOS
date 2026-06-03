@@ -27,7 +27,7 @@ export function ChaptersPage() {
       <div className="page__header">
         <div>
           <h1>章节</h1>
-          <p>正式提交后的章节会按时间线堆叠在这里，方便你回看整体推进节奏。</p>
+          <p>从事件账本裁出的章节会按时间线堆叠在这里，方便你回看整体推进节奏。</p>
         </div>
       </div>
 
@@ -59,7 +59,7 @@ export function ChaptersPage() {
           </div>
           <EmptyState
             title="还没有章节"
-            description="提交第一章之后，这里会按时间线展开你的章节卷轴，并保留每次正式写作结果。"
+            description="裁出第一章之后，这里会按时间线展开你的章节卷轴，并保留每次正式写作结果。"
           />
           <Link className="button" to={`/projects/${projectId}/story`}>
             前往写作工作台
@@ -73,7 +73,7 @@ export function ChaptersPage() {
             <div className="chapter-timeline__marker" aria-hidden="true" />
             <article className="list-card chapter-card">
               <div className="chapter-card__eyebrow">
-                <span>{chapter.status || '已提交'}</span>
+                <span>{chapter.status || '已发布'}</span>
                 <small>{formatDateLabel(chapter.updated_at ?? chapter.created_at)}</small>
               </div>
               <strong>{chapter.title ?? `第 ${chapter.chapter_number ?? '-'} 章`}</strong>

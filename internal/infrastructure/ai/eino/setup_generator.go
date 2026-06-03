@@ -64,7 +64,7 @@ func (g *SetupRunGenerator) Generate(ctx context.Context, input port.SetupRunGen
 	return model.SetupRunResult{
 		RunID:      input.Run.RunID,
 		SessionID:  input.Run.SessionID,
-		Status:     domain.RunStatusReviewRequired,
+		Status:     domain.RunStatusCompleted,
 		SetupDraft: draft,
 	}, nil
 }
@@ -166,16 +166,12 @@ func (g *SetupRunGenerator) toolStepSystemPrompt(step setupGenerationStep) strin
 func (g *SetupRunGenerator) toolStepUserPrompt(input port.SetupRunGenerationInput, current setupAgentOutput, step setupGenerationStep) string {
 	messages, _ := json.Marshal(input.Session.Messages)
 	currentDraft, _ := json.Marshal(current)
-	return fmt.Sprintf(`project_id: %s
-setup_session_id: %s
-seed_idea: %s
+	return fmt.Sprintf(`seed_idea: %s
 last_user_message: %s
 conversation_messages_json: %s
 current_draft_json: %s
 
 请调用 %s，完成本阶段 Setup 草案。`,
-		input.Run.ProjectID,
-		input.Session.ID,
 		input.Session.SeedIdea,
 		input.Session.LastUserMessage,
 		string(messages),

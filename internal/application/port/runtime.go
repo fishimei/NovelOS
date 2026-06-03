@@ -7,10 +7,13 @@ package port
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 )
+
+var ErrRunStopRequested = errors.New("run stop requested")
 
 // GenerationEvent 是 AI 生成过程中的事件。
 type GenerationEvent struct {
@@ -67,8 +70,14 @@ type StoryRunGenerator interface {
 }
 
 type StoryRunGenerationInput struct {
-	Run     model.StoryRun
-	Session model.StorySession
+	Run               model.StoryRun
+	Session           model.StorySession
+	World             model.WorldSnapshot
+	WakeCharacterIDs  []string
+	InFlightActions   []model.OngoingAction
+	CompletedActions  []model.OngoingAction
+	SupersededActions []model.OngoingAction
+	CollisionAt       time.Time
 }
 
 type CharacterActionDecider interface {
@@ -92,8 +101,8 @@ type WorldInitializationResult struct {
 	Tiles           []model.MapTile
 	Locations       []model.LocationState
 	Factions        []model.FactionInfluence
-	CharacterStates []model.CharacterSimulationState
-	Timeline        model.StoryTimeline
+	CharacterStates []model.CharacterRuntimeState
+	Snapshot        model.WorldSnapshot
 }
 
 type WorldInitializer interface {
@@ -109,8 +118,9 @@ type DialogueRunGenerationInput struct {
 	Session model.DialogueSession
 }
 
-type DialogueConfirmedActionExecutor interface {
+type DialogueActionExecutor interface {
 	ExecuteConfirmed(ctx context.Context, optionID string, input model.ExecuteDialogueActionInput) (model.DialogueActionOption, error)
+	ExecuteAutoApproved(ctx context.Context, optionID string, input model.AutoExecuteDialogueActionInput) (model.DialogueActionOption, error)
 }
 
 type DialogueActionOptionValidator interface {

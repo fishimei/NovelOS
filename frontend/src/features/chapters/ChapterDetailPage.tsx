@@ -1,4 +1,4 @@
-// 章节阅读页。展示后端在 story run commit 后返回的正史章节内容。
+// 章节阅读页。展示后端从 story event span 裁出的正史章节内容。
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, List, PenLine } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';

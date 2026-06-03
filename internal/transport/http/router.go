@@ -21,7 +21,7 @@ type Handlers struct {
 	SetupSessions    handler.SetupSessionsHandler
 	DialogueSessions handler.DialogueSessionsHandler
 	StorySessions    handler.StorySessionsHandler
-	StoryTicks       handler.StoryTicksHandler
+	World            handler.WorldHandler
 	Chapters         handler.ChaptersHandler
 	Memories         handler.MemoriesHandler
 }
@@ -78,6 +78,7 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.GET("/dialogue-runs/:run_id/event-history", handlers.DialogueSessions.GetRunEventHistory)
 		api.GET("/dialogue-runs/:run_id/events", handlers.DialogueSessions.Subscribe)
 		api.POST("/dialogue-action-options/:option_id/confirm", handlers.DialogueSessions.ConfirmActionOption)
+		api.POST("/dialogue-action-options/:option_id/auto-execute", handlers.DialogueSessions.AutoExecuteActionOption)
 		api.POST("/dialogue-action-options/:option_id/reject", handlers.DialogueSessions.RejectActionOption)
 
 		api.POST("/projects/:project_id/story-sessions", handlers.StorySessions.Create)
@@ -86,30 +87,22 @@ func NewRouter(handlers Handlers) *gin.Engine {
 		api.PUT("/story-sessions/:session_id", handlers.StorySessions.Update)
 		api.DELETE("/story-sessions/:session_id", handlers.StorySessions.Delete)
 		api.POST("/story-sessions/:session_id/advance", handlers.StorySessions.Advance)
-		api.GET("/story-sessions/:session_id/timeline", handlers.StorySessions.GetTimeline)
-		api.GET("/story-sessions/:session_id/narrative-timeline", handlers.StorySessions.GetNarrativeTimeline)
+		api.GET("/story-sessions/:session_id/events", handlers.StorySessions.ListEvents)
 		api.POST("/story-branches/:branch_id/advance", handlers.StorySessions.AdvanceBranch)
-		api.POST("/narrative-branches/:branch_id/advance", handlers.StorySessions.AdvanceNarrativeBranch)
-		api.GET("/story-ticks/:tick_id", handlers.StorySessions.GetTick)
-		api.GET("/narrative-ticks/:tick_id", handlers.StorySessions.GetNarrativeTick)
-		api.GET("/story-ticks/:tick_id/state", handlers.StorySessions.GetTickState)
-		api.GET("/narrative-ticks/:tick_id/state", handlers.StorySessions.GetNarrativeTickState)
-		api.POST("/story-ticks/:tick_id/fork", handlers.StorySessions.ForkTick)
-		api.POST("/narrative-ticks/:tick_id/fork", handlers.StorySessions.ForkNarrativeTick)
+		api.GET("/story-events/:event_id", handlers.StorySessions.GetEvent)
+		api.GET("/story-events/:event_id/state", handlers.StorySessions.GetEventState)
+		api.POST("/story-events/:event_id/fork", handlers.StorySessions.ForkEvent)
+		api.GET("/projects/:project_id/world-map", handlers.World.GetMap)
+		api.GET("/projects/:project_id/world-map/tiles", handlers.World.ListMapTiles)
+		api.GET("/projects/:project_id/locations", handlers.World.ListLocations)
+		api.GET("/projects/:project_id/faction-influences", handlers.World.ListFactionInfluences)
+		api.GET("/story-branches/:branch_id/in-flight-actions", handlers.World.ListInFlightActions)
 		api.GET("/story-runs/:run_id", handlers.StorySessions.GetRun)
 		api.GET("/story-runs/:run_id/result", handlers.StorySessions.GetRunResult)
+		api.POST("/story-runs/:run_id/stop", handlers.StorySessions.StopRun)
 		api.GET("/story-runs/:run_id/event-history", handlers.StorySessions.GetRunEventHistory)
 		api.GET("/story-runs/:run_id/events", handlers.StorySessions.Subscribe)
-		api.POST("/story-runs/:run_id/commit", handlers.StorySessions.CommitRun)
-
-		api.POST("/projects/:project_id/story-ticks/advance", handlers.StoryTicks.Advance)
-		api.POST("/projects/:project_id/simulation-ticks/advance", handlers.StoryTicks.Advance)
-		api.GET("/projects/:project_id/story-state", handlers.StoryTicks.CurrentState)
-		api.GET("/projects/:project_id/simulation-state", handlers.StoryTicks.CurrentState)
-		api.GET("/story-ticks/:tick_id/events", handlers.StoryTicks.Events)
-		api.GET("/simulation-tick-runs/:tick_run_id/events", handlers.StoryTicks.Events)
-		api.GET("/story-ticks/:tick_id/snapshot", handlers.StoryTicks.Snapshot)
-		api.GET("/simulation-tick-runs/:tick_run_id/snapshot", handlers.StoryTicks.Snapshot)
+		api.POST("/story-runs/:run_id/cut-chapter", handlers.StorySessions.CutChapter)
 
 		api.GET("/projects/:project_id/chapters", handlers.Chapters.List)
 		api.GET("/chapters/:chapter_id", handlers.Chapters.Get)

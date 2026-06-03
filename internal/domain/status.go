@@ -1,71 +1,50 @@
-// Package domain 包含应用程序的领域模型常量。
-// 定义了会话状态、运行状态和 SSE 事件名称的规范值。
-// 这些常量确保整个系统中状态和事件命名的一致性。
 package domain
 
-// 故事会话状态常量
-// 会话状态反映了作者与 AI 交互的当前阶段
 const (
-	SessionStatusIdle                 = "idle"                  // 空闲状态：会话初始状态，无进行中的操作
-	SessionStatusAdvancing            = "advancing"             // 推进中：正在生成故事内容
-	SessionStatusReviewing            = "reviewing"             // 审阅中：正在等待用户审阅生成的内容
-	SessionStatusAwaitingConfirmation = "awaiting_confirmation" // 等待确认：对话 Agent 已提出可执行选项
-	SessionStatusCommitted            = "committed"             // 已提交：内容已被确认并提交
-	SessionStatusFailed               = "failed"                // 失败：操作未能成功完成
-)
-
-// 故事运行状态常量
-// 运行状态反映了 AI 生成过程的当前步骤
-const (
-	RunStatusQueued                  = "queued"                   // 排队中：等待执行
-	RunStatusLoadingState            = "loading_state"            // 加载状态：正在加载项目状态
-	RunStatusPlanningActions         = "planning_actions"         // 规划动作：正在生成可确认的对话选项
-	RunStatusExecutingAction         = "executing_action"         // 执行动作：正在执行已确认的对话选项
-	RunStatusSelectingConflictAxis   = "selecting_conflict_axis"  // 选择冲突轴：正在确定戏剧冲突的核心
-	RunStatusGeneratingPlotVariable  = "generating_plot_variable" // 生成剧情变量：正在创建核心戏剧性选择
-	RunStatusSimulatingEvents        = "simulating_events"        // 模拟事件：正在生成角色行动和地点事件
-	RunStatusSelectingInteractions   = "selecting_interactions"   // 选择交互：正在分析同地点角色是否会互动
-	RunStatusNegotiatingInteractions = "negotiating_interactions" // 交涉互动：正在进行多角色交涉
-	RunStatusDrivingCharacterTurns   = "driving_character_turns"  // 推进角色回合：正在生成角色互动
-	RunStatusWritingNarrative        = "writing_narrative"        // 书写叙事：正在撰写正文
-	RunStatusCheckingContinuity      = "checking_continuity"      // 检查连续性：正在验证内容一致性
-	RunStatusGeneratingMemoryPatch   = "generating_memory_patch"  // 生成记忆补丁：正在生成状态更新
-	RunStatusReviewRequired          = "review_required"          // 需要审阅：等待用户确认
-	RunStatusCompleted               = "completed"                // 已完成：对话回复已完成且无需确认
-	RunStatusCommitted               = "committed"                // 已提交：内容已确认
-	RunStatusFailed                  = "failed"                   // 失败：运行出错
-	RunStatusCancelled               = "cancelled"                // 已取消：运行被终止
-)
-
-// 异步运行流式事件名称常量
-// 这些事件通过 SSE (Server-Sent Events) 实时推送给客户端
-const (
-	EventGenerationStep            = "generation_step"             // 生成步骤事件：报告当前运行步骤
-	EventStoryOrchestrationStarted = "story_orchestration_started" // 故事编排启动事件：传递用户 idea
-	EventPlotVariable              = "plot_variable"               // 剧情变量事件：推送核心戏剧选择
-	EventStoryEventPlanned         = "story_event_planned"         // 故事事件事件：推送角色行动和地点事件
-	EventSameLocationCandidates    = "same_location_candidates"    // 同地点候选事件：推送可能发生交互的地点组
-	EventInteractionAnalysis       = "interaction_analysis"        // 交互分析事件：推送 AI 对候选组的判断
-	EventInteractionSelected       = "interaction_selected"        // 交互选中事件：推送实际进入交涉的角色组
-	EventNegotiationTurn           = "negotiation_turn"            // 交涉回合事件：推送多角色交涉回合
-	EventCharacterTurn             = "character_turn"              // 角色回合事件：推送角色互动内容
-	EventDraftDelta                = "draft_delta"                 // 草稿增量事件：兼容旧正文片段事件
-	EventReviewRequired            = "review_required"             // 需要审阅事件：通知用户需要确认
+	SessionStatusIdle                 = "idle"
+	SessionStatusAdvancing            = "advancing"
+	SessionStatusReviewing            = "reviewing"
+	SessionStatusAwaitingConfirmation = "awaiting_confirmation"
+	SessionStatusCommitted            = "committed"
+	SessionStatusFailed               = "failed"
 )
 
 const (
-	StoryTickStatusRunning   = "running"
-	StoryTickStatusCompleted = "completed"
-	StoryTickStatusFailed    = "failed"
+	RunStatusQueued                  = "queued"
+	RunStatusLoadingState            = "loading_state"
+	RunStatusPlanningActions         = "planning_actions"
+	RunStatusExecutingAction         = "executing_action"
+	RunStatusSelectingConflictAxis   = "selecting_conflict_axis"
+	RunStatusGeneratingPlotVariable  = "generating_plot_variable"
+	RunStatusPlanningEvents          = "planning_events"
+	RunStatusSelectingInteractions   = "selecting_interactions"
+	RunStatusNegotiatingInteractions = "negotiating_interactions"
+	RunStatusDrivingCharacterTurns   = "driving_character_turns"
+	RunStatusWritingNarrative        = "writing_narrative"
+	RunStatusCheckingContinuity      = "checking_continuity"
+	RunStatusGeneratingMemoryPatch   = "generating_memory_patch"
+	RunStatusCompleted               = "completed"
+	RunStatusCut                     = "cut"
+	RunStatusFailed                  = "failed"
+	RunStatusCancelled               = "cancelled"
+)
 
+const (
+	EventGenerationStep            = "generation_step"
+	EventStoryOrchestrationStarted = "story_orchestration_started"
+	EventPlotVariable              = "plot_variable"
+	EventStoryEventPlanned         = "story_event_planned"
+	EventSameLocationCandidates    = "same_location_candidates"
+	EventInteractionAnalysis       = "interaction_analysis"
+	EventInteractionSelected       = "interaction_selected"
+	EventNegotiationTurn           = "negotiation_turn"
+	EventCharacterTurn             = "character_turn"
+	EventDraftDelta                = "draft_delta"
+)
+
+const (
 	CharacterActionStatusOngoing   = "ongoing"
 	CharacterActionStatusCompleted = "completed"
-
-	EventStoryTickStarted              = "story_tick_started"
-	EventCharacterActionStarted        = "character_action_started"
-	EventCharacterSkippedOngoingAction = "character_skipped_ongoing_action"
-	EventCharacterActionCompleted      = "character_action_completed"
-	EventStoryTickCompleted            = "story_tick_completed"
 )
 
 const (
@@ -78,10 +57,25 @@ const (
 )
 
 const (
-	DialogueActionSetupStartAndAdvance  = "setup.start_and_advance"
-	DialogueActionSetupAdvance          = "setup.advance"
-	DialogueActionSetupApply            = "setup.apply"
-	DialogueActionStoryCreateAndAdvance = "story.create_and_advance"
-	DialogueActionStoryAdvance          = "story.advance"
-	DialogueActionStoryCommit           = "story.commit"
+	DialogueActionSetupStartAndAdvance  = "setup_start_and_advance"
+	DialogueActionSetupAdvance          = "setup_advance"
+	DialogueActionSetupApply            = "setup_apply"
+	DialogueActionStoryCreateAndAdvance = "story_create_and_advance"
+	DialogueActionStoryAdvance          = "story_advance"
+	DialogueActionStoryCutChapter       = "story_cut_chapter"
+	DialogueActionStoryForkFromEvent    = "story_fork_from_event"
+	DialogueActionStoryRollbackToEvent  = "story_rollback_to_event"
+)
+
+const (
+	DialoguePolicyManualConfirm = "manual_confirm"
+	DialoguePolicyAutoPilot     = "auto_pilot"
+)
+
+const (
+	MemoryPatchStatusRunLocal             = "run_local"
+	MemoryScopeExternalCommitted          = "external_committed"
+	MemoryCommitTriggerRunCompletion      = "run_completion"
+	MemoryCommitTriggerChapterCut         = "chapter_cut"
+	MemoryCommitTriggerExplicitCheckpoint = "explicit_checkpoint"
 )

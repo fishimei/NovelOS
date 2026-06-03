@@ -1,4 +1,4 @@
-// 故事 run 专用 SSE 状态 reducer。把原始事件整理成页面要展示的正文、审校项和过程信息。
+// 故事 run 专用 SSE 状态 reducer。把原始事件整理成页面要展示的正文、事件素材和过程信息。
 import { useEffect, useMemo, useState } from 'react';
 
 import { storyRunEventsUrl } from '../../api/storyRuns';
@@ -17,7 +17,7 @@ type StoryEventState = {
   generationSteps: StoryGenerationStepEvent[];
   plotVariables: StoryPlotVariable[];
   characterTurns: StoryCharacterTurnEvent[];
-  reviewItems: unknown[];
+  planningEvents: SseMessage[];
   rawEvents: SseMessage[];
 };
 
@@ -27,7 +27,7 @@ const initialState: StoryEventState = {
   generationSteps: [],
   plotVariables: [],
   characterTurns: [],
-  reviewItems: [],
+  planningEvents: [],
   rawEvents: [],
 };
 
@@ -104,8 +104,14 @@ export function useStoryRunEvents(runId: string) {
           next.characterTurns = [...current.characterTurns, asCharacterTurn(message.data)];
         }
 
-        if (message.event === 'review_required') {
-          next.reviewItems = [...current.reviewItems, message.data];
+        if (
+          message.event === 'story_event_planned' ||
+          message.event === 'same_location_candidates' ||
+          message.event === 'interaction_analysis' ||
+          message.event === 'interaction_selected' ||
+          message.event === 'negotiation_turn'
+        ) {
+          next.planningEvents = [...current.planningEvents, message];
         }
 
         return next;
