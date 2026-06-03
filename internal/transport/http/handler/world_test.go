@@ -139,6 +139,10 @@ func (s *worldEventStore) InitGenesis(context.Context, string, string, model.Wor
 	return model.StoryEvent{}, errors.New("not implemented")
 }
 
+func (s *worldEventStore) GetProjectGenesis(context.Context, string) (model.StoryEvent, error) {
+	return model.StoryEvent{}, errors.New("not implemented")
+}
+
 func (s *worldEventStore) GetWorldMapByProjectID(_ context.Context, projectID string) (model.WorldMap, error) {
 	s.worldMapProjectID = projectID
 	return s.worldMap, nil

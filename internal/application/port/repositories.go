@@ -64,6 +64,7 @@ type SetupSessionRepository interface {
 	GetRunResultByID(ctx context.Context, runID string) (model.SetupRunResult, error)
 	SaveRunResult(ctx context.Context, runID string, result model.SetupRunResult) error
 	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
+	UpdateRunHeartbeat(ctx context.Context, runID string) error
 	MarkApplied(ctx context.Context, sessionID string, runID string) error
 }
 
@@ -77,6 +78,7 @@ type DialogueSessionRepository interface {
 	CreateRun(ctx context.Context, sessionID string, input model.AdvanceDialogueSessionInput) (model.DialogueRun, error)
 	GetRunByID(ctx context.Context, runID string) (model.DialogueRun, error)
 	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
+	UpdateRunHeartbeat(ctx context.Context, runID string) error
 	SaveRunResult(ctx context.Context, runID string, result model.DialogueRunResult) error
 	GetRunResultByID(ctx context.Context, runID string) (model.DialogueRunResult, error)
 	SaveActionOptions(ctx context.Context, options []model.DialogueActionOption) error
@@ -97,10 +99,12 @@ type StorySessionRepository interface {
 	DeleteSession(ctx context.Context, sessionID string) error
 	AppendMessage(ctx context.Context, sessionID string, role string, content string) (model.ConversationMessage, error)
 	CreateRun(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error)
+	HasActiveRunByBranch(ctx context.Context, branchID string) (bool, error)
 	GetRunByID(ctx context.Context, runID string) (model.StoryRun, error)
 	GetRunResultByID(ctx context.Context, runID string) (model.StoryRunResult, error)
 	SaveRunResult(ctx context.Context, runID string, result model.StoryRunResult) error
 	UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error
+	UpdateRunHeartbeat(ctx context.Context, runID string) error
 	UpdateRunHead(ctx context.Context, runID string, headEventID string) error
 	RequestRunStop(ctx context.Context, runID string) error
 	MarkCut(ctx context.Context, runID string) error
@@ -122,6 +126,7 @@ type StoryEventStore interface {
 	InFlightActionsAt(ctx context.Context, branchID string, at time.Time) ([]model.OngoingAction, error)
 	UpsertSnapshot(ctx context.Context, branchID, eventID string, s model.WorldSnapshot) error
 	InitGenesis(ctx context.Context, projectID, sessionID string, t0 model.WorldSnapshot) (model.StoryEvent, error)
+	GetProjectGenesis(ctx context.Context, projectID string) (model.StoryEvent, error)
 
 	GetWorldMapByProjectID(ctx context.Context, projectID string) (model.WorldMap, error)
 	UpsertWorldMap(ctx context.Context, worldMap model.WorldMap) (model.WorldMap, error)

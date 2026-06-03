@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fishimei/NovelOS/internal/application/chapterseq"
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/domain"
@@ -17,6 +18,7 @@ type StoryChapterCutter struct {
 	store    port.StoryEventStore
 	chapters port.ChapterRepository
 	audit    port.AuditRepository
+	memory   port.CharacterMemoryService
 	tx       port.TxManager
 	clock    port.Clock
 	ids      port.IDGenerator
@@ -27,6 +29,7 @@ func NewStoryChapterCutter(
 	store port.StoryEventStore,
 	chapters port.ChapterRepository,
 	audit port.AuditRepository,
+	memory port.CharacterMemoryService,
 	tx port.TxManager,
 	clock port.Clock,
 	ids port.IDGenerator,
@@ -36,6 +39,7 @@ func NewStoryChapterCutter(
 		store:    store,
 		chapters: chapters,
 		audit:    audit,
+		memory:   memory,
 		tx:       tx,
 		clock:    clock,
 		ids:      ids,
@@ -65,42 +69,50 @@ func (c *StoryChapterCutter) CutChapter(ctx context.Context, runID string, input
 
 	var chapter model.Chapter
 	var span model.ChapterEventSpan
-	err = c.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		branch, events, err := c.eventSpan(txCtx, run, input)
-		if err != nil {
-			return err
-		}
-		if _, err := c.store.GetChapterSpanByRange(txCtx, input.BranchID, input.FromEventID, input.ToEventID); err == nil {
-			return pkgerr.Conflict(pkgerr.CodeConflict, "event span is already cut into a chapter")
-		} else if !isNotFound(err) {
-			return err
-		}
-		chapter, err = c.createChapterFromEvents(txCtx, run, input, events)
-		if err != nil {
-			return err
-		}
-		span, err = c.store.CreateChapterSpan(txCtx, model.ChapterEventSpan{
-			ProjectID:   run.ProjectID,
-			ChapterID:   chapter.ID,
-			BranchID:    branch.ID,
-			FromEventID: input.FromEventID,
-			ToEventID:   input.ToEventID,
-			CreatedAt:   currentTime(c.clock),
+	var spanEvents []model.StoryEvent
+	for attempt := 0; attempt < 2; attempt++ {
+		err = c.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+			branch, events, err := c.eventSpan(txCtx, run, input)
+			if err != nil {
+				return err
+			}
+			spanEvents = events
+			if _, err := c.store.GetChapterSpanByRange(txCtx, input.BranchID, input.FromEventID, input.ToEventID); err == nil {
+				return pkgerr.Conflict(pkgerr.CodeConflict, "event span is already cut into a chapter")
+			} else if !isNotFound(err) {
+				return err
+			}
+			chapter, err = c.createChapterFromEvents(txCtx, run, input, events)
+			if err != nil {
+				return err
+			}
+			span, err = c.store.CreateChapterSpan(txCtx, model.ChapterEventSpan{
+				ProjectID:   run.ProjectID,
+				ChapterID:   chapter.ID,
+				BranchID:    branch.ID,
+				FromEventID: input.FromEventID,
+				ToEventID:   input.ToEventID,
+				CreatedAt:   currentTime(c.clock),
+			})
+			if err != nil {
+				return err
+			}
+			if err := c.store.SetPublishedFrontier(txCtx, branch.ID, input.ToEventID); err != nil {
+				return err
+			}
+			if err := c.appendCutEvent(txCtx, runID, chapter, span, input.AuthorNote); err != nil {
+				return err
+			}
+			return c.sessions.MarkCut(txCtx, runID)
 		})
-		if err != nil {
-			return err
+		if err == nil || !isChapterNumberConflict(err) || attempt == 1 {
+			break
 		}
-		if err := c.store.SetPublishedFrontier(txCtx, branch.ID, input.ToEventID); err != nil {
-			return err
-		}
-		if err := c.appendCutEvent(txCtx, runID, chapter, span, input.AuthorNote); err != nil {
-			return err
-		}
-		return c.sessions.MarkCut(txCtx, runID)
-	})
+	}
 	if err != nil {
 		return model.CutChapterResult{}, err
 	}
+	c.commitCharacterMemories(ctx, run, chapter, span, spanEvents)
 	updatedRun, err := c.sessions.GetRunByID(ctx, runID)
 	if err != nil {
 		return model.CutChapterResult{}, err
@@ -133,30 +145,46 @@ func (c *StoryChapterCutter) eventSpan(ctx context.Context, run model.StoryRun, 
 	if err != nil {
 		return model.Branch{}, nil, err
 	}
-	if branch.SessionID != run.SessionID {
+	if branch.SessionID != run.SessionID || branch.ProjectID != run.ProjectID {
 		return model.Branch{}, nil, pkgerr.Validation("branch does not belong to story run")
 	}
-	events, err := c.store.ListEventsByBranch(ctx, branch.ID)
+	events, err := c.reachableEventSpan(ctx, branch, input.FromEventID, input.ToEventID)
 	if err != nil {
 		return model.Branch{}, nil, err
 	}
-	out := make([]model.StoryEvent, 0)
-	inRange := false
-	for _, event := range events {
-		if event.ID == input.FromEventID {
-			inRange = true
+	return branch, events, nil
+}
+
+func (c *StoryChapterCutter) reachableEventSpan(ctx context.Context, branch model.Branch, fromEventID, toEventID string) ([]model.StoryEvent, error) {
+	chain := make([]model.StoryEvent, 0)
+	currentID := toEventID
+	for currentID != "" {
+		event, err := c.store.GetEvent(ctx, currentID)
+		if err != nil {
+			return nil, err
 		}
-		if inRange {
-			out = append(out, event)
+		if event.ProjectID != branch.ProjectID {
+			return nil, pkgerr.Validation("event span crosses project boundary")
 		}
-		if event.ID == input.ToEventID {
-			if !inRange {
-				return model.Branch{}, nil, pkgerr.Validation("from_event_id must be before to_event_id on the same branch")
+		if event.SessionID != branch.SessionID && event.ID != branch.BaseEventID && event.ID != fromEventID {
+			return nil, pkgerr.Validation("event span crosses story session boundary")
+		}
+		if event.ID == fromEventID {
+			if len(chain) == 0 {
+				return nil, pkgerr.Validation("event span contains no events after from_event_id")
 			}
-			return branch, out, nil
+			for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+				chain[i], chain[j] = chain[j], chain[i]
+			}
+			return chain, nil
 		}
+		if event.BranchID != branch.ID {
+			return nil, pkgerr.Validation("event span crosses branch boundary")
+		}
+		chain = append(chain, event)
+		currentID = event.ParentEventID
 	}
-	return model.Branch{}, nil, pkgerr.Validation("event span is not present on branch")
+	return nil, pkgerr.Validation("event span is not present on branch")
 }
 
 func (c *StoryChapterCutter) createChapterFromEvents(ctx context.Context, run model.StoryRun, input model.CutChapterInput, events []model.StoryEvent) (model.Chapter, error) {
@@ -218,11 +246,7 @@ func (c *StoryChapterCutter) createChapterFromEvents(ctx context.Context, run mo
 }
 
 func (c *StoryChapterCutter) nextChapterNumber(ctx context.Context, projectID string) (int, error) {
-	result, err := c.chapters.ListByProjectID(ctx, projectID, model.PageInput{Page: 1, PageSize: 1})
-	if err != nil {
-		return 0, err
-	}
-	return result.Total + 1, nil
+	return chapterseq.NextChapterNumber(ctx, c.chapters, projectID)
 }
 
 func draftFromEvent(event model.StoryEvent) model.Draft {
@@ -276,4 +300,74 @@ func (c *StoryChapterCutter) appendCutEvent(ctx context.Context, runID string, c
 		CreatedAt: currentTime(c.clock),
 	})
 	return err
+}
+
+func (c *StoryChapterCutter) commitCharacterMemories(ctx context.Context, run model.StoryRun, chapter model.Chapter, span model.ChapterEventSpan, events []model.StoryEvent) {
+	if c.memory == nil {
+		return
+	}
+	memories := make([]model.Memory, 0)
+	for _, event := range events {
+		if event.Kind != model.EventKindSceneResolved {
+			continue
+		}
+		for _, update := range event.StateDelta.MemoryPatch.CharacterMemoryUpdates {
+			if update.CharacterID == "" || update.Content == "" {
+				continue
+			}
+			memories = append(memories, model.Memory{
+				ID:              generatedID(c.ids, c.clock, "memory"),
+				CharacterID:     update.CharacterID,
+				Content:         update.Content,
+				SourceChapterID: chapter.ID,
+				SourceRunID:     run.RunID,
+				BranchID:        span.BranchID,
+				SourceEventID:   event.ID,
+				Importance:      update.Importance,
+				Note:            domain.MemoryScopeExternalCommitted + ":" + domain.MemoryCommitTriggerChapterCut,
+				Status:          "active",
+				CreatedAt:       currentTime(c.clock),
+			})
+		}
+	}
+	if len(memories) == 0 {
+		return
+	}
+	err := c.memory.Commit(ctx, port.CharacterMemoryCommitInput{
+		ProjectID: run.ProjectID,
+		RunID:     run.RunID,
+		Chapter:   chapter,
+		Memories:  memories,
+	})
+	if err != nil {
+		c.appendMemoryAuditEvent(ctx, run.RunID, "external_memory_flush_failed", map[string]any{
+			"error":      err.Error(),
+			"chapter_id": chapter.ID,
+			"span_id":    span.ID,
+			"trigger":    domain.MemoryCommitTriggerChapterCut,
+		})
+		return
+	}
+	c.appendMemoryAuditEvent(ctx, run.RunID, "external_memory_committed", map[string]any{
+		"memory_count": len(memories),
+		"chapter_id":   chapter.ID,
+		"span_id":      span.ID,
+		"scope":        domain.MemoryScopeExternalCommitted,
+		"trigger":      domain.MemoryCommitTriggerChapterCut,
+	})
+}
+
+func (c *StoryChapterCutter) appendMemoryAuditEvent(ctx context.Context, runID, eventName string, payload map[string]any) {
+	if c.audit == nil {
+		return
+	}
+	if _, err := c.audit.AppendRunEvent(ctx, model.RunEvent{
+		RunKind:   "story",
+		RunID:     runID,
+		EventName: eventName,
+		Payload:   payload,
+		CreatedAt: currentTime(c.clock),
+	}); err != nil {
+		return
+	}
 }

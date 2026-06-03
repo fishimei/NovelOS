@@ -467,18 +467,23 @@ type PlotVariable struct {
 }
 
 type StoryEventPlan struct {
-	ID             string   `json:"id"`
-	TimeIndex      int      `json:"time_index"`
-	DurationHours  int      `json:"duration_hours,omitempty"`
-	CharacterID    string   `json:"character_id,omitempty"`
-	CharacterName  string   `json:"character_name,omitempty"`
-	LocationKey    string   `json:"location_key"`
-	LocationName   string   `json:"location_name,omitempty"`
-	ActionType     string   `json:"action_type"`
-	Summary        string   `json:"summary"`
-	Intent         string   `json:"intent,omitempty"`
-	Visibility     string   `json:"visibility,omitempty"`
-	TargetActorIDs []string `json:"target_actor_ids,omitempty"`
+	ID             string     `json:"id"`
+	TimeIndex      int        `json:"time_index"`
+	DurationHours  int        `json:"duration_hours,omitempty"`
+	StartAt        *time.Time `json:"start_at,omitempty"`
+	ArriveAt       *time.Time `json:"arrive_at,omitempty"`
+	EffectAt       *time.Time `json:"effect_at,omitempty"`
+	EndsAt         *time.Time `json:"ends_at,omitempty"`
+	CharacterID    string     `json:"character_id,omitempty"`
+	CharacterName  string     `json:"character_name,omitempty"`
+	LocationKey    string     `json:"location_key"`
+	LocationName   string     `json:"location_name,omitempty"`
+	ActionType     string     `json:"action_type"`
+	Summary        string     `json:"summary"`
+	Intent         string     `json:"intent,omitempty"`
+	Visibility     string     `json:"visibility,omitempty"`
+	TargetActorIDs []string   `json:"target_actor_ids,omitempty"`
+	ResourceKeys   []string   `json:"resource_keys,omitempty"`
 }
 
 type StoryLocationGroup struct {
@@ -549,6 +554,8 @@ const (
 	EventKindGenesis          = "genesis"
 	EventKindActionScheduled  = "action_scheduled"
 	EventKindActionCompleted  = "action_completed"
+	EventKindActionVoided     = "action_voided"
+	EventKindActionSuperseded = "action_superseded"
 	EventKindSceneResolved    = "scene_resolved"
 	EventKindVariableInjected = "variable_injected"
 	EventKindPromotion        = "promotion"
@@ -605,6 +612,7 @@ type LocationDelta struct {
 
 // OngoingAction 是排程阶段登记在事件账本中的动作占用。
 type OngoingAction struct {
+	ID                string    `json:"id,omitempty"`
 	CharacterID       string    `json:"character_id"`
 	ActionType        string    `json:"action_type"`
 	Description       string    `json:"description"`
@@ -820,16 +828,19 @@ type StoryRunResult struct {
 	BranchID               string                       `json:"branch_id,omitempty"`
 	BaseEventID            string                       `json:"base_event_id,omitempty"`
 	HeadEventID            string                       `json:"head_event_id,omitempty"`
-	PlotVariable           PlotVariable                 `json:"plot_variable"`           // 剧情变量
-	EventPlan              []StoryEventPlan             `json:"event_plan"`              // 排程事件素材
-	Turns                  []StoryTurn                  `json:"turns"`                   // 全部场景回合素材
-	SceneSummary           string                       `json:"scene_summary"`           // 场景复盘摘要
-	InteractionAnalysis    StoryInteractionAnalysis     `json:"interaction_analysis"`    // 交互分析
-	InteractionTranscripts []StoryInteractionTranscript `json:"interaction_transcripts"` // 交涉记录
-	Draft                  Draft                        `json:"draft"`                   // 章节草稿
-	Review                 ReviewReport                 `json:"review"`                  // 审阅报告
-	MemoryPatch            MemoryPatch                  `json:"memory_patch"`            // 记忆补丁
-	Events                 []StoryEvent                 `json:"events,omitempty"`        // 已写入正史的事件
+	PlotVariable           PlotVariable                 `json:"plot_variable"`                // 剧情变量
+	EventPlan              []StoryEventPlan             `json:"event_plan"`                   // 排程事件素材
+	Turns                  []StoryTurn                  `json:"turns"`                        // 全部场景回合素材
+	SceneSummary           string                       `json:"scene_summary"`                // 场景复盘摘要
+	InteractionAnalysis    StoryInteractionAnalysis     `json:"interaction_analysis"`         // 交互分析
+	InteractionTranscripts []StoryInteractionTranscript `json:"interaction_transcripts"`      // 交涉记录
+	Draft                  Draft                        `json:"draft"`                        // 章节草稿
+	Review                 ReviewReport                 `json:"review"`                       // 审阅报告
+	MemoryPatch            MemoryPatch                  `json:"memory_patch"`                 // 记忆补丁
+	Events                 []StoryEvent                 `json:"events,omitempty"`             // 已写入正史的事件
+	CompletedActions       []OngoingAction              `json:"completed_actions,omitempty"`  // 本 tick 完成并唤醒的既有动作
+	SupersededActions      []OngoingAction              `json:"superseded_actions,omitempty"` // 本 tick 被场景抢占/作废的既有动作
+	CollisionAt            *time.Time                   `json:"collision_at,omitempty"`       // 抢占/碰撞发生的世界时间
 }
 
 type CutChapterResult struct {

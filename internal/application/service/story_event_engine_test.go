@@ -51,6 +51,20 @@ func TestResolveEventClockDetectsIntentCollisionAcrossLocations(t *testing.T) {
 	}
 }
 
+func TestResolveEventClockDetectsResourceCollisionAcrossLocations(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	result := ResolveEventClock(start, []TimedAction{
+		{CharacterID: "A", LocationKey: "loc:tavern", ResourceKeys: []string{"world:gate_open"}, StartAt: start, ArriveAt: start, EndsAt: start.Add(2 * time.Hour)},
+		{CharacterID: "B", LocationKey: "loc:dock", ResourceKeys: []string{"world:gate_open"}, StartAt: start.Add(10 * time.Minute), ArriveAt: start.Add(20 * time.Minute), EndsAt: start.Add(time.Hour)},
+	})
+	if len(result.Collisions) != 1 {
+		t.Fatalf("collisions = %d, want 1", len(result.Collisions))
+	}
+	if want := start.Add(20 * time.Minute); !result.Collisions[0].Equal(want) {
+		t.Fatalf("collision = %s, want %s", result.Collisions[0], want)
+	}
+}
+
 func TestResolveEventClockIgnoresUnrelatedCrossLocationActions(t *testing.T) {
 	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
 	result := ResolveEventClock(start, []TimedAction{
@@ -79,6 +93,7 @@ func TestTimedActionFromOngoingActionCarriesIntent(t *testing.T) {
 		CharacterID:       "A",
 		TargetLocationKey: "loc:tavern",
 		ParticipantIDs:    []string{"B"},
+		ResourceKeys:      []string{"world:gate_open"},
 		StartAt:           start,
 		ArriveAt:          start.Add(10 * time.Minute),
 		EffectAt:          start.Add(20 * time.Minute),
@@ -95,6 +110,10 @@ func TestTimedActionFromOngoingActionCarriesIntent(t *testing.T) {
 	timed.ParticipantIDs[0] = "mutated"
 	if action.ParticipantIDs[0] != "B" {
 		t.Fatal("timed action participant ids should not alias source action")
+	}
+	timed.ResourceKeys[0] = "mutated"
+	if action.ResourceKeys[0] != "world:gate_open" {
+		t.Fatal("timed action resource keys should not alias source action")
 	}
 }
 
@@ -121,6 +140,65 @@ func TestOngoingActionFromPlanBuildsActionPayload(t *testing.T) {
 	}
 	if !hasString(action.ResourceKeys, "character:A") || !hasString(action.ResourceKeys, "character:B") || !hasString(action.ResourceKeys, "location:loc:tavern") {
 		t.Fatalf("resource keys missing action targets: %#v", action.ResourceKeys)
+	}
+}
+
+func TestOngoingActionFromPlanPreservesExplicitTimesAndResources(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	arrive := start.Add(30 * time.Minute)
+	effect := start.Add(time.Hour)
+	end := start.Add(3 * time.Hour)
+	action := ongoingActionFromPlan(model.StoryEventPlan{
+		ID:            "plan_1",
+		CharacterID:   "A",
+		LocationKey:   "loc:tavern",
+		ActionType:    "action",
+		Summary:       "A travels to the tavern",
+		DurationHours: 1,
+		ArriveAt:      &arrive,
+		EffectAt:      &effect,
+		EndsAt:        &end,
+		ResourceKeys:  []string{"world:gate_open"},
+	}, start)
+
+	if action.ID != "plan_1" || !action.ArriveAt.Equal(arrive) || !action.EffectAt.Equal(effect) || !action.EndsAt.Equal(end) {
+		t.Fatalf("explicit timing not preserved: %#v", action)
+	}
+	if !hasString(action.ResourceKeys, "world:gate_open") {
+		t.Fatalf("explicit resource key missing: %#v", action.ResourceKeys)
+	}
+}
+
+func TestStoryEventFromActionDelaysMoveUntilArrival(t *testing.T) {
+	start := time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC)
+	event := StoryEventFromAction(model.Branch{ID: "branch_1", ProjectID: "project_1", SessionID: "story_1"}, model.OngoingAction{
+		CharacterID:       "A",
+		ActionType:        "travel",
+		Description:       "A travels",
+		TargetLocationKey: "loc:tavern",
+		StartAt:           start,
+		ArriveAt:          start.Add(time.Hour),
+		EndsAt:            start.Add(2 * time.Hour),
+		Status:            "ongoing",
+	}, "parent_1")
+
+	if len(event.StateDelta.CharacterMoves) != 0 {
+		t.Fatalf("scheduled travel should not move immediately: %#v", event.StateDelta.CharacterMoves)
+	}
+	action, ok := event.Payload["action"].(model.OngoingAction)
+	if !ok || action.ID == "" {
+		t.Fatalf("scheduled action should carry action id: %#v", event.Payload)
+	}
+}
+
+func TestValidateRunResultActionTerminalsRejectsOverlap(t *testing.T) {
+	action := model.OngoingAction{ID: "action_1", CharacterID: "A"}
+	err := validateRunResultActionTerminals(model.StoryRunResult{
+		CompletedActions:  []model.OngoingAction{action},
+		SupersededActions: []model.OngoingAction{action},
+	})
+	if err == nil {
+		t.Fatal("expected overlapping terminal action to be rejected")
 	}
 }
 

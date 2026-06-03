@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -10,8 +11,10 @@ import (
 	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/application/service"
 	"github.com/fishimei/NovelOS/internal/config"
+	"github.com/fishimei/NovelOS/internal/domain"
 	gormstore "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm"
 	persistencemodels "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm/models"
+	"github.com/fishimei/NovelOS/internal/pkgerr"
 	"gorm.io/gorm"
 )
 
@@ -290,6 +293,7 @@ func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create story run: %v", err)
 	}
+	collisionAt := time.Date(2026, 5, 14, 13, 0, 0, 0, time.UTC)
 	if err := repos.StorySessions.SaveRunResult(context.Background(), run.RunID, model.StoryRunResult{
 		RunID:       run.RunID,
 		SessionID:   session.ID,
@@ -309,6 +313,9 @@ func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 		Events: []model.StoryEvent{
 			{ID: "event_head", Kind: model.EventKindSceneResolved, Summary: "summary"},
 		},
+		CompletedActions:  []model.OngoingAction{{ID: "action_done", CharacterID: "character_1", Status: "completed"}},
+		SupersededActions: []model.OngoingAction{{ID: "action_superseded", CharacterID: "character_2", Status: "superseded"}},
+		CollisionAt:       &collisionAt,
 	}); err != nil {
 		t.Fatalf("save story result: %v", err)
 	}
@@ -328,6 +335,15 @@ func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 	}
 	if len(got.Events) != 1 || got.Events[0].ID != "event_head" {
 		t.Fatalf("unexpected events: %#v", got.Events)
+	}
+	if len(got.CompletedActions) != 1 || got.CompletedActions[0].ID != "action_done" {
+		t.Fatalf("unexpected completed actions: %#v", got.CompletedActions)
+	}
+	if len(got.SupersededActions) != 1 || got.SupersededActions[0].ID != "action_superseded" {
+		t.Fatalf("unexpected superseded actions: %#v", got.SupersededActions)
+	}
+	if got.CollisionAt == nil || !got.CollisionAt.Equal(collisionAt) {
+		t.Fatalf("unexpected collision_at: %#v", got.CollisionAt)
 	}
 }
 
@@ -355,6 +371,68 @@ func TestStoryRunStopRequestPersists(t *testing.T) {
 	if !stopped.StopRequested {
 		t.Fatalf("stop request was not persisted: %#v", stopped)
 	}
+	if stopped.Status != domain.RunStatusCancelled {
+		t.Fatalf("queued stop should cancel run, got %#v", stopped)
+	}
+}
+
+func TestStoryRunLeasePreventsStaleResultOverwrite(t *testing.T) {
+	db, repos, _, ids, clock := testRepos(t)
+	project := createProject(t, repos)
+	session, err := repos.StorySessions.CreateSession(context.Background(), project.ID, model.CreateStorySessionInput{Title: "story"})
+	if err != nil {
+		t.Fatalf("create story session: %v", err)
+	}
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	if err != nil {
+		t.Fatalf("create story run: %v", err)
+	}
+
+	execRepos := New(db, ids, clock)
+	work := model.RunExecutionWork{RunKind: port.RunKindStory, RunID: run.RunID}
+	lease1 := port.RunLease{Owner: "worker-1", Duration: time.Minute}
+	claimed, err := execRepos.ClaimRun(context.Background(), work, lease1, clock.now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("claim lease1: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected first claim")
+	}
+
+	expired := clock.now.Add(-time.Second)
+	if err := db.Model(&persistencemodels.StoryRun{}).Where("id = ?", run.RunID).Update("lease_expires_at", expired).Error; err != nil {
+		t.Fatalf("expire lease: %v", err)
+	}
+	lease2 := port.RunLease{Owner: "worker-2", Duration: time.Minute}
+	claimed, err = execRepos.ClaimRun(context.Background(), work, lease2, clock.now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("claim lease2: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected expired run to be reclaimed")
+	}
+
+	oldCtx := port.ContextWithRunLease(context.Background(), lease1)
+	err = repos.StorySessions.SaveRunResult(oldCtx, run.RunID, model.StoryRunResult{
+		RunID:     run.RunID,
+		SessionID: session.ID,
+		Status:    domain.RunStatusCompleted,
+	})
+	if !isRunLeaseLostForTest(err) {
+		t.Fatalf("SaveRunResult with old lease error = %v, want run lease lost", err)
+	}
+	current, err := repos.StorySessions.GetRunByID(context.Background(), run.RunID)
+	if err != nil {
+		t.Fatalf("get run: %v", err)
+	}
+	if current.Status == domain.RunStatusCompleted {
+		t.Fatal("stale worker completed a run after losing lease")
+	}
+}
+
+func isRunLeaseLostForTest(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeConflict && appErr.Message == "run lease lost"
 }
 
 func TestStoryEventStoreGenesisForkAndResolveState(t *testing.T) {
@@ -528,7 +606,7 @@ func TestStoryChapterCutCreatesChapterSpanWithoutStateWrites(t *testing.T) {
 	if err := repos.StorySessions.UpdateRunHead(context.Background(), run.RunID, scene.ID); err != nil {
 		t.Fatalf("update run head: %v", err)
 	}
-	cutter := service.NewStoryChapterCutter(repos.StorySessions, repos.StoryEvents, repos.Chapters, repos.Audit, txm, clock, ids)
+	cutter := service.NewStoryChapterCutter(repos.StorySessions, repos.StoryEvents, repos.Chapters, repos.Audit, nil, txm, clock, ids)
 	cut, err := cutter.CutChapter(context.Background(), run.RunID, model.CutChapterInput{BranchID: branches[0].ID, FromEventID: genesis.ID, ToEventID: scene.ID, AuthorNote: "publish"})
 	if err != nil {
 		t.Fatalf("cut chapter: %v", err)

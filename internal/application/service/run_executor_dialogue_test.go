@@ -26,8 +26,14 @@ func TestRunExecutorDispatchesDialogueRun(t *testing.T) {
 	if !repo.claimCalled {
 		t.Fatal("expected dialogue run to be claimed")
 	}
+	if repo.lease.Owner == "" {
+		t.Fatal("expected claim lease owner")
+	}
 	if !generator.called {
 		t.Fatal("expected dialogue generator to be called")
+	}
+	if generator.lease.Owner != repo.lease.Owner {
+		t.Fatalf("generator lease owner = %q, want %q", generator.lease.Owner, repo.lease.Owner)
 	}
 	if !sessions.savedResult {
 		t.Fatal("expected dialogue run result to be saved")
@@ -40,23 +46,31 @@ func TestRunExecutorDispatchesDialogueRun(t *testing.T) {
 type runExecutorRepository struct {
 	claimed     bool
 	claimCalled bool
+	lease       port.RunLease
 }
 
 func (r *runExecutorRepository) ListRunnableRuns(context.Context, time.Time, int) ([]model.RunExecutionWork, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (r *runExecutorRepository) ClaimRun(context.Context, model.RunExecutionWork, time.Time) (bool, error) {
+func (r *runExecutorRepository) ClaimRun(_ context.Context, _ model.RunExecutionWork, lease port.RunLease, _ time.Time) (bool, error) {
 	r.claimCalled = true
+	r.lease = lease
 	return r.claimed, nil
 }
 
 type runExecutorDialogueGenerator struct {
 	called bool
+	lease  port.RunLease
 }
 
 func (g *runExecutorDialogueGenerator) Generate(ctx context.Context, input port.DialogueRunGenerationInput) (model.DialogueRunResult, error) {
 	g.called = true
+	lease, ok := port.RunLeaseFromContext(ctx)
+	if !ok {
+		return model.DialogueRunResult{}, errors.New("missing run lease")
+	}
+	g.lease = lease
 	return model.DialogueRunResult{
 		RunID:            input.Run.RunID,
 		SessionID:        input.Session.ID,
@@ -117,6 +131,10 @@ func (s *runExecutorDialogueSessions) UpdateRunStatus(_ context.Context, runID s
 	s.run.Status = status
 	s.run.CurrentStep = currentStep
 	s.run.Progress = progress
+	return nil
+}
+
+func (s *runExecutorDialogueSessions) UpdateRunHeartbeat(context.Context, string) error {
 	return nil
 }
 

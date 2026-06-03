@@ -369,7 +369,11 @@ func (r *chapterRepository) Create(ctx context.Context, chapter model.Chapter) (
 		CommittedAt:   chapter.CommittedAt,
 	}
 	if err := r.dbFor(ctx).Create(&row).Error; err != nil {
-		return model.Chapter{}, mapDBError(err, "chapter not found")
+		mapped := mapDBError(err, "chapter not found")
+		if isConflict(mapped) {
+			return model.Chapter{}, pkgerr.Conflict(pkgerr.CodeConflict, "chapter number conflict")
+		}
+		return model.Chapter{}, mapped
 	}
 	return toChapter(row), nil
 }

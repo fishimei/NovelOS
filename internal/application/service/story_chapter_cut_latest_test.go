@@ -28,12 +28,13 @@ func TestStoryChapterCutterCutLatestCompletedSpanResolvesRunSpan(t *testing.T) {
 		events: []model.StoryEvent{
 			{ID: "event_1", ProjectID: "project_1", SessionID: "story_1", BranchID: "branch_1", Kind: model.EventKindGenesis},
 			{
-				ID:        "event_2",
-				ProjectID: "project_1",
-				SessionID: "story_1",
-				BranchID:  "branch_1",
-				Kind:      model.EventKindSceneResolved,
-				Summary:   "scene",
+				ID:            "event_2",
+				ProjectID:     "project_1",
+				SessionID:     "story_1",
+				BranchID:      "branch_1",
+				ParentEventID: "event_1",
+				Kind:          model.EventKindSceneResolved,
+				Summary:       "scene",
 				Payload: map[string]any{"draft": map[string]any{
 					"title":          "Resolved",
 					"chapter_number": 1,
@@ -43,7 +44,7 @@ func TestStoryChapterCutterCutLatestCompletedSpanResolvesRunSpan(t *testing.T) {
 			},
 		},
 	}
-	cutter := NewStoryChapterCutter(sessions, store, &latestSpanChapters{}, nil, latestSpanTx{}, nil, latestSpanIDs{})
+	cutter := NewStoryChapterCutter(sessions, store, &latestSpanChapters{}, nil, nil, latestSpanTx{}, nil, latestSpanIDs{})
 
 	result, err := cutter.CutLatestCompletedSpan(context.Background(), "run_1", model.CutChapterInput{Title: "Latest"})
 	if err != nil {
@@ -77,17 +78,18 @@ func TestStoryChapterCutterAllowsSummaryOnlyScene(t *testing.T) {
 		events: []model.StoryEvent{
 			{ID: "event_1", ProjectID: "project_1", SessionID: "story_1", BranchID: "branch_1", Kind: model.EventKindGenesis},
 			{
-				ID:        "event_2",
-				ProjectID: "project_1",
-				SessionID: "story_1",
-				BranchID:  "branch_1",
-				Kind:      model.EventKindSceneResolved,
-				Summary:   "fallback summary",
-				Payload:   map[string]any{"summary": "scene summary"},
+				ID:            "event_2",
+				ProjectID:     "project_1",
+				SessionID:     "story_1",
+				BranchID:      "branch_1",
+				ParentEventID: "event_1",
+				Kind:          model.EventKindSceneResolved,
+				Summary:       "fallback summary",
+				Payload:       map[string]any{"summary": "scene summary"},
 			},
 		},
 	}
-	cutter := NewStoryChapterCutter(sessions, store, &latestSpanChapters{}, nil, latestSpanTx{}, nil, latestSpanIDs{})
+	cutter := NewStoryChapterCutter(sessions, store, &latestSpanChapters{}, nil, nil, latestSpanTx{}, nil, latestSpanIDs{})
 
 	result, err := cutter.CutLatestCompletedSpan(context.Background(), "run_1", model.CutChapterInput{Title: "Latest"})
 	if err != nil {
@@ -98,6 +100,32 @@ func TestStoryChapterCutterAllowsSummaryOnlyScene(t *testing.T) {
 	}
 	if result.Chapter.Summary != "scene summary" {
 		t.Fatalf("chapter summary = %q", result.Chapter.Summary)
+	}
+}
+
+func TestStoryChapterCutterRejectsSiblingBranchSpan(t *testing.T) {
+	branch := model.Branch{ID: "branch_1", ProjectID: "project_1", SessionID: "story_1", BaseEventID: "genesis_1", HeadEventID: "head_1"}
+	store := &latestSpanEventStore{
+		branch: branch,
+		events: []model.StoryEvent{
+			{ID: "genesis_1", ProjectID: "project_1", SessionID: "setup_1", BranchID: "genesis_branch", Kind: model.EventKindGenesis},
+			{ID: "sibling_1", ProjectID: "project_1", SessionID: "story_1", BranchID: "branch_2", ParentEventID: "genesis_1", Kind: model.EventKindSceneResolved},
+		},
+	}
+	cutter := NewStoryChapterCutter(
+		&latestSpanStorySessions{run: model.StoryRun{RunID: "run_1", ProjectID: "project_1", SessionID: "story_1", BranchID: branch.ID, BaseEventID: "genesis_1", HeadEventID: "head_1", Status: domain.RunStatusCompleted}},
+		store,
+		&latestSpanChapters{},
+		nil,
+		nil,
+		latestSpanTx{},
+		nil,
+		latestSpanIDs{},
+	)
+
+	_, err := cutter.CutChapter(context.Background(), "run_1", model.CutChapterInput{BranchID: branch.ID, FromEventID: "genesis_1", ToEventID: "sibling_1"})
+	if err == nil {
+		t.Fatal("expected sibling branch to_event_id to be rejected")
 	}
 }
 
@@ -146,6 +174,10 @@ func (s *latestSpanStorySessions) CreateRun(context.Context, string, model.Advan
 	return model.StoryRun{}, errors.New("not implemented")
 }
 
+func (s *latestSpanStorySessions) HasActiveRunByBranch(context.Context, string) (bool, error) {
+	return false, nil
+}
+
 func (s *latestSpanStorySessions) GetRunByID(context.Context, string) (model.StoryRun, error) {
 	return s.run, nil
 }
@@ -160,6 +192,10 @@ func (s *latestSpanStorySessions) SaveRunResult(context.Context, string, model.S
 
 func (s *latestSpanStorySessions) UpdateRunStatus(context.Context, string, string, string, int, ...string) error {
 	return errors.New("not implemented")
+}
+
+func (s *latestSpanStorySessions) UpdateRunHeartbeat(context.Context, string) error {
+	return nil
 }
 
 func (s *latestSpanStorySessions) UpdateRunHead(context.Context, string, string) error {
@@ -188,8 +224,13 @@ func (s *latestSpanEventStore) AppendEvent(context.Context, model.StoryEvent) (m
 	return model.StoryEvent{}, errors.New("not implemented")
 }
 
-func (s *latestSpanEventStore) GetEvent(context.Context, string) (model.StoryEvent, error) {
-	return model.StoryEvent{}, errors.New("not implemented")
+func (s *latestSpanEventStore) GetEvent(_ context.Context, id string) (model.StoryEvent, error) {
+	for _, event := range s.events {
+		if event.ID == id {
+			return event, nil
+		}
+	}
+	return model.StoryEvent{}, errors.New("event not found")
 }
 
 func (s *latestSpanEventStore) ListEventsByBranch(context.Context, string) ([]model.StoryEvent, error) {
@@ -233,6 +274,10 @@ func (s *latestSpanEventStore) UpsertSnapshot(context.Context, string, string, m
 }
 
 func (s *latestSpanEventStore) InitGenesis(context.Context, string, string, model.WorldSnapshot) (model.StoryEvent, error) {
+	return model.StoryEvent{}, errors.New("not implemented")
+}
+
+func (s *latestSpanEventStore) GetProjectGenesis(context.Context, string) (model.StoryEvent, error) {
 	return model.StoryEvent{}, errors.New("not implemented")
 }
 

@@ -42,3 +42,18 @@ func isNotFound(err error) bool {
 	var appErr *pkgerr.Error
 	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeNotFound
 }
+
+func isConflict(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeConflict
+}
+
+func isChapterNumberConflict(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeConflict && appErr.Message == "chapter number conflict"
+}
+
+func isRunLeaseLost(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeConflict && appErr.Message == "run lease lost"
+}

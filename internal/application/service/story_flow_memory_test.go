@@ -10,9 +10,9 @@ import (
 	"github.com/fishimei/NovelOS/internal/domain"
 )
 
-func TestStorySessionAdvancerCommitCharacterMemoriesTagsRunCompletion(t *testing.T) {
+func TestStoryChapterCutterCommitCharacterMemoriesTagsChapterCut(t *testing.T) {
 	memory := &recordingCharacterMemoryService{}
-	advancer := &StorySessionAdvancer{
+	cutter := &StoryChapterCutter{
 		memory: memory,
 		clock:  fixedServiceClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
 		ids:    fixedServiceIDs{},
@@ -20,28 +20,35 @@ func TestStorySessionAdvancerCommitCharacterMemoriesTagsRunCompletion(t *testing
 	run := model.StoryRun{
 		RunID:     "run_1",
 		ProjectID: "project_1",
-		BranchID:  "branch_1",
 	}
-	result := model.StoryRunResult{
-		HeadEventID: "scene_event_1",
-		MemoryPatch: model.MemoryPatch{CharacterMemoryUpdates: []model.CharacterMemoryUpdate{
-			{CharacterID: "character_1", Content: "Lin denied carrying the letter.", Importance: 4},
-		}},
+	chapter := model.Chapter{ID: "chapter_1"}
+	span := model.ChapterEventSpan{ID: "span_1", BranchID: "branch_1"}
+	events := []model.StoryEvent{
+		{
+			ID:   "scene_event_1",
+			Kind: model.EventKindSceneResolved,
+			StateDelta: model.EventStateDelta{MemoryPatch: model.MemoryPatch{CharacterMemoryUpdates: []model.CharacterMemoryUpdate{
+				{CharacterID: "character_1", Content: "Lin denied carrying the letter.", Importance: 4},
+			}}},
+		},
 	}
 
-	advancer.commitCharacterMemories(context.Background(), run, result)
+	cutter.commitCharacterMemories(context.Background(), run, chapter, span, events)
 
 	if memory.input.ProjectID != "project_1" || memory.input.RunID != "run_1" {
 		t.Fatalf("unexpected commit input: %#v", memory.input)
+	}
+	if memory.input.Chapter.ID != "chapter_1" {
+		t.Fatalf("chapter source not set: %#v", memory.input.Chapter)
 	}
 	if len(memory.input.Memories) != 1 {
 		t.Fatalf("expected one committed memory, got %#v", memory.input.Memories)
 	}
 	committed := memory.input.Memories[0]
-	if committed.SourceRunID != "run_1" || committed.BranchID != "branch_1" || committed.SourceEventID != "scene_event_1" {
+	if committed.SourceChapterID != "chapter_1" || committed.SourceRunID != "run_1" || committed.BranchID != "branch_1" || committed.SourceEventID != "scene_event_1" {
 		t.Fatalf("memory source tags not set: %#v", committed)
 	}
-	if committed.Note != domain.MemoryScopeExternalCommitted+":"+domain.MemoryCommitTriggerRunCompletion {
+	if committed.Note != domain.MemoryScopeExternalCommitted+":"+domain.MemoryCommitTriggerChapterCut {
 		t.Fatalf("memory note = %q", committed.Note)
 	}
 }
@@ -193,5 +200,6 @@ type stopRequestStorySessions struct {
 func (s *stopRequestStorySessions) RequestRunStop(_ context.Context, runID string) error {
 	s.requestedRunID = runID
 	s.run.StopRequested = true
+	s.run.Status = domain.RunStatusCancelled
 	return nil
 }

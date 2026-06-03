@@ -175,8 +175,10 @@ func (s *storyEventStore) ResolveStateAt(ctx context.Context, eventID string) (m
 		return model.WorldSnapshot{}, pkgerr.NotFound("story event not found")
 	}
 	state := snapshotFromDelta(events[0])
-	for _, e := range events[1:] {
-		applyDelta(&state, e)
+	applyActionRuntime(&state, events[0])
+	for _, event := range events[1:] {
+		applyDelta(&state, event)
+		applyActionRuntime(&state, event)
 	}
 	state.AtEventID = event.ID
 	state.StoryTime = event.StoryTime
@@ -184,11 +186,16 @@ func (s *storyEventStore) ResolveStateAt(ctx context.Context, eventID string) (m
 }
 
 func (s *storyEventStore) InFlightActionsAt(ctx context.Context, branchID string, at time.Time) ([]model.OngoingAction, error) {
-	events, err := s.ListEventsByBranch(ctx, branchID)
+	branch, err := s.GetBranch(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
-	actionsByCharacter := map[string]model.OngoingAction{}
+	events, err := s.reachableEventsAt(ctx, branch.HeadEventID)
+	if err != nil {
+		return nil, err
+	}
+	actionsByID := map[string]model.OngoingAction{}
+	actionIDsByCharacter := map[string][]string{}
 	for _, event := range events {
 		if event.StoryTime.After(at) {
 			continue
@@ -199,35 +206,65 @@ func (s *storyEventStore) InFlightActionsAt(ctx context.Context, branchID string
 			if !ok {
 				continue
 			}
-			if !action.StartAt.After(at) && action.EndsAt.After(at) && action.Status == "ongoing" {
-				actionsByCharacter[action.CharacterID] = action
+			if action.ID == "" {
+				action.ID = event.ID
 			}
-		case model.EventKindActionCompleted:
+			if !action.StartAt.After(at) && action.EndsAt.After(at) && action.Status == "ongoing" {
+				actionsByID[action.ID] = action
+				actionIDsByCharacter[action.CharacterID] = appendUniqueString(actionIDsByCharacter[action.CharacterID], action.ID)
+			}
+		case model.EventKindActionCompleted, model.EventKindActionVoided, model.EventKindActionSuperseded:
 			action, ok := actionFromEvent(event)
 			if ok {
-				delete(actionsByCharacter, action.CharacterID)
+				if action.ID != "" {
+					delete(actionsByID, action.ID)
+				}
+				if action.ID == "" {
+					for _, actionID := range actionIDsByCharacter[action.CharacterID] {
+						delete(actionsByID, actionID)
+					}
+				}
 				continue
 			}
 			for _, actorID := range event.ActorIDs {
-				delete(actionsByCharacter, actorID)
+				for _, actionID := range actionIDsByCharacter[actorID] {
+					delete(actionsByID, actionID)
+				}
 			}
 		case model.EventKindSceneResolved:
 			for _, actorID := range event.ActorIDs {
-				delete(actionsByCharacter, actorID)
+				for _, actionID := range actionIDsByCharacter[actorID] {
+					delete(actionsByID, actionID)
+				}
 			}
 		}
 	}
-	out := make([]model.OngoingAction, 0, len(actionsByCharacter))
-	for _, action := range actionsByCharacter {
+	out := make([]model.OngoingAction, 0, len(actionsByID))
+	for _, action := range actionsByID {
 		out = append(out, action)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].StartAt.Equal(out[j].StartAt) {
+			if out[i].CharacterID == out[j].CharacterID {
+				return out[i].ID < out[j].ID
+			}
 			return out[i].CharacterID < out[j].CharacterID
 		}
 		return out[i].StartAt.Before(out[j].StartAt)
 	})
 	return out, nil
+}
+
+func appendUniqueString(values []string, value string) []string {
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func (s *storyEventStore) UpsertSnapshot(ctx context.Context, branchID, eventID string, snapshot model.WorldSnapshot) error {
@@ -302,6 +339,14 @@ func (s *storyEventStore) InitGenesis(ctx context.Context, projectID, sessionID 
 		return model.StoryEvent{}, err
 	}
 	return out, nil
+}
+
+func (s *storyEventStore) GetProjectGenesis(ctx context.Context, projectID string) (model.StoryEvent, error) {
+	var row persistencemodels.StoryEvent
+	if err := s.dbFor(ctx).Where("project_id = ? AND kind = ?", projectID, model.EventKindGenesis).Order("created_at asc, sequence asc, id asc").Take(&row).Error; err != nil {
+		return model.StoryEvent{}, mapDBError(err, "story event not found")
+	}
+	return toStoryEvent(row)
 }
 
 func (s *storyEventStore) CreateChapterSpan(ctx context.Context, span model.ChapterEventSpan) (model.ChapterEventSpan, error) {
@@ -507,6 +552,17 @@ func (s *storyEventStore) ancestorEvents(ctx context.Context, event model.StoryE
 		chain[i], chain[j] = chain[j], chain[i]
 	}
 	return chain, nil
+}
+
+func (s *storyEventStore) reachableEventsAt(ctx context.Context, eventID string) ([]model.StoryEvent, error) {
+	if eventID == "" {
+		return nil, nil
+	}
+	event, err := s.GetEvent(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	return s.ancestorEvents(ctx, event)
 }
 
 func storyEventRow(e model.StoryEvent) (persistencemodels.StoryEvent, error) {
@@ -913,6 +969,42 @@ func applyDelta(snapshot *model.WorldSnapshot, event model.StoryEvent) {
 	}
 	snapshot.AtEventID = event.ID
 	snapshot.StoryTime = event.StoryTime
+}
+
+func applyActionRuntime(snapshot *model.WorldSnapshot, event model.StoryEvent) {
+	switch event.Kind {
+	case model.EventKindActionScheduled:
+		action, ok := actionFromEvent(event)
+		if !ok {
+			return
+		}
+		if action.ID == "" {
+			action.ID = event.ID
+		}
+		state := snapshot.Characters[action.CharacterID]
+		state.CharacterID = action.CharacterID
+		if action.ArriveAt.IsZero() || action.StartAt.IsZero() || !action.ArriveAt.After(action.StartAt) {
+			state.LocationKey = action.TargetLocationKey
+		}
+		if state.Status == "" {
+			state.Status = "active"
+		}
+		state.OngoingAction = &action
+		snapshot.Characters[action.CharacterID] = state
+	case model.EventKindActionCompleted, model.EventKindActionVoided, model.EventKindActionSuperseded, model.EventKindSceneResolved:
+		for _, actorID := range event.ActorIDs {
+			state := snapshot.Characters[actorID]
+			state.CharacterID = actorID
+			state.OngoingAction = nil
+			if event.LocationKey != "" {
+				state.LocationKey = event.LocationKey
+			}
+			if state.Status == "" {
+				state.Status = "active"
+			}
+			snapshot.Characters[actorID] = state
+		}
+	}
 }
 
 func factionDeltasAsInfluence(projectID string, at time.Time, deltas []model.FactionDelta) []model.FactionInfluence {

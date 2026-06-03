@@ -94,6 +94,9 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	defer cancel()
 	state := &storyRunState{run: input.Run, session: input.Session, maxTurns: g.maxTurns}
 	g.publishStoryOrchestrationStarted(ctx, input)
+	if err := g.returnIfStopped(ctx, input, "orchestration_start"); err != nil {
+		return model.StoryRunResult{}, err
+	}
 	snapshot, err := loadStoryContext(ctx, g.deps, state, LoadStoryContextInput{ProjectID: input.Run.ProjectID, SessionID: input.Session.ID})
 	if err != nil {
 		return model.StoryRunResult{}, err
@@ -108,13 +111,19 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	if err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("plan character actions: %w", err)
 	}
+	if err := g.returnIfStopped(ctx, input, "planning_actions"); err != nil {
+		return model.StoryRunResult{}, err
+	}
 	seedPlannedActionEvents(state, plannedActions)
-	if len(plannedActions) > 0 && !plannedActionsHaveRenderableEncounter(plannedActions) {
+	if len(plannedActions) > 0 && len(input.SupersededActions) == 0 && !plannedActionsHaveRenderableEncounter(plannedActions) {
 		plan := actionCompletionTickPlan(state, variable)
 		reflection := fallbackReflectionResult(plan, variable)
-		return g.assembleStoryRunResult(input, plan, reflection, variable), nil
+		result := g.assembleStoryRunResult(input, plan, reflection, variable)
+		result.CompletedActions = append([]model.OngoingAction(nil), input.CompletedActions...)
+		return result, nil
 	}
 	sceneCharacterIDs := sceneCharacterIDsForContext(variable, snapshot.Characters, plannedActions)
+	sceneCharacterIDs = append(sceneCharacterIDs, actionCharacterIDs(input.SupersededActions)...)
 	if err := loadRecentMemoriesForCharacters(ctx, g.deps, state, &snapshot, input.Run.ProjectID, sceneCharacterIDs); err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("load scene memories: %w", err)
 	}
@@ -122,6 +131,19 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	plan, finalVariable, err := g.simulateScene(ctx, input, snapshot, state, sceneContext, variable)
 	if err != nil {
 		return model.StoryRunResult{}, err
+	}
+	if stopped, err := g.stopRequested(ctx, input, "reflection"); err != nil {
+		return model.StoryRunResult{}, err
+	} else if stopped {
+		reflection := fallbackReflectionResult(plan, finalVariable)
+		result := g.assembleStoryRunResult(input, plan, reflection, finalVariable)
+		result.CompletedActions = append([]model.OngoingAction(nil), input.CompletedActions...)
+		result.SupersededActions = append([]model.OngoingAction(nil), input.SupersededActions...)
+		if !input.CollisionAt.IsZero() {
+			collisionAt := input.CollisionAt
+			result.CollisionAt = &collisionAt
+		}
+		return result, nil
 	}
 	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusGeneratingMemoryPatch, 90)
 	reflection, err := g.reflectScene(ctx, input, snapshot, plan, finalVariable)
@@ -135,7 +157,44 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		})
 		reflection = fallbackReflectionResult(plan, finalVariable)
 	}
-	return g.assembleStoryRunResult(input, plan, reflection, finalVariable), nil
+	result := g.assembleStoryRunResult(input, plan, reflection, finalVariable)
+	result.CompletedActions = append([]model.OngoingAction(nil), input.CompletedActions...)
+	result.SupersededActions = append([]model.OngoingAction(nil), input.SupersededActions...)
+	if !input.CollisionAt.IsZero() {
+		collisionAt := input.CollisionAt
+		result.CollisionAt = &collisionAt
+	}
+	return result, nil
+}
+
+func (g *StoryRunGenerator) returnIfStopped(ctx context.Context, input port.StoryRunGenerationInput, boundary string) error {
+	stopped, err := g.stopRequested(ctx, input, boundary)
+	if err != nil {
+		return err
+	}
+	if stopped {
+		return port.ErrRunStopRequested
+	}
+	return nil
+}
+
+func (g *StoryRunGenerator) stopRequested(ctx context.Context, input port.StoryRunGenerationInput, boundary string) (bool, error) {
+	if input.Run.StopRequested {
+		publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventGenerationStep, map[string]any{"step": "stop_requested", "boundary": boundary})
+		return true, nil
+	}
+	if g.deps.sessions == nil {
+		return false, nil
+	}
+	run, err := g.deps.sessions.GetRunByID(ctx, input.Run.RunID)
+	if err != nil {
+		return false, err
+	}
+	if run.StopRequested || run.Status == domain.RunStatusCancelled {
+		publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventGenerationStep, map[string]any{"step": "stop_requested", "boundary": boundary})
+		return true, nil
+	}
+	return false, nil
 }
 
 func (g *StoryRunGenerator) publishStoryOrchestrationStarted(ctx context.Context, input port.StoryRunGenerationInput) {
@@ -157,45 +216,18 @@ func (g *StoryRunGenerator) reflectSystemPrompt() string {
 }
 
 func defaultScenePrompt() string {
-	return `You are NovelOS' single scene simulator. Simulate only what happens after the supplied planned_actions: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
-planned_actions is authoritative for what each listed character intends to do; do not invent different character goals or additional participants.
-Do not write chapter prose. Do not output content or draft_delta. Do not output memory_patch.
-
-Perspective contract:
-- You receive shared_observable and one private character_view per character.
-- A character's speech/action must be grounded only in shared_observable plus that character's own character_view.
-- Do not let a character use another character's secrets, private_attitude, or non-public known_facts unless that information was spoken or observed.
-- Character misreadings should shape behavior; do not correct them with omniscient truth.
-
-Output strict NDJSON, one JSON object per line, no array, no markdown fence.
-Order: one plot_variable, then event records, then 0-3 interaction records, then turn records, then one stop record.
-Allowed record types only:
-{"type":"plot_variable","plot_variable":{...}}
-{"type":"event","event":{...}}
-{"type":"interaction","interaction_group":{...}}
-{"type":"turn","turn":{...}}
-{"type":"stop","stop_reason":"..."}
-
-Every event must include location_key, action_type, and summary. interaction_group.character_ids must share the same location. Maximum turns: constraints.max_turns.`
+	return config.DefaultStoryAgentScenePrompt()
 }
 
 func defaultSceneFallbackPrompt() string {
-	return `You are NovelOS' non-streaming scene simulation fallback. Output one JSON object with plot_variable, event_plan or events, interaction_groups, turns, and stop_reason. Do not output title, content, draft_delta, or memory_patch.`
+	return config.DefaultStoryAgentResultPrompt()
 }
 
 func defaultReflectPrompt() string {
-	return `You are NovelOS' scene reflection and memory agent. Given a completed simulated scene plus perception_index and prior_memories, output exactly one JSON object:
-{"summary":"...","character_takeaways":[{"character_id":"...","summary":"..."}],"memory_patch":{"character_memory_updates":[],"relationship_updates":[],"world_state_updates":[]}}
-
-Memory perspective contract:
-- Each character_memory_update must be based only on turn/event ids visible to that character in perception_index.
-- A character not present may record only observable external facts, not private dialogue.
-- Misreadings are allowed as beliefs when grounded in that character's view; do not correct with global truth.
-- Deduplicate prior_memories and write only new or changed memories from this scene.
-Do not write prose. Output JSON only.`
+	return config.DefaultStoryAgentReflectPrompt()
 }
 func (g *StoryRunGenerator) sceneUserPrompt(sceneContext SceneContext) string {
-	payload, _ := json.Marshal(sceneContext)
+	payload, _ := json.Marshal(buildScenePromptInput(sceneContext))
 	return string(payload)
 }
 
@@ -255,9 +287,13 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 			LastAuthorMessage:   input.Session.LastAuthorMessage,
 			CurrentPlotVariable: input.Session.CurrentPlotVariableSummary,
 		},
-		AuthorBible:      compactAuthorBible(snapshot.AuthorBible),
-		PlotVariableSeed: seed,
-		PlannedActions:   plannedActions,
+		AuthorBible:       compactAuthorBible(snapshot.AuthorBible),
+		PlotVariableSeed:  seed,
+		PlannedActions:    plannedActions,
+		InFlightActions:   append([]model.OngoingAction(nil), input.InFlightActions...),
+		CompletedActions:  append([]model.OngoingAction(nil), input.CompletedActions...),
+		SupersededActions: append([]model.OngoingAction(nil), input.SupersededActions...),
+		CollisionAt:       formatOptionalTime(input.CollisionAt),
 		SharedObservable: SharedObservableContext{
 			LocationHints:    compactWorldState(snapshot.WorldState, 5),
 			PublicWorldState: compactWorldState(publicWorld, 8),
@@ -279,7 +315,10 @@ func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port
 	if err != nil {
 		return nil, err
 	}
-	characterIDs := idleCharacterIDs(world, snapshot.Characters)
+	characterIDs := input.WakeCharacterIDs
+	if len(characterIDs) == 0 {
+		characterIDs = idleCharacterIDs(world, snapshot.Characters)
+	}
 	if len(characterIDs) == 0 {
 		return nil, nil
 	}
@@ -329,6 +368,9 @@ func (g *StoryRunGenerator) planCharacterAction(ctx context.Context, snapshot St
 }
 
 func (g *StoryRunGenerator) decisionWorldSnapshot(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (model.WorldSnapshot, error) {
+	if input.World.AtEventID != "" || !input.World.StoryTime.IsZero() || len(input.World.Characters) > 0 {
+		return input.World, nil
+	}
 	if g.deps.storyEvents != nil && input.Run.BaseEventID != "" {
 		return g.deps.storyEvents.ResolveStateAt(ctx, input.Run.BaseEventID)
 	}
@@ -552,7 +594,11 @@ func scenePlannedActionFromDecision(characters []model.Character, character mode
 		Description:       description,
 		TargetLocationKey: strings.TrimSpace(decision.TargetLocationKey),
 		DurationHours:     durationHours,
+		ArriveAt:          optionalTime(decision.ArriveAt),
+		EffectAt:          optionalTime(decision.EffectAt),
+		EndsAt:            optionalTime(decision.EndsAt),
 		ParticipantIDs:    uniqueStoryIDs(participantIDs),
+		ResourceKeys:      uniqueStoryIDs(decision.AffectedResourceKeys),
 		Rationale:         strings.TrimSpace(decision.Rationale),
 	}, nil
 }
@@ -580,6 +626,24 @@ func sceneCharacterIDsForContext(seed StoryVariablePlan, characters []model.Char
 		return sceneCharacterIDs(seed.PlotVariable.RelatedCharacterIDs, characters)
 	}
 	return ids
+}
+
+func actionCharacterIDs(actions []model.OngoingAction) []string {
+	ids := make([]string, 0, len(actions)*2)
+	for _, action := range actions {
+		ids = appendUniqueString(ids, action.CharacterID)
+		for _, participantID := range action.ParticipantIDs {
+			ids = appendUniqueString(ids, participantID)
+		}
+	}
+	return ids
+}
+
+func formatOptionalTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(time.RFC3339)
 }
 
 func plannedActionCharacterIDs(plannedActions []ScenePlannedAction) []string {
@@ -610,7 +674,7 @@ func plannedActionsHaveRenderableEncounter(plannedActions []ScenePlannedAction) 
 	for i, left := range plannedActions {
 		for j := i + 1; j < len(plannedActions); j++ {
 			right := plannedActions[j]
-			if plannedActionsShareLocation(left, right) || plannedActionTargetsCharacter(left, right.CharacterID) || plannedActionTargetsCharacter(right, left.CharacterID) {
+			if plannedActionsShareLocation(left, right) || plannedActionTargetsCharacter(left, right.CharacterID) || plannedActionTargetsCharacter(right, left.CharacterID) || plannedActionsShareResource(left, right) {
 				return true
 			}
 		}
@@ -630,6 +694,25 @@ func plannedActionTargetsCharacter(action ScenePlannedAction, characterID string
 	}
 	for _, participantID := range action.ParticipantIDs {
 		if participantID == characterID {
+			return true
+		}
+	}
+	return false
+}
+
+func plannedActionsShareResource(left, right ScenePlannedAction) bool {
+	if len(left.ResourceKeys) == 0 || len(right.ResourceKeys) == 0 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(left.ResourceKeys))
+	for _, key := range left.ResourceKeys {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	for _, key := range right.ResourceKeys {
+		if _, ok := seen[strings.TrimSpace(key)]; ok {
 			return true
 		}
 	}
@@ -983,6 +1066,14 @@ func (g *StoryRunGenerator) consumeSceneStream(ctx context.Context, input port.S
 			return StoryPlanResult{}, StoryVariablePlan{}, ctx.Err()
 		default:
 		}
+		if stopped, err := g.stopRequested(ctx, input, "scene_stream"); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		} else if stopped {
+			if consumer.hasCommittableScene() {
+				return consumer.finish(ctx)
+			}
+			return StoryPlanResult{}, StoryVariablePlan{}, port.ErrRunStopRequested
+		}
 		msg, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			break
@@ -1026,16 +1117,33 @@ func (g *StoryRunGenerator) consumeSceneBatch(ctx context.Context, input port.St
 		events = batch.Events
 	}
 	for _, event := range events {
+		if stopped, err := g.stopRequested(ctx, input, "scene_batch"); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		} else if stopped && !consumer.hasCommittableScene() {
+			return StoryPlanResult{}, StoryVariablePlan{}, port.ErrRunStopRequested
+		}
 		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "event", Event: event}); err != nil {
 			return StoryPlanResult{}, StoryVariablePlan{}, err
 		}
 	}
 	for _, group := range batch.InteractionGroups {
+		if stopped, err := g.stopRequested(ctx, input, "scene_batch"); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		} else if stopped && !consumer.hasCommittableScene() {
+			return StoryPlanResult{}, StoryVariablePlan{}, port.ErrRunStopRequested
+		}
 		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "interaction", InteractionGroup: group}); err != nil {
 			return StoryPlanResult{}, StoryVariablePlan{}, err
 		}
 	}
 	for _, turn := range batch.Turns {
+		if stopped, err := g.stopRequested(ctx, input, "scene_batch"); err != nil {
+			return StoryPlanResult{}, StoryVariablePlan{}, err
+		} else if stopped && consumer.hasCommittableScene() {
+			break
+		} else if stopped {
+			return StoryPlanResult{}, StoryVariablePlan{}, port.ErrRunStopRequested
+		}
 		if err := consumer.consumeRecord(ctx, sceneRecord{Type: "turn", Turn: turn}); err != nil {
 			return StoryPlanResult{}, StoryVariablePlan{}, err
 		}
@@ -1349,6 +1457,12 @@ func (c *sceneConsumer) finish(ctx context.Context) (StoryPlanResult, StoryVaria
 	return plan, c.variable, nil
 }
 
+func (c *sceneConsumer) hasCommittableScene() bool {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	return len(c.state.turns) > 0 || len(c.state.interactionTranscripts) > 0
+}
+
 func (c *sceneConsumer) publishLocationGroups(ctx context.Context) {
 	if c.locationGroupsPublished {
 		return
@@ -1462,6 +1576,10 @@ func eventPlanFromPlannedActions(plannedActions []ScenePlannedAction) []model.St
 			ID:             fmt.Sprintf("planned_action_%d", len(events)+1),
 			TimeIndex:      0,
 			DurationHours:  durationHours,
+			StartAt:        copyTimePtr(action.StartAt),
+			ArriveAt:       copyTimePtr(action.ArriveAt),
+			EffectAt:       copyTimePtr(action.EffectAt),
+			EndsAt:         copyTimePtr(action.EndsAt),
 			CharacterID:    characterID,
 			CharacterName:  strings.TrimSpace(action.CharacterName),
 			LocationKey:    firstText(strings.TrimSpace(action.TargetLocationKey), "scene"),
@@ -1469,9 +1587,26 @@ func eventPlanFromPlannedActions(plannedActions []ScenePlannedAction) []model.St
 			Summary:        description,
 			Intent:         strings.TrimSpace(action.Rationale),
 			TargetActorIDs: uniqueStoryIDs(action.ParticipantIDs),
+			ResourceKeys:   uniqueStoryIDs(action.ResourceKeys),
 		})
 	}
 	return events
+}
+
+func optionalTime(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	copyValue := value
+	return &copyValue
+}
+
+func copyTimePtr(value *time.Time) *time.Time {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	copyValue := *value
+	return &copyValue
 }
 
 func isAllowedStoryActionType(actionType string) bool {
@@ -1492,7 +1627,7 @@ func (g *StoryRunGenerator) reflectScene(ctx context.Context, input port.StoryRu
 		return SceneReflectionResult{}, errors.New("story model is not configured")
 	}
 	reflectionContext := g.buildReflectionContext(input, snapshot, plan, variable)
-	payload, _ := json.Marshal(reflectionContext)
+	payload, _ := json.Marshal(buildReflectionPromptInput(reflectionContext))
 	msg, err := g.model.Generate(ctx, []*schema.Message{
 		schema.SystemMessage(g.reflectSystemPrompt()),
 		schema.UserMessage(string(payload)),
@@ -1682,20 +1817,6 @@ func appendUniqueInt(values []int, value int) []int {
 	}
 	return append(values, value)
 }
-func (g *StoryRunGenerator) nextChapterNumber(ctx context.Context, projectID string) (int, error) {
-	chapters, err := g.deps.chapters.ListByProjectID(ctx, projectID, model.PageInput{Page: 1, PageSize: 1000})
-	if err != nil {
-		return 0, err
-	}
-	maxNumber := 0
-	for _, chapter := range chapters.Items {
-		if chapter.ChapterNumber > maxNumber {
-			maxNumber = chapter.ChapterNumber
-		}
-	}
-	return maxNumber + 1, nil
-}
-
 func (g *StoryRunGenerator) newID(prefix string) string {
 	if g.ids != nil {
 		return g.ids.New(prefix)

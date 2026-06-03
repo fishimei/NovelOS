@@ -7,10 +7,13 @@ package port
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 )
+
+var ErrRunStopRequested = errors.New("run stop requested")
 
 // GenerationEvent 是 AI 生成过程中的事件。
 type GenerationEvent struct {
@@ -67,8 +70,14 @@ type StoryRunGenerator interface {
 }
 
 type StoryRunGenerationInput struct {
-	Run     model.StoryRun
-	Session model.StorySession
+	Run               model.StoryRun
+	Session           model.StorySession
+	World             model.WorldSnapshot
+	WakeCharacterIDs  []string
+	InFlightActions   []model.OngoingAction
+	CompletedActions  []model.OngoingAction
+	SupersededActions []model.OngoingAction
+	CollisionAt       time.Time
 }
 
 type CharacterActionDecider interface {

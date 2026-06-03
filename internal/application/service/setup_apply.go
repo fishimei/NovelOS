@@ -290,7 +290,6 @@ func (a *SetupRunApplier) appendAppliedEvent(ctx context.Context, sessionID stri
 		RunKind:   "setup",
 		RunID:     run.RunID,
 		EventName: "setup_run_applied",
-		Sequence:  1,
 		Payload: map[string]any{
 			"session_id":           sessionID,
 			"accept_author_bible":  input.AcceptAuthorBible,

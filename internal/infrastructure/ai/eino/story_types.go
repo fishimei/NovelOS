@@ -3,6 +3,7 @@ package eino
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 )
@@ -75,27 +76,36 @@ type StoryVariablePlan struct {
 }
 
 type SceneContext struct {
-	StoryRunID       string                  `json:"story_run_id"`
-	ProjectID        string                  `json:"project_id"`
-	SessionID        string                  `json:"session_id"`
-	Session          SceneSessionContext     `json:"session"`
-	AuthorBible      map[string]any          `json:"author_bible,omitempty"`
-	PlotVariableSeed StoryVariablePlan       `json:"plot_variable_seed"`
-	PlannedActions   []ScenePlannedAction    `json:"planned_actions,omitempty"`
-	SharedObservable SharedObservableContext `json:"shared_observable"`
-	CharacterViews   []SceneCharacterView    `json:"character_views"`
-	Constraints      SceneConstraints        `json:"constraints"`
+	StoryRunID        string                  `json:"story_run_id"`
+	ProjectID         string                  `json:"project_id"`
+	SessionID         string                  `json:"session_id"`
+	Session           SceneSessionContext     `json:"session"`
+	AuthorBible       map[string]any          `json:"author_bible,omitempty"`
+	PlotVariableSeed  StoryVariablePlan       `json:"plot_variable_seed"`
+	PlannedActions    []ScenePlannedAction    `json:"planned_actions,omitempty"`
+	InFlightActions   []model.OngoingAction   `json:"in_flight_actions,omitempty"`
+	CompletedActions  []model.OngoingAction   `json:"completed_actions,omitempty"`
+	SupersededActions []model.OngoingAction   `json:"superseded_actions,omitempty"`
+	CollisionAt       string                  `json:"collision_at,omitempty"`
+	SharedObservable  SharedObservableContext `json:"shared_observable"`
+	CharacterViews    []SceneCharacterView    `json:"character_views"`
+	Constraints       SceneConstraints        `json:"constraints"`
 }
 
 type ScenePlannedAction struct {
-	CharacterID       string   `json:"character_id"`
-	CharacterName     string   `json:"character_name,omitempty"`
-	ActionType        string   `json:"action_type"`
-	Description       string   `json:"description"`
-	TargetLocationKey string   `json:"target_location_key,omitempty"`
-	DurationHours     int      `json:"duration_hours"`
-	ParticipantIDs    []string `json:"participant_ids,omitempty"`
-	Rationale         string   `json:"rationale,omitempty"`
+	CharacterID       string     `json:"character_id"`
+	CharacterName     string     `json:"character_name,omitempty"`
+	ActionType        string     `json:"action_type"`
+	Description       string     `json:"description"`
+	TargetLocationKey string     `json:"target_location_key,omitempty"`
+	DurationHours     int        `json:"duration_hours"`
+	StartAt           *time.Time `json:"start_at,omitempty"`
+	ArriveAt          *time.Time `json:"arrive_at,omitempty"`
+	EffectAt          *time.Time `json:"effect_at,omitempty"`
+	EndsAt            *time.Time `json:"ends_at,omitempty"`
+	ParticipantIDs    []string   `json:"participant_ids,omitempty"`
+	ResourceKeys      []string   `json:"resource_keys,omitempty"`
+	Rationale         string     `json:"rationale,omitempty"`
 }
 
 type SceneSessionContext struct {
@@ -228,6 +238,7 @@ type RecordStoryEventInput struct {
 	Intent         string   `json:"intent"`
 	Visibility     string   `json:"visibility"`
 	TargetActorIDs []string `json:"target_actor_ids"`
+	ResourceKeys   []string `json:"resource_keys"`
 }
 
 type SelectStoryInteractionInput struct {

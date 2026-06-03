@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -72,7 +74,8 @@ func (e *RunExecutor) scan(ctx context.Context) {
 }
 
 func (e *RunExecutor) handle(parent context.Context, work model.RunExecutionWork, staleBefore time.Time) {
-	claimed, err := e.repo.ClaimRun(parent, work, staleBefore)
+	lease := e.leaseFor(work)
+	claimed, err := e.repo.ClaimRun(parent, work, lease, staleBefore)
 	if err != nil {
 		log.Printf("run executor claim %s %s failed: %v", work.RunKind, work.RunID, err)
 		return
@@ -82,6 +85,7 @@ func (e *RunExecutor) handle(parent context.Context, work model.RunExecutionWork
 	}
 	ctx, cancel := context.WithTimeout(parent, e.settings.runTimeout())
 	defer cancel()
+	ctx = port.ContextWithRunLease(ctx, lease)
 	switch work.RunKind {
 	case port.RunKindSetup:
 		if e.setupAdvancer != nil {
@@ -98,4 +102,16 @@ func (e *RunExecutor) handle(parent context.Context, work model.RunExecutionWork
 	default:
 		log.Printf("run executor ignored unknown run kind %q for %s", work.RunKind, work.RunID)
 	}
+}
+
+func (e *RunExecutor) leaseFor(work model.RunExecutionWork) port.RunLease {
+	return port.RunLease{Owner: newRunLeaseOwner(work), Duration: e.settings.staleAfter()}
+}
+
+func newRunLeaseOwner(work model.RunExecutionWork) string {
+	var entropy [12]byte
+	if _, err := rand.Read(entropy[:]); err == nil {
+		return fmt.Sprintf("%s:%s:%x", work.RunKind, work.RunID, entropy)
+	}
+	return fmt.Sprintf("%s:%s:%d", work.RunKind, work.RunID, time.Now().UnixNano())
 }

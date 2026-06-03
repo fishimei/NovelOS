@@ -135,6 +135,10 @@ func (s *autoActionDialogueSessions) UpdateRunStatus(context.Context, string, st
 	return errors.New("not implemented")
 }
 
+func (s *autoActionDialogueSessions) UpdateRunHeartbeat(context.Context, string) error {
+	return errors.New("not implemented")
+}
+
 func (s *autoActionDialogueSessions) SaveRunResult(context.Context, string, model.DialogueRunResult) error {
 	return errors.New("not implemented")
 }

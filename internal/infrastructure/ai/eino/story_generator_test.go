@@ -391,7 +391,7 @@ func TestSimulateSceneConsumesV2NDJSONStream(t *testing.T) {
 	if len(chatModel.systemPrompts) != 1 {
 		t.Fatalf("expected one model stream call, got %d", len(chatModel.systemPrompts))
 	}
-	if !strings.Contains(chatModel.systemPrompts[0], "single scene simulator") {
+	if !strings.Contains(chatModel.systemPrompts[0], "scene simulator") {
 		t.Fatalf("expected scene prompt, got %q", chatModel.systemPrompts[0])
 	}
 }

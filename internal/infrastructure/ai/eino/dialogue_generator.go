@@ -124,9 +124,6 @@ When cutting the latest completed span, use propose_story_cut_latest_completed_s
 func (g *DialogueRunGenerator) userPrompt(input port.DialogueRunGenerationInput) string {
 	messages, _ := json.Marshal(input.Session.Messages)
 	payload, _ := json.Marshal(map[string]any{
-		"project_id":           input.Run.ProjectID,
-		"dialogue_session_id":  input.Session.ID,
-		"dialogue_run_id":      input.Run.RunID,
 		"execution_mode":       dialogueExecutionMode(g.deps.autoPilot),
 		"auto_allowed_actions": autoAllowedDialogueActions(g.deps.autoPilot),
 		"last_user_message":    input.Session.LastUserMessage,

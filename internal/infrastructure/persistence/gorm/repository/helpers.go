@@ -10,6 +10,7 @@ import (
 
 	"github.com/fishimei/NovelOS/internal/application/model"
 	"github.com/fishimei/NovelOS/internal/application/port"
+	"github.com/fishimei/NovelOS/internal/domain"
 	gormstore "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm"
 	persistencemodels "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm/models"
 	"github.com/fishimei/NovelOS/internal/pkgerr"
@@ -91,6 +92,33 @@ func mapDBError(err error, notFoundMessage string) error {
 func isNotFound(err error) bool {
 	var appErr *pkgerr.Error
 	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeNotFound
+}
+
+func isConflict(err error) bool {
+	var appErr *pkgerr.Error
+	return errors.As(err, &appErr) && appErr.Code == pkgerr.CodeConflict
+}
+
+func activeRunStatuses() []string {
+	return []string{
+		domain.RunStatusQueued,
+		domain.RunStatusLoadingState,
+		domain.RunStatusPlanningActions,
+		domain.RunStatusExecutingAction,
+		domain.RunStatusSelectingConflictAxis,
+		domain.RunStatusGeneratingPlotVariable,
+		domain.RunStatusPlanningEvents,
+		domain.RunStatusSelectingInteractions,
+		domain.RunStatusNegotiatingInteractions,
+		domain.RunStatusDrivingCharacterTurns,
+		domain.RunStatusWritingNarrative,
+		domain.RunStatusCheckingContinuity,
+		domain.RunStatusGeneratingMemoryPatch,
+	}
+}
+
+func activeStoryRunStatuses() []string {
+	return activeRunStatuses()
 }
 
 func toProject(row persistencemodels.Project) model.Project {

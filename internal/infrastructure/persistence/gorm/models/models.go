@@ -163,15 +163,17 @@ type SetupMessage struct {
 func (SetupMessage) TableName() string { return "setup_messages" }
 
 type SetupRun struct {
-	ID          string    `gorm:"primaryKey;size:64"`
-	SessionID   string    `gorm:"not null;index"`
-	ProjectID   string    `gorm:"not null;index"`
-	Status      string    `gorm:"not null;default:''"`
-	CurrentStep string    `gorm:"not null;default:''"`
-	Progress    int       `gorm:"not null;default:0"`
-	Error       string    `gorm:"not null;default:''"`
-	CreatedAt   time.Time `gorm:"not null"`
-	UpdatedAt   time.Time `gorm:"not null"`
+	ID             string     `gorm:"primaryKey;size:64"`
+	SessionID      string     `gorm:"not null;index"`
+	ProjectID      string     `gorm:"not null;index"`
+	Status         string     `gorm:"not null;default:''"`
+	CurrentStep    string     `gorm:"not null;default:''"`
+	Progress       int        `gorm:"not null;default:0"`
+	Error          string     `gorm:"not null;default:''"`
+	LeaseOwner     string     `gorm:"not null;default:'';index"`
+	LeaseExpiresAt *time.Time `gorm:"index"`
+	CreatedAt      time.Time  `gorm:"not null"`
+	UpdatedAt      time.Time  `gorm:"not null"`
 }
 
 func (SetupRun) TableName() string { return "setup_runs" }
@@ -214,20 +216,22 @@ type StoryMessage struct {
 func (StoryMessage) TableName() string { return "story_messages" }
 
 type StoryRun struct {
-	ID            string `gorm:"primaryKey;size:64"`
-	SessionID     string `gorm:"not null;index"`
-	ProjectID     string `gorm:"not null;index"`
-	BranchID      string `gorm:"not null;default:'';index"`
-	BaseEventID   string `gorm:"not null;default:'';index"`
-	HeadEventID   string `gorm:"not null;default:'';index"`
-	Status        string `gorm:"not null;default:''"`
-	CurrentStep   string `gorm:"not null;default:''"`
-	Progress      int    `gorm:"not null;default:0"`
-	Error         string `gorm:"not null;default:''"`
-	StopRequested bool   `gorm:"not null;default:false"`
-	CutAt         *time.Time
-	CreatedAt     time.Time `gorm:"not null"`
-	UpdatedAt     time.Time `gorm:"not null"`
+	ID             string     `gorm:"primaryKey;size:64"`
+	SessionID      string     `gorm:"not null;index"`
+	ProjectID      string     `gorm:"not null;index"`
+	BranchID       string     `gorm:"not null;default:'';index"`
+	BaseEventID    string     `gorm:"not null;default:'';index"`
+	HeadEventID    string     `gorm:"not null;default:'';index"`
+	Status         string     `gorm:"not null;default:''"`
+	CurrentStep    string     `gorm:"not null;default:''"`
+	Progress       int        `gorm:"not null;default:0"`
+	Error          string     `gorm:"not null;default:''"`
+	StopRequested  bool       `gorm:"not null;default:false"`
+	LeaseOwner     string     `gorm:"not null;default:'';index"`
+	LeaseExpiresAt *time.Time `gorm:"index"`
+	CutAt          *time.Time
+	CreatedAt      time.Time `gorm:"not null"`
+	UpdatedAt      time.Time `gorm:"not null"`
 }
 
 func (StoryRun) TableName() string { return "story_runs" }
@@ -392,15 +396,17 @@ type DialogueMessage struct {
 func (DialogueMessage) TableName() string { return "dialogue_messages" }
 
 type DialogueRun struct {
-	ID          string    `gorm:"primaryKey;size:64"`
-	SessionID   string    `gorm:"not null;index"`
-	ProjectID   string    `gorm:"not null;index"`
-	Status      string    `gorm:"not null;default:''"`
-	CurrentStep string    `gorm:"not null;default:''"`
-	Progress    int       `gorm:"not null;default:0"`
-	Error       string    `gorm:"not null;default:''"`
-	CreatedAt   time.Time `gorm:"not null"`
-	UpdatedAt   time.Time `gorm:"not null"`
+	ID             string     `gorm:"primaryKey;size:64"`
+	SessionID      string     `gorm:"not null;index"`
+	ProjectID      string     `gorm:"not null;index"`
+	Status         string     `gorm:"not null;default:''"`
+	CurrentStep    string     `gorm:"not null;default:''"`
+	Progress       int        `gorm:"not null;default:0"`
+	Error          string     `gorm:"not null;default:''"`
+	LeaseOwner     string     `gorm:"not null;default:'';index"`
+	LeaseExpiresAt *time.Time `gorm:"index"`
+	CreatedAt      time.Time  `gorm:"not null"`
+	UpdatedAt      time.Time  `gorm:"not null"`
 }
 
 func (DialogueRun) TableName() string { return "dialogue_runs" }
@@ -440,10 +446,10 @@ func (DialogueActionOption) TableName() string { return "dialogue_action_options
 
 type RunEvent struct {
 	ID          string    `gorm:"primaryKey;size:64"`
-	RunKind     string    `gorm:"not null;index:idx_run_event_lookup,priority:1"`
-	RunID       string    `gorm:"not null;index:idx_run_event_lookup,priority:2"`
+	RunKind     string    `gorm:"not null;index:idx_run_event_lookup,priority:1;uniqueIndex:idx_run_event_sequence_unique,priority:1"`
+	RunID       string    `gorm:"not null;index:idx_run_event_lookup,priority:2;uniqueIndex:idx_run_event_sequence_unique,priority:2"`
 	EventName   string    `gorm:"not null;default:''"`
-	Sequence    int       `gorm:"not null;index:idx_run_event_lookup,priority:3"`
+	Sequence    int       `gorm:"not null;index:idx_run_event_lookup,priority:3;uniqueIndex:idx_run_event_sequence_unique,priority:3"`
 	PayloadJSON JSONB     `gorm:"type:jsonb;not null"`
 	CreatedAt   time.Time `gorm:"not null"`
 }

@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
+	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/domain"
 	persistencemodels "github.com/fishimei/NovelOS/internal/infrastructure/persistence/gorm/models"
 	"github.com/fishimei/NovelOS/internal/pkgerr"
@@ -14,6 +16,53 @@ import (
 
 type setupRunResultPayload struct {
 	SetupDraft model.SetupDraft `json:"setup_draft"`
+}
+
+const runLeaseLostMessage = "run lease lost"
+
+func runLeaseLostError() error {
+	return pkgerr.Conflict(pkgerr.CodeConflict, runLeaseLostMessage)
+}
+
+func runLeaseScopedDB(ctx context.Context, db *gorm.DB) (*gorm.DB, bool) {
+	lease, ok := port.RunLeaseFromContext(ctx)
+	if !ok {
+		return db, false
+	}
+	return db.Where("lease_owner = ?", lease.Owner), true
+}
+
+func runLeaseMutationError(ctx context.Context, result *gorm.DB, resource string) error {
+	if result.Error != nil {
+		return mapDBError(result.Error, resource)
+	}
+	if _, ok := port.RunLeaseFromContext(ctx); ok && result.RowsAffected == 0 {
+		return runLeaseLostError()
+	}
+	return nil
+}
+
+func applyRunLeaseUpdates(ctx context.Context, updates map[string]any, status string, now time.Time) {
+	if terminalRunStatus(status) {
+		updates["lease_owner"] = ""
+		updates["lease_expires_at"] = nil
+		return
+	}
+	lease, ok := port.RunLeaseFromContext(ctx)
+	if !ok {
+		return
+	}
+	updates["lease_owner"] = lease.Owner
+	updates["lease_expires_at"] = lease.ExpiresAt(now)
+}
+
+func terminalRunStatus(status string) bool {
+	switch status {
+	case domain.RunStatusCompleted, domain.RunStatusCut, domain.RunStatusFailed, domain.RunStatusCancelled, "applied":
+		return true
+	default:
+		return false
+	}
 }
 
 type storyRunResultPayload struct {
@@ -30,6 +79,9 @@ type storyRunResultPayload struct {
 	Review                 model.ReviewReport                 `json:"review"`
 	MemoryPatch            model.MemoryPatch                  `json:"memory_patch"`
 	Events                 []model.StoryEvent                 `json:"events,omitempty"`
+	CompletedActions       []model.OngoingAction              `json:"completed_actions,omitempty"`
+	SupersededActions      []model.OngoingAction              `json:"superseded_actions,omitempty"`
+	CollisionAt            *time.Time                         `json:"collision_at,omitempty"`
 }
 
 type dialogueRunResultPayload struct {
@@ -294,14 +346,17 @@ func (r *setupSessionRepository) SaveRunResult(ctx context.Context, runID string
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(map[string]any{
+	updates := map[string]any{
 		"status":       result.Status,
 		"current_step": "completed",
 		"progress":     100,
 		"error":        "",
 		"updated_at":   now,
-	}).Error; err != nil {
-		return mapDBError(err, "setup run not found")
+	}
+	applyRunLeaseUpdates(ctx, updates, result.Status, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID))
+	if err := runLeaseMutationError(ctx, db.Updates(updates), "setup run not found"); err != nil {
+		return err
 	}
 	return mapDBError(r.dbFor(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "run_id"}},
@@ -310,28 +365,41 @@ func (r *setupSessionRepository) SaveRunResult(ctx context.Context, runID string
 }
 
 func (r *setupSessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error {
+	now := r.now()
 	updates := map[string]any{
 		"status":       status,
 		"current_step": currentStep,
 		"progress":     progress,
-		"updated_at":   r.now(),
+		"updated_at":   now,
 	}
 	if len(errorMessage) > 0 {
 		updates["error"] = errorMessage[0]
 	}
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(updates).Error, "setup run not found")
+	applyRunLeaseUpdates(ctx, updates, status, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID))
+	return runLeaseMutationError(ctx, db.Updates(updates), "setup run not found")
+}
+
+func (r *setupSessionRepository) UpdateRunHeartbeat(ctx context.Context, runID string) error {
+	now := r.now()
+	updates := map[string]any{"updated_at": now}
+	applyRunLeaseUpdates(ctx, updates, domain.RunStatusLoadingState, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.SetupRun{}).Where("id = ?", runID))
+	return runLeaseMutationError(ctx, db.Updates(updates), "setup run not found")
 }
 
 func (r *setupSessionRepository) MarkApplied(ctx context.Context, sessionID string, runID string) error {
 	now := r.now()
 	db := r.dbFor(ctx)
-	if err := db.Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(map[string]any{
+	updates := map[string]any{
 		"status":       "applied",
 		"current_step": "applied",
 		"progress":     100,
 		"error":        "",
 		"updated_at":   now,
-	}).Error; err != nil {
+	}
+	applyRunLeaseUpdates(ctx, updates, "applied", now)
+	if err := db.Model(&persistencemodels.SetupRun{}).Where("id = ?", runID).Updates(updates).Error; err != nil {
 		return mapDBError(err, "setup run not found")
 	}
 	return mapDBError(db.Model(&persistencemodels.SetupSession{}).Where("id = ?", sessionID).Updates(map[string]any{
@@ -475,16 +543,27 @@ func (r *dialogueSessionRepository) GetRunByID(ctx context.Context, runID string
 }
 
 func (r *dialogueSessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error {
+	now := r.now()
 	updates := map[string]any{
 		"status":       status,
 		"current_step": currentStep,
 		"progress":     progress,
-		"updated_at":   r.now(),
+		"updated_at":   now,
 	}
 	if len(errorMessage) > 0 {
 		updates["error"] = errorMessage[0]
 	}
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.DialogueRun{}).Where("id = ?", runID).Updates(updates).Error, "dialogue run not found")
+	applyRunLeaseUpdates(ctx, updates, status, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.DialogueRun{}).Where("id = ?", runID))
+	return runLeaseMutationError(ctx, db.Updates(updates), "dialogue run not found")
+}
+
+func (r *dialogueSessionRepository) UpdateRunHeartbeat(ctx context.Context, runID string) error {
+	now := r.now()
+	updates := map[string]any{"updated_at": now}
+	applyRunLeaseUpdates(ctx, updates, domain.RunStatusLoadingState, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.DialogueRun{}).Where("id = ?", runID))
+	return runLeaseMutationError(ctx, db.Updates(updates), "dialogue run not found")
 }
 
 func (r *dialogueSessionRepository) SaveRunResult(ctx context.Context, runID string, result model.DialogueRunResult) error {
@@ -509,14 +588,17 @@ func (r *dialogueSessionRepository) SaveRunResult(ctx context.Context, runID str
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := r.dbFor(ctx).Model(&persistencemodels.DialogueRun{}).Where("id = ?", runID).Updates(map[string]any{
+	updates := map[string]any{
 		"status":       result.Status,
 		"current_step": "completed",
 		"progress":     100,
 		"error":        "",
 		"updated_at":   now,
-	}).Error; err != nil {
-		return mapDBError(err, "dialogue run not found")
+	}
+	applyRunLeaseUpdates(ctx, updates, result.Status, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.DialogueRun{}).Where("id = ?", runID))
+	if err := runLeaseMutationError(ctx, db.Updates(updates), "dialogue run not found"); err != nil {
+		return err
 	}
 	return mapDBError(r.dbFor(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "run_id"}},
@@ -877,10 +959,35 @@ func (r *storySessionRepository) DeleteSession(ctx context.Context, sessionID st
 		if err := tx.First(&session, "id = ?", sessionID).Error; err != nil {
 			return err
 		}
+		var cutCount int64
+		if err := tx.Model(&persistencemodels.StoryRun{}).Where("session_id = ? AND (status = ? OR cut_at IS NOT NULL)", sessionID, domain.RunStatusCut).Count(&cutCount).Error; err != nil {
+			return err
+		}
+		if cutCount > 0 {
+			return pkgerr.Conflict(pkgerr.CodeConflict, "story session has cut chapters and cannot be deleted")
+		}
 
 		var runIDs []string
 		if err := tx.Model(&persistencemodels.StoryRun{}).Where("session_id = ?", sessionID).Pluck("id", &runIDs).Error; err != nil {
 			return err
+		}
+		var branchIDs []string
+		if err := tx.Model(&persistencemodels.StoryBranch{}).Where("session_id = ?", sessionID).Pluck("id", &branchIDs).Error; err != nil {
+			return err
+		}
+		if len(branchIDs) > 0 {
+			if err := tx.Where("branch_id IN ?", branchIDs).Delete(&persistencemodels.ChapterEventSpan{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("branch_id IN ?", branchIDs).Delete(&persistencemodels.StorySnapshot{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("branch_id IN ?", branchIDs).Delete(&persistencemodels.StoryEvent{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", branchIDs).Delete(&persistencemodels.StoryBranch{}).Error; err != nil {
+				return err
+			}
 		}
 		if len(runIDs) > 0 {
 			if err := tx.Where("run_kind = ? AND run_id IN ?", "story", runIDs).Delete(&persistencemodels.RunEvent{}).Error; err != nil {
@@ -899,6 +1006,9 @@ func (r *storySessionRepository) DeleteSession(ctx context.Context, sessionID st
 		return tx.Delete(&session).Error
 	})
 	if err != nil {
+		if isConflict(err) {
+			return err
+		}
 		return mapDBError(err, "story session not found")
 	}
 	return nil
@@ -955,6 +1065,17 @@ func (r *storySessionRepository) CreateRun(ctx context.Context, sessionID string
 	}, nil
 }
 
+func (r *storySessionRepository) HasActiveRunByBranch(ctx context.Context, branchID string) (bool, error) {
+	if branchID == "" {
+		return false, nil
+	}
+	var count int64
+	if err := r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("branch_id = ? AND status IN ?", branchID, activeStoryRunStatuses()).Count(&count).Error; err != nil {
+		return false, mapDBError(err, "story run not found")
+	}
+	return count > 0, nil
+}
+
 func (r *storySessionRepository) GetRunByID(ctx context.Context, runID string) (model.StoryRun, error) {
 	var row persistencemodels.StoryRun
 	if err := r.dbFor(ctx).First(&row, "id = ?", runID).Error; err != nil {
@@ -1004,6 +1125,9 @@ func (r *storySessionRepository) GetRunResultByID(ctx context.Context, runID str
 		Review:                 payload.Review,
 		MemoryPatch:            payload.MemoryPatch,
 		Events:                 payload.Events,
+		CompletedActions:       payload.CompletedActions,
+		SupersededActions:      payload.SupersededActions,
+		CollisionAt:            payload.CollisionAt,
 	}, nil
 }
 
@@ -1022,6 +1146,9 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 		Review:                 result.Review,
 		MemoryPatch:            result.MemoryPatch,
 		Events:                 result.Events,
+		CompletedActions:       result.CompletedActions,
+		SupersededActions:      result.SupersededActions,
+		CollisionAt:            result.CollisionAt,
 	})
 	if err != nil {
 		return payloadError("story run result", err)
@@ -1036,15 +1163,18 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
+	updates := map[string]any{
 		"status":        result.Status,
 		"current_step":  "completed",
 		"progress":      100,
 		"error":         "",
 		"head_event_id": result.HeadEventID,
 		"updated_at":    now,
-	}).Error; err != nil {
-		return mapDBError(err, "story run not found")
+	}
+	applyRunLeaseUpdates(ctx, updates, result.Status, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID))
+	if err := runLeaseMutationError(ctx, db.Updates(updates), "story run not found"); err != nil {
+		return err
 	}
 	return mapDBError(r.dbFor(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "run_id"}},
@@ -1053,42 +1183,70 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 }
 
 func (r *storySessionRepository) UpdateRunStatus(ctx context.Context, runID string, status string, currentStep string, progress int, errorMessage ...string) error {
+	now := r.now()
 	updates := map[string]any{
 		"status":       status,
 		"current_step": currentStep,
 		"progress":     progress,
-		"updated_at":   r.now(),
+		"updated_at":   now,
 	}
 	if len(errorMessage) > 0 {
 		updates["error"] = errorMessage[0]
 	}
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(updates).Error, "story run not found")
+	applyRunLeaseUpdates(ctx, updates, status, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID))
+	return runLeaseMutationError(ctx, db.Updates(updates), "story run not found")
+}
+
+func (r *storySessionRepository) UpdateRunHeartbeat(ctx context.Context, runID string) error {
+	now := r.now()
+	updates := map[string]any{"updated_at": now}
+	applyRunLeaseUpdates(ctx, updates, domain.RunStatusLoadingState, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID))
+	return runLeaseMutationError(ctx, db.Updates(updates), "story run not found")
 }
 
 func (r *storySessionRepository) UpdateRunHead(ctx context.Context, runID string, headEventID string) error {
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
+	now := r.now()
+	updates := map[string]any{
 		"head_event_id": headEventID,
-		"updated_at":    r.now(),
-	}).Error, "story run not found")
+		"updated_at":    now,
+	}
+	applyRunLeaseUpdates(ctx, updates, domain.RunStatusLoadingState, now)
+	db, _ := runLeaseScopedDB(ctx, r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID))
+	return runLeaseMutationError(ctx, db.Updates(updates), "story run not found")
 }
 
 func (r *storySessionRepository) RequestRunStop(ctx context.Context, runID string) error {
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
-		"stop_requested": true,
-		"updated_at":     r.now(),
-	}).Error, "story run not found")
+	return mapDBError(r.dbFor(ctx).Transaction(func(tx *gorm.DB) error {
+		var run persistencemodels.StoryRun
+		if err := tx.First(&run, "id = ?", runID).Error; err != nil {
+			return err
+		}
+		now := r.now()
+		updates := map[string]any{"stop_requested": true, "updated_at": now}
+		if run.Status == domain.RunStatusQueued {
+			updates["status"] = domain.RunStatusCancelled
+			updates["current_step"] = domain.RunStatusCancelled
+			updates["progress"] = 100
+			updates["error"] = ""
+		}
+		return tx.Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(updates).Error
+	}), "story run not found")
 }
 
 func (r *storySessionRepository) MarkCut(ctx context.Context, runID string) error {
 	now := r.now()
-	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(map[string]any{
+	updates := map[string]any{
 		"status":       "cut",
 		"current_step": "cut",
 		"progress":     100,
 		"error":        "",
 		"cut_at":       now,
 		"updated_at":   now,
-	}).Error, "story run not found")
+	}
+	applyRunLeaseUpdates(ctx, updates, domain.RunStatusCut, now)
+	return mapDBError(r.dbFor(ctx).Model(&persistencemodels.StoryRun{}).Where("id = ?", runID).Updates(updates).Error, "story run not found")
 }
 
 type auditRepository struct {

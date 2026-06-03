@@ -405,6 +405,8 @@ export type UpdateStorySessionRequest = {
 
 export type AdvanceStorySessionRequest = {
   author_message: string;
+  branch_id?: string;
+  base_event_id?: string;
 };
 
 export type StoryDraft = {
@@ -479,6 +481,42 @@ export type StoryMemoryPatch = {
   world_state_updates?: StoryWorldStateUpdate[];
 };
 
+export type StoryEventPlan = {
+  id?: string;
+  time_index?: number;
+  duration_hours?: number;
+  start_at?: string;
+  arrive_at?: string;
+  effect_at?: string;
+  ends_at?: string;
+  character_id?: string;
+  character_name?: string;
+  location_key?: string;
+  location_name?: string;
+  action_type?: string;
+  summary?: string;
+  intent?: string;
+  visibility?: string;
+  target_actor_ids?: string[];
+  resource_keys?: string[];
+};
+
+export type OngoingAction = {
+  id?: string;
+  character_id?: string;
+  action_type?: string;
+  description?: string;
+  target_location_key?: string;
+  participant_ids?: string[];
+  start_at?: string;
+  arrive_at?: string;
+  effect_at?: string;
+  ends_at?: string;
+  resource_keys?: string[];
+  status?: string;
+  rationale?: string;
+};
+
 export type StoryRunResult = {
   run_id?: string;
   session_id?: string;
@@ -487,10 +525,18 @@ export type StoryRunResult = {
   base_event_id?: string;
   head_event_id?: string;
   plot_variable?: StoryPlotVariable;
+  event_plan?: StoryEventPlan[];
+  turns?: unknown[];
+  scene_summary?: string;
+  interaction_analysis?: unknown;
+  interaction_transcripts?: unknown[];
   draft?: StoryDraft;
   review?: StoryReviewReport;
   memory_patch?: StoryMemoryPatch;
   events?: unknown[];
+  completed_actions?: OngoingAction[];
+  superseded_actions?: OngoingAction[];
+  collision_at?: string;
   // Legacy fallbacks kept while old mock/runtime payloads may still be in circulation.
   draft_id?: string;
   memory_patch_id?: string;

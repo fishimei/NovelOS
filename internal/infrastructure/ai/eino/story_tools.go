@@ -205,6 +205,7 @@ func recordStoryEvent(ctx context.Context, deps storyGeneratorDeps, state *story
 		Intent:         strings.TrimSpace(input.Intent),
 		Visibility:     strings.TrimSpace(input.Visibility),
 		TargetActorIDs: targetActorIDs,
+		ResourceKeys:   uniqueStoryIDs(input.ResourceKeys),
 	}
 	state.events = append(state.events, event)
 	state.locationGroups = buildStoryLocationGroups(state.events)

@@ -119,6 +119,10 @@ func (s *forkActionStoryEventStore) InitGenesis(context.Context, string, string,
 	return model.StoryEvent{}, errors.New("not implemented")
 }
 
+func (s *forkActionStoryEventStore) GetProjectGenesis(context.Context, string) (model.StoryEvent, error) {
+	return model.StoryEvent{}, errors.New("not implemented")
+}
+
 func (s *forkActionStoryEventStore) GetWorldMapByProjectID(context.Context, string) (model.WorldMap, error) {
 	return model.WorldMap{}, errors.New("not implemented")
 }

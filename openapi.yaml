@@ -1657,8 +1657,10 @@ components:
           type: string
         branch_id:
           type: string
+          description: Existing story branch to advance. Omit on the first advance to create a branch from the project genesis when one exists.
         base_event_id:
           type: string
+          description: Anchor event to advance from. It must be the branch head or a reachable ancestor; for a new story branch, the project genesis is the only valid cross-session anchor.
         head_event_id:
           type: string
         status:
@@ -1847,6 +1849,22 @@ components:
         duration_hours:
           type: integer
           description: Relative action duration in story hours. Defaults to 1 when omitted.
+        start_at:
+          type: string
+          format: date-time
+          description: Optional absolute world story time when the action starts. If omitted, time_index is resolved relative to the base event story time.
+        arrive_at:
+          type: string
+          format: date-time
+          description: Optional absolute world story time when the action reaches its target location.
+        effect_at:
+          type: string
+          format: date-time
+          description: Optional absolute world story time when the action begins affecting world state.
+        ends_at:
+          type: string
+          format: date-time
+          description: Optional absolute world story time when the action finishes.
         character_id:
           type: string
         character_name:
@@ -1865,6 +1883,11 @@ components:
           type: string
         target_actor_ids:
           type: array
+          items:
+            type: string
+        resource_keys:
+          type: array
+          description: Explicit world resource keys touched by the action; collisions can occur across locations when keys overlap.
           items:
             type: string
 
@@ -2032,6 +2055,8 @@ components:
     OngoingAction:
       type: object
       properties:
+        id:
+          type: string
         character_id:
           type: string
         action_type:
@@ -2316,6 +2341,7 @@ components:
 
     ChapterEventSpan:
       type: object
+      description: Chapter spans are half-open event ranges: from_event_id is the anchor and chapter content is extracted from `(from_event_id, to_event_id]`.
       properties:
         id:
           type: string
@@ -2371,6 +2397,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StoryEvent"
+        completed_actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/OngoingAction"
+        superseded_actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/OngoingAction"
+        collision_at:
+          type: string
+          format: date-time
     Chapter:
       type: object
       properties:

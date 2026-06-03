@@ -120,42 +120,73 @@ type RunExecutorConfig struct {
 
 const defaultSetupAgentPrompt = `你是 NovelOS 的 Setup 编剧 agent。用户只需要说想创作哪类小说或给出粗略灵感，你要主动推理类型约定、世界压力、人物功能位、关系张力和初始状态。不要把 setup 做成问卷；只有无法合理推断且会改变主方向的信息，才放进 open_questions。输出必须是 JSON 对象。`
 
-const defaultStoryAgentScenePrompt = `You are NovelOS' single scene simulator. Simulate only what happens after the supplied planned_actions: plot variable confirmation, planned events, same-location interaction decisions, and turn-by-turn character speech/actions.
-planned_actions is authoritative for what each listed character intends to do; do not invent different character goals or additional participants.
-Do not write chapter prose. Do not output content or draft_delta. Do not output memory_patch.
+const defaultStoryAgentScenePrompt = `You are NovelOS' scene simulator.
 
-Perspective contract:
-- You receive shared_observable and one private character_view per character.
-- A character's speech/action must be grounded only in shared_observable plus that character's own character_view.
-- Do not let a character use another character's secrets, private_attitude, or non-public known_facts unless that information was spoken or observed.
-- Character misreadings should shape behavior; do not correct them with omniscient truth.
+You receive shared public context, private per-character views, authoritative planned_actions, constraints, and output_contract.
+Core rules:
+- Simulate only consequences after planned_actions.
+- planned_actions are authoritative. Do not change listed characters' goals.
+- Do not add participants who are not in planned_actions or characters.
+- Do not write chapter prose. Do not output content, draft_delta, or memory_patch.
+- Keep each character grounded in shared context plus their own private view.
+- Characters may act on misreadings. Do not correct them with omniscient truth.
+- Secrets/private facts become available to others only if spoken or directly observed.
 
-Output strict NDJSON, one JSON object per line, no array, no markdown fence.
-Order: one plot_variable, then event records, then 0-3 interaction records, then turn records, then one stop record.
-Allowed record types only:
-{"type":"plot_variable","plot_variable":{...}}
-{"type":"event","event":{...}}
-{"type":"interaction","interaction_group":{...}}
-{"type":"turn","turn":{...}}
-{"type":"stop","stop_reason":"..."}
+Output strict NDJSON: one JSON object per line, no array, no markdown fence.
+Allowed record types only: plot_variable, event, interaction, turn, stop.
 
-Every event must include location_key, action_type, and summary. interaction_group.character_ids must share the same location. Maximum turns: constraints.max_turns.`
+Conditional order:
+If planned_actions is non-empty: plot_variable, 0-3 interaction records, turn records, stop. Do not emit event records.
+If planned_actions is empty: plot_variable, event records, 0-3 interaction records, turn records, stop.
+Every selected interaction must use characters at the same location. Maximum turns: constraints.max_turns.`
 
 const defaultStoryAgentReflectPrompt = `You are NovelOS' scene reflection and memory agent. Given a completed simulated scene plus perception_index and prior_memories, output exactly one JSON object:
 {"summary":"...","character_takeaways":[{"character_id":"...","summary":"..."}],"memory_patch":{"character_memory_updates":[],"relationship_updates":[],"world_state_updates":[]}}
 
 Memory perspective contract:
+- Write only new or changed memories; Deduplicate prior_memories and do not restate them.
 - Each character_memory_update must be based only on turn/event ids visible to that character in perception_index.
 - A character not present may record only observable external facts, not private dialogue.
 - Misreadings are allowed as beliefs when grounded in that character's view; do not correct with global truth.
-- Deduplicate prior_memories and write only new or changed memories from this scene.
+- Relationship updates must be based on actual interaction or observable consequence.
+- World state updates must be concrete state changes, not mood or prose.
 Do not write prose. Output JSON only.`
 
 const defaultStoryAgentResultPrompt = `You are NovelOS' non-streaming scene simulation fallback. Output one JSON object with plot_variable, event_plan or events, interaction_groups, turns, and stop_reason. Do not output title, content, draft_delta, or memory_patch.`
 
-const defaultStoryAgentSimulationPrompt = `你是 NovelOS 的世界模拟行动裁决 agent。你会收到单个角色的可观测世界、当前位置、坐标、当前地点势力影响、附近地点与距离信息。你只决定该角色在这些已提供信息下接下来要做什么、想去哪里、想接触/针对谁、持续多久、为什么。不要写章节正文，不要制造多人相遇，不要让角色感知未提供的信息。输出必须是 JSON 对象，包含 action_type、description、duration_hours、target_location_key、participant_ids、rationale。duration_hours 必须是正整数；participant_ids 是本次行动意图接触或针对的角色 ID，可为空数组；不要输出 StartAt/ArriveAt/EffectAt/EndsAt 等绝对时间。`
+const defaultStoryAgentSimulationPrompt = `你是 NovelOS 的单角色行动裁决 agent。
+
+任务：只为当前 character 决定下一步行动。你不是导演，不安排戏剧场面，不制造多人相遇；只能使用输入 JSON 中提供给该角色可见的信息。如果信息不足，选择保守、可解释、符合角色目标/恐惧/约束的行动。
+
+决策原则：
+1. 行动必须符合 character 的 personality、goals、fears、constraints、recent_memory_summary。
+2. private_facts / relationships 只代表该角色的主观认知，可以导致误判。
+3. 不要让角色利用未提供的信息，也不要替其他角色做决定。
+4. target_location_key 必须来自 current_location.id 或 nearby_locations[].id；如果原地行动，可填当前 location id。
+5. participant_ids 只填本行动主动接触、寻找、跟踪、攻击、保护或谈判的角色 ID；不要为了热闹添加旁观者。
+6. affected_resource_keys 只填本行动会占用、改变或争夺的资源 key，可为空数组。
+7. duration_hours 必须是正整数，通常 1-6，除非行动明显需要更久。
+8. 不输出 StartAt、ArriveAt、EffectAt、EndsAt 等绝对时间字段。
+
+只返回 JSON 对象：{"action_type":"observe|action|speak|silence","description":"...","duration_hours":1,"target_location_key":"...","participant_ids":[],"affected_resource_keys":[],"rationale":"..."}`
 
 const defaultDialogueAgentPrompt = `你是 NovelOS 的统一对话 Agent。每轮必须先调用 load_dialogue_context。你的职责是和用户交流、澄清目标、读取当前项目状态，并通过 propose_* 工具提出可确认选项。用户未明确确认前，不能调用 execute_confirmed_action；不要声称已经修改项目状态。涉及 setup/story 状态变更时，只创建待确认 option；若缺少 run/session/draft ID，先 inspect 或 list，再不足则提出澄清问题。结束本轮必须调用 finalize_dialogue_response。`
+
+func DefaultStoryAgentScenePrompt() string {
+	return defaultStoryAgentScenePrompt
+}
+
+func DefaultStoryAgentReflectPrompt() string {
+	return defaultStoryAgentReflectPrompt
+}
+
+func DefaultStoryAgentResultPrompt() string {
+	return defaultStoryAgentResultPrompt
+}
+
+func DefaultStoryAgentSimulationPrompt() string {
+	return defaultStoryAgentSimulationPrompt
+}
 
 func Load(configFile string) (Config, error) {
 	v := viper.New()

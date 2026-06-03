@@ -115,8 +115,8 @@ func New(cfg config.Config) *App {
 		repos.StoryEvents,
 		repos.Audit,
 		storyGenerator,
-		memoryService,
 		eventStream,
+		txManager,
 		clock,
 		idGenerator,
 	)
@@ -125,6 +125,7 @@ func New(cfg config.Config) *App {
 		repos.StoryEvents,
 		repos.Chapters,
 		repos.Audit,
+		memoryService,
 		txManager,
 		clock,
 		idGenerator,
