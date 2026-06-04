@@ -205,21 +205,30 @@ func (d *blockingCharacterActionDecider) Decide(ctx context.Context, input model
 
 type fakeStoryChatModel struct {
 	responses     []string
+	toolCalls     [][]schema.ToolCall
 	streamChunks  []string
 	streamErr     error
 	systemPrompts []string
 }
 
 func (m *fakeStoryChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...llmmodel.Option) (*schema.Message, error) {
-	if len(m.responses) == 0 {
+	if len(m.responses) == 0 && len(m.toolCalls) == 0 {
 		return nil, errors.New("unexpected model call")
 	}
 	if len(input) > 0 {
 		m.systemPrompts = append(m.systemPrompts, input[0].Content)
 	}
-	content := m.responses[0]
-	m.responses = m.responses[1:]
-	return schema.AssistantMessage(content, nil), nil
+	content := ""
+	if len(m.responses) > 0 {
+		content = m.responses[0]
+		m.responses = m.responses[1:]
+	}
+	var calls []schema.ToolCall
+	if len(m.toolCalls) > 0 {
+		calls = m.toolCalls[0]
+		m.toolCalls = m.toolCalls[1:]
+	}
+	return schema.AssistantMessage(content, calls), nil
 }
 
 func (m *fakeStoryChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...llmmodel.Option) (*schema.StreamReader[*schema.Message], error) {

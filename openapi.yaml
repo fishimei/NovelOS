@@ -666,11 +666,12 @@ paths:
       tags: [StorySessions]
       summary: Advance story session
       description: |
-        用户输入一句推进语，系统会自动：
+        推进故事会话。请求可以携带作者推进语，也可以将 `advance_mode` 设为 `auto` 且不传 `author_message`，由系统基于当前分支、事件头、世界状态、进行中行动和角色目标自动推进。
+        系统会自动：
         - 读取正式设定状态
         - 识别当前冲突轴
         - 生成具备选择压力的剧情变量
-        - 驱动角色互动并产出正文草稿
+        - 驱动角色互动并产出事件演绎
       operationId: advanceStorySession
       parameters:
         - $ref: "#/components/parameters/SessionId"
@@ -687,6 +688,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StoryRunResponse"
+
+  /story-sessions/{session_id}/auto/start:
+    post:
+      tags: [StorySessions]
+      summary: Start autonomous story simulation
+      description: Starts a background loop that keeps creating auto story runs from the current branch head until stopped.
+      operationId: startStoryAutoRun
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoStorySessionRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryAutoRunResponse"
+
+  /story-sessions/{session_id}/auto/stop:
+    post:
+      tags: [StorySessions]
+      summary: Stop autonomous story simulation
+      description: Requests the current auto loop to stop. If a run is active, the service requests that run to stop too.
+      operationId: stopStoryAutoRun
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryAutoRunResponse"
+
+  /story-sessions/{session_id}/auto:
+    get:
+      tags: [StorySessions]
+      summary: Get autonomous story simulation status
+      operationId: getStoryAutoRun
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryAutoRunResponse"
 
   /story-sessions/{session_id}/events:
     get:
@@ -1526,14 +1580,67 @@ components:
 
     AdvanceStorySessionRequest:
       type: object
-      required: [author_message]
       properties:
         author_message:
+          type: string
+          description: 作者推进语；自动推进时可省略或为空。
+        branch_id:
+          type: string
+        base_event_id:
+          type: string
+        advance_mode:
+          type: string
+          enum: [manual, auto]
+          description: 推进模式。auto 表示不依赖作者留言，按当前故事状态自主推进。
+
+    AutoStorySessionRequest:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          description: 可选；指定要自动推进的分支。不传时沿用会话现有分支或创建 main 分支。
+        base_event_id:
+          type: string
+          description: 可选；指定第一次自动推进的基础事件。不传时使用分支 head。
+        tick_delay_seconds:
+          type: integer
+          minimum: 0
+          description: 每轮自动推进完成后的等待秒数；0 表示立即进入下一轮，默认 1 秒。
+
+    StoryAutoRun:
+      type: object
+      properties:
+        session_id:
           type: string
         branch_id:
           type: string
         base_event_id:
           type: string
+        current_run_id:
+          type: string
+        status:
+          type: string
+          enum: [running, stopping, stopped, failed]
+        iterations:
+          type: integer
+        last_error:
+          type: string
+        tick_delay_seconds:
+          type: integer
+        stop_requested:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_completed_at:
+          type: string
+          format: date-time
+        last_run_started_at:
+          type: string
+          format: date-time
 
     ForkStoryEventRequest:
       type: object
@@ -2507,6 +2614,14 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/StorySession"
+
+    StoryAutoRunResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/StoryAutoRun"
 
     StoryRunResponse:
       allOf:

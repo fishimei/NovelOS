@@ -15,12 +15,13 @@ import (
 )
 
 type StorySessionsHandler struct {
-	sessions port.StorySessionRepository
-	audit    port.AuditRepository
-	events   port.GenerationEventStream
-	advancer *service.StorySessionAdvancer
-	cutter   *service.StoryChapterCutter
-	log      *service.StoryEventLogService
+	sessions   port.StorySessionRepository
+	audit      port.AuditRepository
+	events     port.GenerationEventStream
+	advancer   *service.StorySessionAdvancer
+	cutter     *service.StoryChapterCutter
+	log        *service.StoryEventLogService
+	autoRunner *service.StoryAutoRunner
 }
 
 func NewStorySessionsHandler(
@@ -30,14 +31,16 @@ func NewStorySessionsHandler(
 	advancer *service.StorySessionAdvancer,
 	cutter *service.StoryChapterCutter,
 	logService *service.StoryEventLogService,
+	autoRunner *service.StoryAutoRunner,
 ) StorySessionsHandler {
 	return StorySessionsHandler{
-		sessions: sessions,
-		audit:    audit,
-		events:   events,
-		advancer: advancer,
-		cutter:   cutter,
-		log:      logService,
+		sessions:   sessions,
+		audit:      audit,
+		events:     events,
+		advancer:   advancer,
+		cutter:     cutter,
+		log:        logService,
+		autoRunner: autoRunner,
 	}
 }
 
@@ -117,6 +120,7 @@ func (h StorySessionsHandler) Advance(c *gin.Context) {
 		AuthorMessage: req.AuthorMessage,
 		BranchID:      req.BranchID,
 		BaseEventID:   req.BaseEventID,
+		AdvanceMode:   req.AdvanceMode,
 	})
 	if err != nil {
 		presenter.Error(c, err)
@@ -132,6 +136,31 @@ func (h StorySessionsHandler) ListEvents(c *gin.Context) {
 		return
 	}
 	presenter.Data(c, http.StatusOK, result)
+}
+
+func (h StorySessionsHandler) StartAuto(c *gin.Context) {
+	var req dto.AutoStorySessionRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	result, err := h.autoRunner.Start(c.Request.Context(), c.Param("session_id"), model.AdvanceStorySessionInput{
+		BranchID:         req.BranchID,
+		BaseEventID:      req.BaseEventID,
+		TickDelaySeconds: req.TickDelaySeconds,
+	})
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+	presenter.Data(c, http.StatusAccepted, result)
+}
+
+func (h StorySessionsHandler) StopAuto(c *gin.Context) {
+	presenter.Data(c, http.StatusAccepted, h.autoRunner.Stop(c.Param("session_id")))
+}
+
+func (h StorySessionsHandler) GetAuto(c *gin.Context) {
+	presenter.Data(c, http.StatusOK, h.autoRunner.Status(c.Param("session_id")))
 }
 
 func (h StorySessionsHandler) GetEvent(c *gin.Context) {
@@ -175,6 +204,7 @@ func (h StorySessionsHandler) AdvanceBranch(c *gin.Context) {
 	}
 	result, err := h.log.AdvanceBranch(c.Request.Context(), c.Param("branch_id"), model.AdvanceStorySessionInput{
 		AuthorMessage: req.AuthorMessage,
+		AdvanceMode:   req.AdvanceMode,
 	})
 	if err != nil {
 		presenter.Error(c, err)

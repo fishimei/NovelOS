@@ -50,7 +50,28 @@ func NewStorySessionAdvancer(
 	return &StorySessionAdvancer{sessions: sessions, store: store, audit: audit, generator: generator, events: events, tx: tx, clock: clock, ids: ids}
 }
 
+func normalizeStoryAdvanceMode(input model.AdvanceStorySessionInput) string {
+	mode := strings.TrimSpace(input.AdvanceMode)
+	if mode != "" {
+		return mode
+	}
+	if strings.TrimSpace(input.AuthorMessage) == "" {
+		return "auto"
+	}
+	return "manual"
+}
+
 func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error) {
+	return s.createRun(ctx, sessionID, input)
+}
+
+func (s *StorySessionAdvancer) CreateAutoRun(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error) {
+	input.AuthorMessage = ""
+	input.AdvanceMode = "auto"
+	return s.createRun(ctx, sessionID, input)
+}
+
+func (s *StorySessionAdvancer) createRun(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error) {
 	session, err := s.sessions.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return model.StoryRun{}, err
@@ -63,6 +84,7 @@ func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, in
 		input.BaseEventID = branch.HeadEventID
 	}
 	input.BranchID = branch.ID
+	advanceMode := normalizeStoryAdvanceMode(input)
 	var run model.StoryRun
 	createRun := func(txCtx context.Context) error {
 		active, err := s.sessions.HasActiveRunByBranch(txCtx, branch.ID)
@@ -72,10 +94,12 @@ func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, in
 		if active {
 			return pkgerr.Conflict(pkgerr.CodeConflict, "story branch already has an active run")
 		}
-		if _, err := s.sessions.AppendMessage(txCtx, sessionID, "user", input.AuthorMessage); err != nil {
-			return err
+		if strings.TrimSpace(input.AuthorMessage) != "" {
+			if _, err := s.sessions.AppendMessage(txCtx, sessionID, "user", input.AuthorMessage); err != nil {
+				return err
+			}
+			session.LastAuthorMessage = input.AuthorMessage
 		}
-		session.LastAuthorMessage = input.AuthorMessage
 		session.Status = domain.SessionStatusAdvancing
 		if _, err := s.sessions.UpdateSession(txCtx, session); err != nil {
 			return err
@@ -84,7 +108,7 @@ func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, in
 		if err != nil {
 			return err
 		}
-		s.appendAuditEvent(txCtx, run.RunID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusQueued, "progress": 0})
+		s.appendAuditEvent(txCtx, run.RunID, domain.EventGenerationStep, map[string]any{"step": domain.RunStatusQueued, "progress": 0, "advance_mode": advanceMode, "branch_id": input.BranchID, "base_event_id": input.BaseEventID})
 		return nil
 	}
 	if s.tx != nil {

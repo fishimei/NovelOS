@@ -328,7 +328,7 @@ func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port
 		wg.Add(1)
 		go func(idx int, characterID string) {
 			defer wg.Done()
-			action, err := g.planCharacterAction(ctx, snapshot, world, characterID)
+			action, err := g.planCharacterAction(ctx, input, snapshot, world, characterID)
 			results[idx] = plannedActionResult{action: action, err: err}
 		}(idx, characterID)
 	}
@@ -350,7 +350,7 @@ type plannedActionResult struct {
 	err    error
 }
 
-func (g *StoryRunGenerator) planCharacterAction(ctx context.Context, snapshot StoryContextSnapshot, world model.WorldSnapshot, characterID string) (ScenePlannedAction, error) {
+func (g *StoryRunGenerator) planCharacterAction(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, world model.WorldSnapshot, characterID string) (ScenePlannedAction, error) {
 	character := characterByID(snapshot.Characters, characterID)
 	if character.ID == "" {
 		return ScenePlannedAction{}, nil
@@ -358,6 +358,7 @@ func (g *StoryRunGenerator) planCharacterAction(ctx context.Context, snapshot St
 	decisionInput := characterDecisionInput(world, character)
 	decision, err := g.actionDecider.Decide(ctx, decisionInput)
 	if err != nil {
+		g.publishCharacterActionDecisionFailure(ctx, input.Run.RunID, character, err)
 		return ScenePlannedAction{}, fmt.Errorf("%s: %w", character.ID, err)
 	}
 	action, err := scenePlannedActionFromDecision(snapshot.Characters, character, decision)
@@ -365,6 +366,14 @@ func (g *StoryRunGenerator) planCharacterAction(ctx context.Context, snapshot St
 		return ScenePlannedAction{}, fmt.Errorf("%s: %w", character.ID, err)
 	}
 	return action, nil
+}
+
+func (g *StoryRunGenerator) publishCharacterActionDecisionFailure(ctx context.Context, runID string, character model.Character, err error) {
+	payload := modelJSONErrorSummary(err)
+	payload["step"] = "character_action_decision_failed"
+	payload["character_id"] = character.ID
+	payload["character_name"] = character.Name
+	publishStoryEvent(ctx, g.deps, runID, domain.EventCharacterActionDecisionFailed, payload)
 }
 
 func (g *StoryRunGenerator) decisionWorldSnapshot(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (model.WorldSnapshot, error) {

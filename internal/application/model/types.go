@@ -386,9 +386,11 @@ type CreateStorySessionInput struct {
 
 // AdvanceStorySessionInput 是推进故事会话的输入参数。
 type AdvanceStorySessionInput struct {
-	AuthorMessage string // 作者输入的消息
-	BranchID      string // 继续推进的事件分支 ID
-	BaseEventID   string // 继续推进的基础事件 ID
+	AuthorMessage    string // 作者输入的消息；自动推进时为空
+	BranchID         string // 继续推进的事件分支 ID
+	BaseEventID      string // 继续推进的基础事件 ID
+	AdvanceMode      string // 推进模式：manual 或 auto
+	TickDelaySeconds int    // 自动连续推进时每轮之间的等待秒数
 }
 
 type ForkStoryEventInput struct {

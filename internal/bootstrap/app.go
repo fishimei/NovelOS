@@ -189,7 +189,7 @@ func New(cfg config.Config) *App {
 		Relationships:    handler.NewRelationshipsHandler(repos.Relationships),
 		SetupSessions:    handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
 		DialogueSessions: handler.NewDialogueSessionsHandler(repos.DialogueSessions, repos.Audit, eventStream, dialogueStarter, dialogueAdvancer, dialogueExecutor),
-		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCutter, storyEventLog),
+		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCutter, storyEventLog, service.NewStoryAutoRunner(storyAdvancer)),
 		World:            handler.NewWorldHandler(repos.Projects, repos.StoryEvents),
 		Chapters:         handler.NewChaptersHandler(repos.Chapters),
 		Memories:         handler.NewMemoriesHandler(repos.Memories),

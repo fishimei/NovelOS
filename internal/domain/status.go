@@ -30,16 +30,17 @@ const (
 )
 
 const (
-	EventGenerationStep            = "generation_step"
-	EventStoryOrchestrationStarted = "story_orchestration_started"
-	EventPlotVariable              = "plot_variable"
-	EventStoryEventPlanned         = "story_event_planned"
-	EventSameLocationCandidates    = "same_location_candidates"
-	EventInteractionAnalysis       = "interaction_analysis"
-	EventInteractionSelected       = "interaction_selected"
-	EventNegotiationTurn           = "negotiation_turn"
-	EventCharacterTurn             = "character_turn"
-	EventDraftDelta                = "draft_delta"
+	EventGenerationStep                = "generation_step"
+	EventStoryOrchestrationStarted     = "story_orchestration_started"
+	EventPlotVariable                  = "plot_variable"
+	EventStoryEventPlanned             = "story_event_planned"
+	EventSameLocationCandidates        = "same_location_candidates"
+	EventInteractionAnalysis           = "interaction_analysis"
+	EventInteractionSelected           = "interaction_selected"
+	EventNegotiationTurn               = "negotiation_turn"
+	EventCharacterActionDecisionFailed = "character_action_decision_failed"
+	EventCharacterTurn                 = "character_turn"
+	EventDraftDelta                    = "draft_delta"
 )
 
 const (
