@@ -117,10 +117,9 @@ func (h StorySessionsHandler) Advance(c *gin.Context) {
 		return
 	}
 	result, err := h.advancer.Advance(c.Request.Context(), c.Param("session_id"), model.AdvanceStorySessionInput{
-		AuthorMessage: req.AuthorMessage,
-		BranchID:      req.BranchID,
-		BaseEventID:   req.BaseEventID,
-		AdvanceMode:   req.AdvanceMode,
+		BranchID:    req.BranchID,
+		BaseEventID: req.BaseEventID,
+		AdvanceMode: req.AdvanceMode,
 	})
 	if err != nil {
 		presenter.Error(c, err)
@@ -187,8 +186,7 @@ func (h StorySessionsHandler) ForkEvent(c *gin.Context) {
 		return
 	}
 	result, err := h.log.ForkEvent(c.Request.Context(), c.Param("event_id"), model.ForkStoryEventInput{
-		Name:          req.Name,
-		AuthorMessage: req.AuthorMessage,
+		Name: req.Name,
 	})
 	if err != nil {
 		presenter.Error(c, err)
@@ -203,8 +201,7 @@ func (h StorySessionsHandler) AdvanceBranch(c *gin.Context) {
 		return
 	}
 	result, err := h.log.AdvanceBranch(c.Request.Context(), c.Param("branch_id"), model.AdvanceStorySessionInput{
-		AuthorMessage: req.AuthorMessage,
-		AdvanceMode:   req.AdvanceMode,
+		AdvanceMode: req.AdvanceMode,
 	})
 	if err != nil {
 		presenter.Error(c, err)

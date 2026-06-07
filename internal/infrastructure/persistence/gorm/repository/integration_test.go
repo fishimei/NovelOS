@@ -55,6 +55,7 @@ func resetTables(t *testing.T, db *gorm.DB) {
 		&persistencemodels.RunEvent{},
 		&persistencemodels.FactionInfluence{},
 		&persistencemodels.LocationState{},
+		&persistencemodels.MapArea{},
 		&persistencemodels.MapTile{},
 		&persistencemodels.WorldMap{},
 		&persistencemodels.ChapterEventSpan{},
@@ -250,7 +251,7 @@ func TestRunEventHistoryOrdersBySequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create story session: %v", err)
 	}
-	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{})
 	if err != nil {
 		t.Fatalf("create story run: %v", err)
 	}
@@ -289,7 +290,7 @@ func TestStoryRunResultRoundTripsEventFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create story session: %v", err)
 	}
-	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{})
 	if err != nil {
 		t.Fatalf("create story run: %v", err)
 	}
@@ -354,7 +355,7 @@ func TestStoryRunStopRequestPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create story session: %v", err)
 	}
-	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{})
 	if err != nil {
 		t.Fatalf("create story run: %v", err)
 	}
@@ -383,7 +384,7 @@ func TestStoryRunLeasePreventsStaleResultOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create story session: %v", err)
 	}
-	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance"})
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{})
 	if err != nil {
 		t.Fatalf("create story run: %v", err)
 	}
@@ -581,7 +582,7 @@ func TestStoryChapterCutCreatesChapterSpanWithoutStateWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list branches: %v", err)
 	}
-	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{AuthorMessage: "advance", BranchID: branches[0].ID, BaseEventID: genesis.ID})
+	run, err := repos.StorySessions.CreateRun(context.Background(), session.ID, model.AdvanceStorySessionInput{BranchID: branches[0].ID, BaseEventID: genesis.ID})
 	if err != nil {
 		t.Fatalf("create run: %v", err)
 	}

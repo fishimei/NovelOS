@@ -31,6 +31,7 @@ type App struct {
 	config      config.Config
 	server      *http.Server
 	runExecutor *service.RunExecutor
+	autoRunner  *service.StoryAutoRunner
 }
 
 // New 创建并初始化一个新的 App 实例。
@@ -85,26 +86,38 @@ func New(cfg config.Config) *App {
 			MapHeight:     cfg.World.MapHeight,
 		},
 	)
-	actionDecider, err := einoai.NewCharacterActionDecider(context.Background(), cfg.AI)
+	locationSubdivider, err := einoai.NewLocationSubdivisionGenerator(context.Background(), cfg.AI)
+	if err != nil {
+		log.Fatalf("bootstrap location subdivision generator: %v", err)
+	}
+	locationInspector := service.NewLocationInspectionService(
+		repos.StoryEvents,
+		clock,
+		idGenerator,
+		service.WithLocationSubdivisionGenerator(locationSubdivider),
+		service.WithLocationNearbyRadius(cfg.World.NearbyRadius),
+	)
+	actionDecider, err := einoai.NewCharacterActionDecider(context.Background(), cfg.AI, locationInspector)
 	if err != nil {
 		log.Fatalf("bootstrap character action decider: %v", err)
 	}
 	storyGenerator, err := einoai.NewStoryRunGenerator(context.Background(), einoai.StoryRunGeneratorDeps{
-		Config:        cfg.AI,
-		Sessions:      repos.StorySessions,
-		AuthorBibles:  repos.AuthorBibles,
-		WorldState:    repos.WorldState,
-		Characters:    repos.Characters,
-		Relationships: repos.Relationships,
-		Chapters:      repos.Chapters,
-		Memories:      repos.Memories,
-		MemoryService: memoryService,
-		StoryEvents:   repos.StoryEvents,
-		ActionDecider: actionDecider,
-		Events:        eventStream,
-		Audit:         repos.Audit,
-		Clock:         clock,
-		IDs:           idGenerator,
+		Config:            cfg.AI,
+		Sessions:          repos.StorySessions,
+		AuthorBibles:      repos.AuthorBibles,
+		WorldState:        repos.WorldState,
+		Characters:        repos.Characters,
+		Relationships:     repos.Relationships,
+		Chapters:          repos.Chapters,
+		Memories:          repos.Memories,
+		MemoryService:     memoryService,
+		StoryEvents:       repos.StoryEvents,
+		ActionDecider:     actionDecider,
+		LocationInspector: locationInspector,
+		Events:            eventStream,
+		Audit:             repos.Audit,
+		Clock:             clock,
+		IDs:               idGenerator,
 	})
 	if err != nil {
 		log.Fatalf("bootstrap story generator: %v", err)
@@ -182,6 +195,7 @@ func New(cfg config.Config) *App {
 		clock,
 	)
 
+	storyAutoRunner := service.NewStoryAutoRunner(storyAdvancer, repos.StoryAutoRuns)
 	handlers := transporthttp.Handlers{
 		Projects:         handler.NewProjectsHandler(repos.Projects),
 		AuthorBibles:     handler.NewAuthorBibleHandler(repos.AuthorBibles),
@@ -189,8 +203,8 @@ func New(cfg config.Config) *App {
 		Relationships:    handler.NewRelationshipsHandler(repos.Relationships),
 		SetupSessions:    handler.NewSetupSessionsHandler(repos.SetupSessions, repos.Audit, setupStarter, setupAdvancer, setupApplier),
 		DialogueSessions: handler.NewDialogueSessionsHandler(repos.DialogueSessions, repos.Audit, eventStream, dialogueStarter, dialogueAdvancer, dialogueExecutor),
-		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCutter, storyEventLog, service.NewStoryAutoRunner(storyAdvancer)),
-		World:            handler.NewWorldHandler(repos.Projects, repos.StoryEvents),
+		StorySessions:    handler.NewStorySessionsHandler(repos.StorySessions, repos.Audit, eventStream, storyAdvancer, storyCutter, storyEventLog, storyAutoRunner),
+		World:            handler.NewWorldHandler(repos.Projects, repos.StoryEvents, locationInspector),
 		Chapters:         handler.NewChaptersHandler(repos.Chapters),
 		Memories:         handler.NewMemoriesHandler(repos.Memories),
 	}
@@ -199,6 +213,7 @@ func New(cfg config.Config) *App {
 	return &App{
 		config:      cfg,
 		runExecutor: runExecutor,
+		autoRunner:  storyAutoRunner,
 		server: &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.App.Port),
 			Handler:           router,
@@ -241,6 +256,11 @@ func (serviceClock) Now() time.Time {
 func (a *App) Run(ctx context.Context) error {
 	if a.runExecutor != nil {
 		a.runExecutor.Start(ctx)
+	}
+	if a.autoRunner != nil {
+		if err := a.autoRunner.Resume(ctx); err != nil {
+			log.Printf("resume story auto runner: %v", err)
+		}
 	}
 
 	errCh := make(chan error, 1)

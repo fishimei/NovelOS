@@ -8,13 +8,13 @@ import (
 	"github.com/fishimei/NovelOS/internal/domain"
 )
 
-func TestStorySessionAdvancerAutoAdvanceSkipsAuthorMessage(t *testing.T) {
+func TestStorySessionAdvancerAdvanceSkipsAuthorMessage(t *testing.T) {
 	sessions := &autoAdvanceStorySessions{session: model.StorySession{ID: "story_1", ProjectID: "project_1", LastAuthorMessage: "previous author note"}}
 	store := &autoAdvanceStoryStore{branches: []model.Branch{{ID: "branch_1", ProjectID: "project_1", SessionID: "story_1", HeadEventID: "event_head"}}}
 	audit := &autoAdvanceAudit{}
 	advancer := &StorySessionAdvancer{sessions: sessions, store: store, audit: audit}
 
-	run, err := advancer.Advance(context.Background(), "story_1", model.AdvanceStorySessionInput{AdvanceMode: "auto"})
+	run, err := advancer.Advance(context.Background(), "story_1", model.AdvanceStorySessionInput{})
 	if err != nil {
 		t.Fatalf("Advance() error = %v", err)
 	}
@@ -22,33 +22,16 @@ func TestStorySessionAdvancerAutoAdvanceSkipsAuthorMessage(t *testing.T) {
 		t.Fatalf("run = %#v", run)
 	}
 	if sessions.appendedMessages != 0 {
-		t.Fatalf("auto advance should not append author message, got %d", sessions.appendedMessages)
+		t.Fatalf("story advance should not append author message, got %d", sessions.appendedMessages)
 	}
 	if sessions.updatedSession.LastAuthorMessage != "previous author note" {
-		t.Fatalf("auto advance cleared last author message: %#v", sessions.updatedSession)
+		t.Fatalf("advance changed last author message: %#v", sessions.updatedSession)
 	}
-	if sessions.createdInput.AdvanceMode != "auto" || sessions.createdInput.BranchID != "branch_1" || sessions.createdInput.BaseEventID != "event_head" {
+	if sessions.createdInput.AdvanceMode != "" || sessions.createdInput.BranchID != "branch_1" || sessions.createdInput.BaseEventID != "event_head" {
 		t.Fatalf("unexpected created input: %#v", sessions.createdInput)
 	}
 	if len(audit.events) != 1 || audit.events[0].Payload["advance_mode"] != "auto" {
 		t.Fatalf("missing auto advance audit payload: %#v", audit.events)
-	}
-}
-
-func TestStorySessionAdvancerManualAdvanceKeepsAuthorMessage(t *testing.T) {
-	sessions := &autoAdvanceStorySessions{session: model.StorySession{ID: "story_1", ProjectID: "project_1"}}
-	store := &autoAdvanceStoryStore{branches: []model.Branch{{ID: "branch_1", ProjectID: "project_1", SessionID: "story_1", HeadEventID: "event_head"}}}
-	advancer := &StorySessionAdvancer{sessions: sessions, store: store, audit: &autoAdvanceAudit{}}
-
-	_, err := advancer.Advance(context.Background(), "story_1", model.AdvanceStorySessionInput{AuthorMessage: "push the scene"})
-	if err != nil {
-		t.Fatalf("Advance() error = %v", err)
-	}
-	if sessions.appendedMessages != 1 || sessions.appendedContent != "push the scene" {
-		t.Fatalf("manual advance did not append author message: count=%d content=%q", sessions.appendedMessages, sessions.appendedContent)
-	}
-	if sessions.updatedSession.LastAuthorMessage != "push the scene" {
-		t.Fatalf("manual advance did not update last author message: %#v", sessions.updatedSession)
 	}
 }
 

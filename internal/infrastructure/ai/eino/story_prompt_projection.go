@@ -12,18 +12,18 @@ import (
 type actionDecisionSharedPrompt struct {
 	StoryTime      string                       `json:"story_time,omitempty"`
 	WorldFacts     []promptFact                 `json:"world_facts,omitempty"`
-	Locations      []promptLocation             `json:"locations,omitempty"`
-	Factions       []promptFaction              `json:"factions,omitempty"`
 	OutputContract actionDecisionOutputContract `json:"output_contract"`
 }
 
 type actionDecisionCharacterPrompt struct {
-	Character       promptActionCharacter `json:"character"`
-	State           promptActionState     `json:"state"`
-	CurrentLocation *promptLocation       `json:"current_location,omitempty"`
-	NearbyLocations []promptLocation      `json:"nearby_locations,omitempty"`
-	Relationships   []promptRelationship  `json:"relationships,omitempty"`
-	PrivateFacts    []string              `json:"private_facts,omitempty"`
+	Character             promptActionCharacter  `json:"character"`
+	State                 promptActionState      `json:"state"`
+	CurrentLocation       *promptLocationDetail  `json:"current_location,omitempty"`
+	ReachableLocationRefs []promptLocationRef    `json:"reachable_location_refs,omitempty"`
+	InspectedLocations    []promptLocationDetail `json:"inspected_locations,omitempty"`
+	FactionInfluences     []promptFaction        `json:"faction_influences,omitempty"`
+	Relationships         []promptRelationship   `json:"relationships,omitempty"`
+	PrivateFacts          []string               `json:"private_facts,omitempty"`
 }
 
 type actionDecisionOutputContract struct {
@@ -91,9 +91,38 @@ type promptLocation struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name,omitempty"`
 	Type        string   `json:"type,omitempty"`
+	Scale       string   `json:"scale,omitempty"`
+	DetailState string   `json:"detail_state,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Distance    float64  `json:"distance,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+}
+
+type promptLocationRef struct {
+	ID               string  `json:"id"`
+	Name             string  `json:"name,omitempty"`
+	Type             string  `json:"type,omitempty"`
+	Scale            string  `json:"scale,omitempty"`
+	DetailState      string  `json:"detail_state,omitempty"`
+	ParentLocationID string  `json:"parent_location_id,omitempty"`
+	Distance         float64 `json:"distance,omitempty"`
+	Route            string  `json:"route,omitempty"`
+	Relation         string  `json:"relation,omitempty"`
+}
+
+type promptLocationDetail struct {
+	ID               string   `json:"id"`
+	Name             string   `json:"name,omitempty"`
+	Type             string   `json:"type,omitempty"`
+	Scale            string   `json:"scale,omitempty"`
+	DetailState      string   `json:"detail_state,omitempty"`
+	ParentLocationID string   `json:"parent_location_id,omitempty"`
+	Description      string   `json:"description,omitempty"`
+	PublicSummary    string   `json:"public_summary,omitempty"`
+	Affordances      []string `json:"affordances,omitempty"`
+	AccessRules      []string `json:"access_rules,omitempty"`
+	Risks            []string `json:"risks,omitempty"`
+	Resources        []string `json:"resources,omitempty"`
 }
 
 type promptFaction struct {
@@ -120,7 +149,6 @@ type scenePromptSession struct {
 	Title         string `json:"title,omitempty"`
 	Situation     string `json:"situation,omitempty"`
 	AuthorIntent  string `json:"author_intent,omitempty"`
-	AuthorMessage string `json:"author_message,omitempty"`
 	CurrentThread string `json:"current_thread,omitempty"`
 }
 
@@ -132,9 +160,10 @@ type scenePromptConflict struct {
 }
 
 type scenePromptShared struct {
-	LocationHints  []promptFact     `json:"location_hints,omitempty"`
-	WorldFacts     []promptFact     `json:"world_facts,omitempty"`
-	RecentChapters []map[string]any `json:"recent_chapters,omitempty"`
+	LocationHints   []promptFact           `json:"location_hints,omitempty"`
+	ActionLocations []promptLocationDetail `json:"action_locations,omitempty"`
+	WorldFacts      []promptFact           `json:"world_facts,omitempty"`
+	RecentChapters  []map[string]any       `json:"recent_chapters,omitempty"`
 }
 
 type scenePromptCharacter struct {
@@ -202,25 +231,25 @@ func buildActionDecisionSharedPrompt(world model.WorldSnapshot) actionDecisionSh
 	return actionDecisionSharedPrompt{
 		StoryTime:      formatPromptTime(world.StoryTime),
 		WorldFacts:     promptFactsFromWorldStateMap(world.WorldState, 12),
-		Locations:      promptLocationsFromStates(world.Locations, 20),
-		Factions:       promptFactions(world.Factions, ""),
 		OutputContract: defaultActionDecisionOutputContract(),
 	}
 }
 
 func buildActionDecisionCharacterPrompt(input model.CharacterActionDecisionInput) actionDecisionCharacterPrompt {
-	currentLocation := promptLocationFromState(input.Location)
-	var current *promptLocation
+	currentLocation := promptLocationDetailFromState(input.Location)
+	var current *promptLocationDetail
 	if currentLocation.ID != "" {
 		current = &currentLocation
 	}
 	return actionDecisionCharacterPrompt{
-		Character:       promptActionCharacterFromModel(input.Character),
-		State:           promptActionStateFromRuntime(input.CharacterState),
-		CurrentLocation: current,
-		NearbyLocations: promptNearbyLocations(input.NearbyLocations, 5),
-		Relationships:   promptRelationshipsForCharacter(input.World.Relationships, input.Character.ID, 8),
-		PrivateFacts:    firstStrings(input.Character.Secrets, 3),
+		Character:             promptActionCharacterFromModel(input.Character),
+		State:                 promptActionStateFromRuntime(input.CharacterState),
+		CurrentLocation:       current,
+		ReachableLocationRefs: promptReachableLocationRefs(input.NearbyLocations, 8),
+		InspectedLocations:    promptLocationDetailsFromStates(input.InspectedLocations, 8),
+		FactionInfluences:     promptFactions(input.FactionInfluences, ""),
+		Relationships:         promptRelationshipsForCharacter(input.World.Relationships, input.Character.ID, 8),
+		PrivateFacts:          firstStrings(input.Character.Secrets, 3),
 	}
 }
 
@@ -229,7 +258,7 @@ func defaultActionDecisionOutputContract() actionDecisionOutputContract {
 		Format:          "JSON object only",
 		Fields:          []string{"action_type", "description", "duration_hours", "target_location_key", "participant_ids", "affected_resource_keys", "rationale"},
 		ActionTypes:     []string{"observe", "action", "speak", "silence"},
-		LocationRule:    "target_location_key must be current_location.id or one of nearby_locations[].id when supplied",
+		LocationRule:    "target_location_key must be current_location.id or one of reachable_location_refs[].id; inspect a location before choosing it for movement, contact, search, or conflict",
 		ParticipantRule: "participant_ids only names characters this action actively contacts, targets, protects, follows, attacks, or negotiates with",
 		TimingRule:      "duration_hours must be a positive integer; do not output absolute ArriveAt/EffectAt/EndsAt/StartAt fields",
 	}
@@ -253,7 +282,6 @@ func buildScenePromptInput(ctx SceneContext) scenePromptInput {
 			Title:         ctx.Session.Title,
 			Situation:     ctx.Session.OpeningSituation,
 			AuthorIntent:  ctx.Session.AuthorIntent,
-			AuthorMessage: ctx.Session.LastAuthorMessage,
 			CurrentThread: ctx.Session.CurrentPlotVariable,
 		},
 		AuthorBible:    ctx.AuthorBible,
@@ -266,9 +294,10 @@ func buildScenePromptInput(ctx SceneContext) scenePromptInput {
 			CollisionAt:       ctx.CollisionAt,
 		},
 		Shared: scenePromptShared{
-			LocationHints:  promptFactsFromMaps(ctx.SharedObservable.LocationHints, 5),
-			WorldFacts:     promptFactsFromMaps(ctx.SharedObservable.PublicWorldState, 8),
-			RecentChapters: ctx.SharedObservable.RecentChapters,
+			LocationHints:   promptFactsFromMaps(ctx.SharedObservable.LocationHints, 5),
+			ActionLocations: promptLocationDetailsFromStates(ctx.SharedObservable.ActionLocations, 8),
+			WorldFacts:      promptFactsFromMaps(ctx.SharedObservable.PublicWorldState, 8),
+			RecentChapters:  ctx.SharedObservable.RecentChapters,
 		},
 		Characters:     promptSceneCharacters(ctx.CharacterViews),
 		Constraints:    ctx.Constraints,
@@ -377,7 +406,24 @@ func promptFactsFromMaps(entries []map[string]any, limit int) []promptFact {
 }
 
 func promptLocationFromState(location model.LocationState) promptLocation {
-	return promptLocation{ID: location.ID, Name: location.Name, Type: location.Type, Description: location.Description}
+	return promptLocation{ID: location.ID, Name: location.Name, Type: location.Type, Scale: location.Scale, DetailState: location.DetailState, Description: location.Description}
+}
+
+func promptLocationDetailFromState(location model.LocationState) promptLocationDetail {
+	return promptLocationDetail{
+		ID:               location.ID,
+		Name:             location.Name,
+		Type:             location.Type,
+		Scale:            location.Scale,
+		DetailState:      location.DetailState,
+		ParentLocationID: location.ParentLocationID,
+		Description:      location.Description,
+		PublicSummary:    promptStringValue(location.Properties["public_summary"]),
+		Affordances:      firstStrings(promptStringSliceValue(location.Properties["affordances"]), 8),
+		AccessRules:      firstStrings(promptStringSliceValue(location.Properties["access_rules"]), 5),
+		Risks:            firstStrings(promptStringSliceValue(location.Properties["risks"]), 5),
+		Resources:        firstStrings(promptStringSliceValue(location.Properties["resources"]), 5),
+	}
 }
 
 func promptLocationsFromStates(locations []model.LocationState, limit int) []promptLocation {
@@ -398,6 +444,38 @@ func promptNearbyLocations(locations []model.NearbyLocationContext, limit int) [
 		location.Distance = nearby.Distance
 		if location.ID != "" {
 			out = append(out, location)
+		}
+	}
+	return out
+}
+
+func promptReachableLocationRefs(locations []model.NearbyLocationContext, limit int) []promptLocationRef {
+	out := make([]promptLocationRef, 0, len(locations))
+	for _, reachable := range firstEntries(locations, limit) {
+		location := reachable.Location
+		if location.ID == "" {
+			continue
+		}
+		out = append(out, promptLocationRef{
+			ID:               location.ID,
+			Name:             location.Name,
+			Type:             location.Type,
+			Scale:            location.Scale,
+			DetailState:      location.DetailState,
+			ParentLocationID: location.ParentLocationID,
+			Distance:         reachable.Distance,
+			Route:            reachable.Route,
+			Relation:         reachable.Relation,
+		})
+	}
+	return out
+}
+
+func promptLocationDetailsFromStates(locations []model.LocationState, limit int) []promptLocationDetail {
+	out := make([]promptLocationDetail, 0, len(locations))
+	for _, location := range firstEntries(locations, limit) {
+		if location.ID != "" {
+			out = append(out, promptLocationDetailFromState(location))
 		}
 	}
 	return out

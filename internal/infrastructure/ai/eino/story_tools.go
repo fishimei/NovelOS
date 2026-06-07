@@ -146,7 +146,6 @@ func recallCharacterMemories(ctx context.Context, deps storyGeneratorDeps, runID
 
 func storyMemoryRecallQuery(session model.StorySession, worldState []model.WorldStateEntry, chapters []model.Chapter) string {
 	parts := []string{
-		session.LastAuthorMessage,
 		session.AuthorIntent,
 		session.OpeningSituation,
 		session.CurrentPlotVariableSummary,

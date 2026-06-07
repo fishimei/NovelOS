@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
@@ -853,28 +854,41 @@ type storySessionRepository struct {
 func (r *storySessionRepository) CreateSession(ctx context.Context, projectID string, input model.CreateStorySessionInput) (model.StorySession, error) {
 	now := r.now()
 	row := persistencemodels.StorySession{
-		ID:               r.nextID("story"),
-		ProjectID:        projectID,
-		Title:            input.Title,
-		OpeningSituation: input.OpeningSituation,
-		AuthorIntent:     input.AuthorIntent,
-		Status:           "active",
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		ID:                         r.nextID("story"),
+		ProjectID:                  projectID,
+		Title:                      input.Title,
+		OpeningSituation:           input.OpeningSituation,
+		AuthorIntent:               input.AuthorIntent,
+		CurrentPlotVariableSummary: initialStoryVariableSummary(input),
+		Status:                     "active",
+		CreatedAt:                  now,
+		UpdatedAt:                  now,
 	}
 	if err := r.dbFor(ctx).Create(&row).Error; err != nil {
 		return model.StorySession{}, mapDBError(err, "story session not found")
 	}
 	return model.StorySession{
-		ID:               row.ID,
-		ProjectID:        row.ProjectID,
-		Title:            row.Title,
-		OpeningSituation: row.OpeningSituation,
-		AuthorIntent:     row.AuthorIntent,
-		Status:           row.Status,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
+		ID:                         row.ID,
+		ProjectID:                  row.ProjectID,
+		Title:                      row.Title,
+		OpeningSituation:           row.OpeningSituation,
+		AuthorIntent:               row.AuthorIntent,
+		Status:                     row.Status,
+		CurrentPlotVariableSummary: row.CurrentPlotVariableSummary,
+		CreatedAt:                  row.CreatedAt,
+		UpdatedAt:                  row.UpdatedAt,
 	}, nil
+}
+
+func initialStoryVariableSummary(input model.CreateStorySessionInput) string {
+	parts := make([]string, 0, 2)
+	if text := strings.TrimSpace(input.OpeningSituation); text != "" {
+		parts = append(parts, "initial_situation: "+text)
+	}
+	if text := strings.TrimSpace(input.AuthorIntent); text != "" {
+		parts = append(parts, "author_intent: "+text)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (r *storySessionRepository) ListSessionsByProjectID(ctx context.Context, projectID string, pageInput model.PageInput) (model.ListResult[model.StorySession], error) {
@@ -1260,21 +1274,65 @@ func (r *auditRepository) AppendRunEvent(ctx context.Context, event model.RunEve
 	if event.CreatedAt.IsZero() {
 		event.CreatedAt = r.now()
 	}
-	if event.Sequence == 0 {
-		sequence, err := currentSequence(ctx, r.dbFor(ctx), event.RunKind, event.RunID)
+	if event.Sequence != 0 {
+		row, err := runEventRowFromModel(event, r.now(), event.ID)
 		if err != nil {
+			return model.RunEvent{}, payloadError("run event", err)
+		}
+		if err := r.dbFor(ctx).Create(&row).Error; err != nil {
 			return model.RunEvent{}, mapDBError(err, "run event not found")
 		}
-		event.Sequence = sequence + 1
+		return toRunEvent(row)
 	}
-	row, err := runEventRowFromModel(event, r.now(), event.ID)
+
+	var saved model.RunEvent
+	err := r.dbFor(ctx).Transaction(func(tx *gorm.DB) error {
+		sequence, err := allocateRunEventSequence(ctx, tx, event.RunKind, event.RunID, event.CreatedAt)
+		if err != nil {
+			return err
+		}
+		event.Sequence = sequence
+		row, err := runEventRowFromModel(event, r.now(), event.ID)
+		if err != nil {
+			return payloadError("run event", err)
+		}
+		if err := tx.WithContext(ctx).Create(&row).Error; err != nil {
+			return mapDBError(err, "run event not found")
+		}
+		saved, err = toRunEvent(row)
+		return err
+	})
 	if err != nil {
-		return model.RunEvent{}, payloadError("run event", err)
+		return model.RunEvent{}, err
 	}
-	if err := r.dbFor(ctx).Create(&row).Error; err != nil {
-		return model.RunEvent{}, mapDBError(err, "run event not found")
+	return saved, nil
+}
+
+func allocateRunEventSequence(ctx context.Context, db *gorm.DB, runKind string, runID string, updatedAt time.Time) (int, error) {
+	current, err := currentSequence(ctx, db, runKind, runID)
+	if err != nil {
+		return 0, mapDBError(err, "run event not found")
 	}
-	return toRunEvent(row)
+	counter := persistencemodels.RunEventCounter{
+		RunKind:      runKind,
+		RunID:        runID,
+		NextSequence: current + 1,
+		UpdatedAt:    updatedAt,
+	}
+	err = db.WithContext(ctx).Clauses(
+		clause.OnConflict{
+			Columns: []clause.Column{{Name: "run_kind"}, {Name: "run_id"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"next_sequence": gorm.Expr("run_event_counters.next_sequence + 1"),
+				"updated_at":    updatedAt,
+			}),
+		},
+		clause.Returning{Columns: []clause.Column{{Name: "next_sequence"}}},
+	).Create(&counter).Error
+	if err != nil {
+		return 0, mapDBError(err, "run event counter not found")
+	}
+	return counter.NextSequence, nil
 }
 
 func (r *auditRepository) ListRunEvents(ctx context.Context, runKind string, runID string) ([]model.RunEvent, error) {

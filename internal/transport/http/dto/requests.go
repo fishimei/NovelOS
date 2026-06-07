@@ -129,15 +129,13 @@ type UpdateStorySessionRequest struct {
 
 // AdvanceStorySessionRequest 是推进故事会话的请求参数。
 type AdvanceStorySessionRequest struct {
-	AuthorMessage string `json:"author_message"`
-	BranchID      string `json:"branch_id"`
-	BaseEventID   string `json:"base_event_id"`
-	AdvanceMode   string `json:"advance_mode"`
+	BranchID    string `json:"branch_id"`
+	BaseEventID string `json:"base_event_id"`
+	AdvanceMode string `json:"advance_mode"`
 }
 
 type ForkStoryEventRequest struct {
-	Name          string `json:"name"`
-	AuthorMessage string `json:"author_message"`
+	Name string `json:"name"`
 }
 
 type CutChapterRequest struct {
@@ -174,6 +172,12 @@ type AutoStorySessionRequest struct {
 	BranchID         string `json:"branch_id"`
 	BaseEventID      string `json:"base_event_id"`
 	TickDelaySeconds int    `json:"tick_delay_seconds"`
+}
+
+type InspectLocationRequest struct {
+	CharacterID       string `json:"character_id"`
+	CurrentLocationID string `json:"current_location_id" binding:"required"`
+	Reason            string `json:"reason"`
 }
 
 // CreateMemoryRequest 是创建记忆的请求参数。

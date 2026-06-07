@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 
 	ironconfig "github.com/ironarachne/world/config"
 	ironrandom "github.com/ironarachne/world/pkg/random"
@@ -79,29 +80,39 @@ func (i *Initializer) Initialize(ctx context.Context, input port.WorldInitializa
 		CreatedAt: input.CurrentTime,
 		UpdatedAt: input.CurrentTime,
 	}
+	areas := i.generateMapAreas(input.ProjectID, worldMap.ID, generated.Tiles, input.CurrentTime)
+	regionLocations := i.regionLocations(input.ProjectID, worldMap.ID, areas, input.CurrentTime)
 	points := sampleLandPoints(generated.Tiles, count)
 	towns := generateTowns(count)
-	locations := make([]model.LocationState, 0, count)
+	locations := make([]model.LocationState, 0, len(regionLocations)+count)
+	locations = append(locations, regionLocations...)
 	factions := make([]model.FactionInfluence, 0, count)
 	for idx, point := range points {
 		tile := generated.Tiles[point.y][point.x]
 		town := towns[idx]
 		name := firstNonEmpty(town.Name, fmt.Sprintf("地点 %02d", idx+1))
+		sector := areaForPoint(areas, "sector", point.x, point.y)
+		region := parentAreaFor(areas, sector)
+		regionLocationID := regionLocationIDForArea(regionLocations, region.ID)
 		locationID := i.newID("location")
 		locationType := firstNonEmpty(town.Category, "settlement")
 		description := townDescription(town, tile)
 		locations = append(locations, model.LocationState{
-			ID:          locationID,
-			ProjectID:   input.ProjectID,
-			MapID:       worldMap.ID,
-			RegionID:    fmt.Sprintf("region_%02d", idx+1),
-			Name:        name,
-			Type:        locationType,
-			Description: description,
-			X:           point.x,
-			Y:           point.y,
-			Radius:      8,
-			Status:      "active",
+			ID:               locationID,
+			ProjectID:        input.ProjectID,
+			MapID:            worldMap.ID,
+			AreaID:           sector.ID,
+			RegionID:         regionLocationID,
+			ParentLocationID: regionLocationID,
+			Name:             name,
+			Type:             locationType,
+			Scale:            model.LocationScaleSettlement,
+			DetailState:      model.LocationDetailStub,
+			Description:      description,
+			X:                point.x,
+			Y:                point.y,
+			Radius:           8,
+			Status:           "active",
 			Properties: map[string]any{
 				"source":           "github.com/ironarachne/world",
 				"population":       town.Population,
@@ -154,12 +165,13 @@ func (i *Initializer) Initialize(ctx context.Context, input port.WorldInitializa
 		})
 	}
 	states := make([]model.CharacterRuntimeState, 0, len(input.Characters))
-	if len(locations) > 0 {
+	settlementLocations := locations[len(regionLocations):]
+	if len(settlementLocations) > 0 {
 		for idx, character := range input.Characters {
-			location := locations[idx%len(locations)]
+			location := settlementLocations[idx%len(settlementLocations)]
 			states = append(states, model.CharacterRuntimeState{
 				CharacterID: character.ID,
-				Tier:        "main",
+				Tier:        inferInitialCharacterTier(character),
 				LocationKey: location.ID,
 				X:           location.X,
 				Y:           location.Y,
@@ -183,10 +195,11 @@ func (i *Initializer) Initialize(ctx context.Context, input port.WorldInitializa
 		WorldState:    worldState,
 		Characters:    stateByCharacter,
 		Relationships: map[string]model.Relationship{},
+		Areas:         areas,
 		Factions:      factions,
 		Locations:     locations,
 	}
-	return port.WorldInitializationResult{Map: worldMap, Tiles: tiles, Locations: locations, Factions: factions, CharacterStates: states, Snapshot: snapshot}, nil
+	return port.WorldInitializationResult{Map: worldMap, Areas: areas, Tiles: tiles, Locations: locations, Factions: factions, CharacterStates: states, Snapshot: snapshot}, nil
 }
 
 func (i *Initializer) newID(prefix string) string {
@@ -194,6 +207,143 @@ func (i *Initializer) newID(prefix string) string {
 		return i.ids.New(prefix)
 	}
 	return fmt.Sprintf("%s_%d", prefix, rand.Int63())
+}
+
+func (i *Initializer) generateMapAreas(projectID string, mapID string, tiles [][]ironworld.Tile, now time.Time) []model.MapArea {
+	height := len(tiles)
+	width := len(tiles[0])
+	areas := make([]model.MapArea, 0, 20)
+	regions := gridAreas(projectID, mapID, "", "region", width, height, 2, 2, now, i.newID)
+	for idx := range regions {
+		regions[idx].DominantTerrain = terrainName(tiles[clampInt(regions[idx].CenterY, 0, height-1)][clampInt(regions[idx].CenterX, 0, width-1)])
+	}
+	areas = append(areas, regions...)
+	for _, region := range regions {
+		sectors := gridAreas(projectID, mapID, region.ID, "sector", region.MaxX-region.MinX+1, region.MaxY-region.MinY+1, 2, 2, now, i.newID)
+		for idx := range sectors {
+			sectors[idx].MinX += region.MinX
+			sectors[idx].MaxX += region.MinX
+			sectors[idx].CenterX += region.MinX
+			sectors[idx].MinY += region.MinY
+			sectors[idx].MaxY += region.MinY
+			sectors[idx].CenterY += region.MinY
+			sectors[idx].DominantTerrain = terrainName(tiles[clampInt(sectors[idx].CenterY, 0, height-1)][clampInt(sectors[idx].CenterX, 0, width-1)])
+		}
+		areas = append(areas, sectors...)
+	}
+	return areas
+}
+
+func gridAreas(projectID, mapID, parentID, level string, width, height, cols, rows int, now time.Time, newID func(string) string) []model.MapArea {
+	areas := make([]model.MapArea, 0, cols*rows)
+	cellW := maxInt(1, width/cols)
+	cellH := maxInt(1, height/rows)
+	for row := 0; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			minX := col * cellW
+			minY := row * cellH
+			maxX := minX + cellW - 1
+			maxY := minY + cellH - 1
+			if col == cols-1 {
+				maxX = width - 1
+			}
+			if row == rows-1 {
+				maxY = height - 1
+			}
+			areas = append(areas, model.MapArea{
+				ID:           newID("area"),
+				ProjectID:    projectID,
+				MapID:        mapID,
+				ParentAreaID: parentID,
+				Name:         fmt.Sprintf("%s %d-%d", level, row+1, col+1),
+				Level:        level,
+				MinX:         minX,
+				MinY:         minY,
+				MaxX:         maxX,
+				MaxY:         maxY,
+				CenterX:      (minX + maxX) / 2,
+				CenterY:      (minY + maxY) / 2,
+				Status:       "active",
+				Properties:   map[string]any{"source": "grid_partition"},
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			})
+		}
+	}
+	return areas
+}
+
+func (i *Initializer) regionLocations(projectID string, mapID string, areas []model.MapArea, now time.Time) []model.LocationState {
+	locations := []model.LocationState{}
+	for _, area := range areas {
+		if area.Level != "region" {
+			continue
+		}
+		locations = append(locations, model.LocationState{
+			ID:          i.newID("location"),
+			ProjectID:   projectID,
+			MapID:       mapID,
+			AreaID:      area.ID,
+			RegionID:    area.ID,
+			Name:        area.Name,
+			Type:        "region",
+			Scale:       model.LocationScaleRegion,
+			DetailState: model.LocationDetailStub,
+			Description: fmt.Sprintf("%s is a broad world region.", area.Name),
+			X:           area.CenterX,
+			Y:           area.CenterY,
+			Radius:      maxInt(8, (area.MaxX-area.MinX+area.MaxY-area.MinY)/4),
+			Status:      "active",
+			Properties:  map[string]any{"area_id": area.ID, "public_summary": "A broad region that contains settlements and local routes."},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+	}
+	return locations
+}
+
+func areaForPoint(areas []model.MapArea, level string, x int, y int) model.MapArea {
+	for _, area := range areas {
+		if area.Level == level && x >= area.MinX && x <= area.MaxX && y >= area.MinY && y <= area.MaxY {
+			return area
+		}
+	}
+	return model.MapArea{}
+}
+
+func parentAreaFor(areas []model.MapArea, child model.MapArea) model.MapArea {
+	if child.ParentAreaID == "" {
+		return child
+	}
+	for _, area := range areas {
+		if area.ID == child.ParentAreaID {
+			return area
+		}
+	}
+	return model.MapArea{}
+}
+
+func regionLocationIDForArea(locations []model.LocationState, areaID string) string {
+	for _, location := range locations {
+		if location.AreaID == areaID {
+			return location.ID
+		}
+	}
+	return ""
+}
+
+func inferInitialCharacterTier(character model.Character) string {
+	role := strings.ToLower(strings.TrimSpace(character.Role))
+	switch {
+	case strings.Contains(role, "protagonist"), strings.Contains(role, "主角"), strings.Contains(role, "lead"), strings.Contains(role, "核心反派"), strings.Contains(role, "最终"), strings.Contains(role, "boss"):
+		return "tier_1"
+	case strings.Contains(role, "antagonist"), strings.Contains(role, "反派"), strings.Contains(role, "villain"):
+		return "tier_1"
+	case strings.Contains(role, "minor"), strings.Contains(role, "background"), strings.Contains(role, "路人"), strings.Contains(role, "背景"):
+		return "tier_3"
+	default:
+		return "tier_2"
+	}
 }
 
 var ironConfigMu sync.Mutex
@@ -374,6 +524,16 @@ func maxInt(a int, b int) int {
 		return a
 	}
 	return b
+}
+
+func clampInt(value int, minValue int, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }
 
 var _ port.WorldInitializer = (*Initializer)(nil)

@@ -131,6 +131,14 @@ func (s *forkActionStoryEventStore) UpsertWorldMap(context.Context, model.WorldM
 	return model.WorldMap{}, errors.New("not implemented")
 }
 
+func (s *forkActionStoryEventStore) ListMapAreasByProjectID(context.Context, string) ([]model.MapArea, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *forkActionStoryEventStore) UpsertMapAreas(context.Context, string, []model.MapArea) error {
+	return errors.New("not implemented")
+}
+
 func (s *forkActionStoryEventStore) ListMapTilesByProjectID(context.Context, string) ([]model.MapTile, error) {
 	return nil, errors.New("not implemented")
 }
@@ -140,6 +148,14 @@ func (s *forkActionStoryEventStore) UpsertMapTiles(context.Context, string, []mo
 }
 
 func (s *forkActionStoryEventStore) ListLocationsByProjectID(context.Context, string) ([]model.LocationState, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *forkActionStoryEventStore) GetLocation(context.Context, string, string) (model.LocationState, error) {
+	return model.LocationState{}, errors.New("not implemented")
+}
+
+func (s *forkActionStoryEventStore) ListLocationsByParentID(context.Context, string, string) ([]model.LocationState, error) {
 	return nil, errors.New("not implemented")
 }
 

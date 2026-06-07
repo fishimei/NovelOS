@@ -377,25 +377,41 @@ type ApplySetupRunResult struct {
 }
 
 // CreateStorySessionInput 是创建故事会话的输入参数。
-// 故事会话用于 AI 辅助生成故事内容。
+// 作者话语只在初始化阶段作为可选变量来源；后续故事推进不再接收作者提示词。
 type CreateStorySessionInput struct {
 	Title            string // 章节/故事标题
-	OpeningSituation string // 开局情境
-	AuthorIntent     string // 作者意图
+	OpeningSituation string // 可选开局情境变量来源
+	AuthorIntent     string // 可选作者意图变量来源
 }
 
 // AdvanceStorySessionInput 是推进故事会话的输入参数。
 type AdvanceStorySessionInput struct {
-	AuthorMessage    string // 作者输入的消息；自动推进时为空
 	BranchID         string // 继续推进的事件分支 ID
 	BaseEventID      string // 继续推进的基础事件 ID
-	AdvanceMode      string // 推进模式：manual 或 auto
+	AdvanceMode      string // 推进模式：auto
 	TickDelaySeconds int    // 自动连续推进时每轮之间的等待秒数
 }
 
 type ForkStoryEventInput struct {
-	Name          string `json:"name"`
-	AuthorMessage string `json:"author_message,omitempty"`
+	Name string `json:"name"`
+}
+
+type StoryAutoRunState struct {
+	ID               string     `json:"id"`
+	ProjectID        string     `json:"project_id"`
+	SessionID        string     `json:"session_id"`
+	BranchID         string     `json:"branch_id,omitempty"`
+	BaseEventID      string     `json:"base_event_id,omitempty"`
+	CurrentRunID     string     `json:"current_run_id,omitempty"`
+	Status           string     `json:"status"`
+	StopRequested    bool       `json:"stop_requested"`
+	Iterations       int        `json:"iterations"`
+	LastError        string     `json:"last_error,omitempty"`
+	TickDelaySeconds int        `json:"tick_delay_seconds"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	LastRunStartedAt *time.Time `json:"last_run_started_at,omitempty"`
+	LastCompletedAt  *time.Time `json:"last_completed_at,omitempty"`
 }
 
 // CutChapterInput 是从事件账本中裁出章节的输入参数。
@@ -646,6 +662,7 @@ type WorldSnapshot struct {
 	Characters    map[string]CharacterRuntimeState `json:"characters"`
 	Relationships map[string]Relationship          `json:"relationships"`
 	Factions      []FactionInfluence               `json:"factions"`
+	Areas         []MapArea                        `json:"areas"`
 	Locations     []LocationState                  `json:"locations"`
 }
 
@@ -707,21 +724,45 @@ type MapTile struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
+type MapArea struct {
+	ID              string         `json:"id"`
+	ProjectID       string         `json:"project_id"`
+	MapID           string         `json:"map_id"`
+	ParentAreaID    string         `json:"parent_area_id,omitempty"`
+	Name            string         `json:"name"`
+	Level           string         `json:"level"`
+	MinX            int            `json:"min_x"`
+	MinY            int            `json:"min_y"`
+	MaxX            int            `json:"max_x"`
+	MaxY            int            `json:"max_y"`
+	CenterX         int            `json:"center_x"`
+	CenterY         int            `json:"center_y"`
+	DominantTerrain string         `json:"dominant_terrain,omitempty"`
+	Status          string         `json:"status"`
+	Properties      map[string]any `json:"properties,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}
+
 type LocationState struct {
-	ID          string         `json:"id"`
-	ProjectID   string         `json:"project_id"`
-	MapID       string         `json:"map_id,omitempty"`
-	RegionID    string         `json:"region_id,omitempty"`
-	Name        string         `json:"name"`
-	Type        string         `json:"type"`
-	Description string         `json:"description"`
-	X           int            `json:"x"`
-	Y           int            `json:"y"`
-	Radius      int            `json:"radius,omitempty"`
-	Status      string         `json:"status"`
-	Properties  map[string]any `json:"properties,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID               string         `json:"id"`
+	ProjectID        string         `json:"project_id"`
+	MapID            string         `json:"map_id,omitempty"`
+	AreaID           string         `json:"area_id,omitempty"`
+	RegionID         string         `json:"region_id,omitempty"`
+	ParentLocationID string         `json:"parent_location_id,omitempty"`
+	Name             string         `json:"name"`
+	Type             string         `json:"type"`
+	Scale            string         `json:"scale,omitempty"`
+	DetailState      string         `json:"detail_state,omitempty"`
+	Description      string         `json:"description"`
+	X                int            `json:"x"`
+	Y                int            `json:"y"`
+	Radius           int            `json:"radius,omitempty"`
+	Status           string         `json:"status"`
+	Properties       map[string]any `json:"properties,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 type FactionInfluence struct {
@@ -740,16 +781,19 @@ type FactionInfluence struct {
 type NearbyLocationContext struct {
 	Location          LocationState      `json:"location"`
 	Distance          float64            `json:"distance"`
+	Route             string             `json:"route,omitempty"`
+	Relation          string             `json:"relation,omitempty"`
 	FactionInfluences []FactionInfluence `json:"faction_influences,omitempty"`
 }
 
 type CharacterActionDecisionInput struct {
-	World             WorldSnapshot           `json:"world"`
-	Character         Character               `json:"character"`
-	CharacterState    CharacterRuntimeState   `json:"character_state"`
-	Location          LocationState           `json:"location"`
-	FactionInfluences []FactionInfluence      `json:"faction_influences"`
-	NearbyLocations   []NearbyLocationContext `json:"nearby_locations,omitempty"`
+	World              WorldSnapshot           `json:"world"`
+	Character          Character               `json:"character"`
+	CharacterState     CharacterRuntimeState   `json:"character_state"`
+	Location           LocationState           `json:"location"`
+	FactionInfluences  []FactionInfluence      `json:"faction_influences"`
+	NearbyLocations    []NearbyLocationContext `json:"nearby_locations,omitempty"`
+	InspectedLocations []LocationState         `json:"inspected_locations,omitempty"`
 }
 
 type CharacterActionDecision struct {
@@ -763,6 +807,83 @@ type CharacterActionDecision struct {
 	AffectedResourceKeys []string  `json:"affected_resource_keys,omitempty"`
 	ParticipantIDs       []string  `json:"participant_ids,omitempty"`
 	Rationale            string    `json:"rationale"`
+}
+
+const (
+	LocationScaleRegion     = "region"
+	LocationScaleSettlement = "settlement"
+	LocationScaleDistrict   = "district"
+	LocationScaleSite       = "site"
+	LocationScaleRoom       = "room"
+
+	LocationDetailStub        = "stub"
+	LocationDetailExpanded    = "expanded"
+	LocationDetailInitialized = "initialized"
+)
+
+type LocationReachabilityInput struct {
+	ProjectID         string        `json:"project_id"`
+	CharacterID       string        `json:"character_id,omitempty"`
+	CurrentLocationID string        `json:"current_location_id"`
+	World             WorldSnapshot `json:"world"`
+}
+
+type LocationInspectionInput struct {
+	ProjectID         string        `json:"project_id"`
+	CharacterID       string        `json:"character_id,omitempty"`
+	CurrentLocationID string        `json:"current_location_id"`
+	LocationID        string        `json:"location_id"`
+	Reason            string        `json:"reason,omitempty"`
+	World             WorldSnapshot `json:"world"`
+}
+
+type LocationDetailPatch struct {
+	Name        string         `json:"name,omitempty"`
+	Type        string         `json:"type,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Properties  map[string]any `json:"properties,omitempty"`
+}
+
+type LocationSubdivisionChild struct {
+	Name        string         `json:"name"`
+	Type        string         `json:"type,omitempty"`
+	Scale       string         `json:"scale,omitempty"`
+	Description string         `json:"description,omitempty"`
+	DX          int            `json:"dx,omitempty"`
+	DY          int            `json:"dy,omitempty"`
+	Radius      int            `json:"radius,omitempty"`
+	Properties  map[string]any `json:"properties,omitempty"`
+}
+
+type LocationSubdivisionInput struct {
+	ProjectID         string             `json:"project_id"`
+	ParentLocation   LocationState      `json:"parent_location"`
+	Area              MapArea            `json:"area,omitempty"`
+	ExistingChildren  []LocationState    `json:"existing_children,omitempty"`
+	SiblingLocations  []LocationState    `json:"sibling_locations,omitempty"`
+	World             WorldSnapshot      `json:"world"`
+	FactionInfluences []FactionInfluence `json:"faction_influences,omitempty"`
+	Reason            string             `json:"reason,omitempty"`
+	NeedChildren      bool               `json:"need_children"`
+}
+
+type LocationSubdivisionPlan struct {
+	Detail   LocationDetailPatch       `json:"detail"`
+	Children []LocationSubdivisionChild `json:"children,omitempty"`
+}
+
+type LocationInspectionContext struct {
+	CurrentLocation    LocationState           `json:"current_location"`
+	ReachableLocations []NearbyLocationContext `json:"reachable_locations"`
+}
+
+type LocationInspectionResult struct {
+	CurrentLocation    LocationState           `json:"current_location"`
+	InspectedLocation  LocationState           `json:"inspected_location"`
+	Ancestors          []LocationState         `json:"ancestors,omitempty"`
+	ChildLocations     []LocationState         `json:"child_locations,omitempty"`
+	ReachableLocations []NearbyLocationContext `json:"reachable_locations"`
+	Generated          bool                    `json:"generated"`
 }
 
 // ReviewReport 是审阅报告，包含 AI 对生成内容的质量评估。

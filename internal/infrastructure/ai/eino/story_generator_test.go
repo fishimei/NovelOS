@@ -209,9 +209,15 @@ type fakeStoryChatModel struct {
 	streamChunks  []string
 	streamErr     error
 	systemPrompts []string
+	boundTools    [][]string
+	callTools     [][]string
+	toolChoices   []*schema.ToolChoice
 }
 
 func (m *fakeStoryChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...llmmodel.Option) (*schema.Message, error) {
+	options := llmmodel.GetCommonOptions(nil, opts...)
+	m.toolChoices = append(m.toolChoices, options.ToolChoice)
+	m.callTools = append(m.callTools, toolInfoNames(options.Tools))
 	if len(m.responses) == 0 && len(m.toolCalls) == 0 {
 		return nil, errors.New("unexpected model call")
 	}
@@ -251,7 +257,18 @@ func (m *fakeStoryChatModel) Stream(ctx context.Context, input []*schema.Message
 	return stream, nil
 }
 
+func toolInfoNames(tools []*schema.ToolInfo) []string {
+	names := make([]string, 0, len(tools))
+	for _, info := range tools {
+		if info != nil {
+			names = append(names, info.Name)
+		}
+	}
+	return names
+}
+
 func (m *fakeStoryChatModel) WithTools(tools []*schema.ToolInfo) (llmmodel.ToolCallingChatModel, error) {
+	m.boundTools = append(m.boundTools, toolInfoNames(tools))
 	return m, nil
 }
 
@@ -815,6 +832,70 @@ func TestBuildSceneContextUsesPlannedActionParticipants(t *testing.T) {
 	if sceneCharacterViewByID(sceneContext.CharacterViews, "character_3") != nil {
 		t.Fatalf("unplanned plot-related character leaked into scene context: %#v", sceneContext.CharacterViews)
 	}
+}
+
+func TestActionLocationsForSceneInitializesPlannedActionTargets(t *testing.T) {
+	inspector := &fakeLocationInspectionService{location: model.LocationState{
+		ID:          "dock",
+		ProjectID:   "project_1",
+		Name:        "Old Dock",
+		Type:        "dock",
+		Scale:       model.LocationScaleSite,
+		DetailState: model.LocationDetailInitialized,
+		Properties:  map[string]any{"public_summary": "A wet dock with watched exits."},
+	}}
+	generator := &StoryRunGenerator{locationInspector: inspector}
+
+	locations, err := generator.actionLocationsForScene(context.Background(), port.StoryRunGenerationInput{
+		Run: model.StoryRun{RunID: "run_1", ProjectID: "project_1"},
+		World: model.WorldSnapshot{
+			Characters: map[string]model.CharacterRuntimeState{
+				"character_1": {CharacterID: "character_1", LocationKey: "town", Status: "active"},
+			},
+			Locations: []model.LocationState{{
+				ID:          "dock",
+				ProjectID:   "project_1",
+				Name:        "Old Dock",
+				DetailState: model.LocationDetailStub,
+			}},
+		},
+	}, []ScenePlannedAction{{
+		CharacterID:       "character_1",
+		ActionType:        "action",
+		Description:       "go to the dock",
+		TargetLocationKey: "dock",
+		DurationHours:     1,
+	}})
+	if err != nil {
+		t.Fatalf("actionLocationsForScene() error = %v", err)
+	}
+	if len(locations) != 1 || locations[0].DetailState != model.LocationDetailInitialized {
+		t.Fatalf("expected initialized action location, got %#v", locations)
+	}
+	if len(inspector.inputs) != 1 {
+		t.Fatalf("inspect calls = %d, want one", len(inspector.inputs))
+	}
+	if inspector.inputs[0].CurrentLocationID != "town" || inspector.inputs[0].LocationID != "dock" {
+		t.Fatalf("unexpected inspect input: %#v", inspector.inputs[0])
+	}
+}
+
+type fakeLocationInspectionService struct {
+	inputs   []model.LocationInspectionInput
+	location model.LocationState
+}
+
+func (s *fakeLocationInspectionService) EnsureReachableLocations(context.Context, model.LocationReachabilityInput) (model.LocationInspectionContext, error) {
+	return model.LocationInspectionContext{}, nil
+}
+
+func (s *fakeLocationInspectionService) InspectLocation(_ context.Context, input model.LocationInspectionInput) (model.LocationInspectionResult, error) {
+	s.inputs = append(s.inputs, input)
+	location := s.location
+	if location.ID == "" {
+		location.ID = input.LocationID
+	}
+	return model.LocationInspectionResult{InspectedLocation: location}, nil
 }
 
 func TestGenerateSkipsSceneWhenPlannedActionsHaveNoEncounter(t *testing.T) {

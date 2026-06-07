@@ -131,6 +131,7 @@ Core rules:
 - Keep each character grounded in shared context plus their own private view.
 - Characters may act on misreadings. Do not correct them with omniscient truth.
 - Secrets/private facts become available to others only if spoken or directly observed.
+- Use only action_locations details supplied in shared context; do not invent uninitialized interiors, routes, resources, or access rules.
 
 Output strict NDJSON: one JSON object per line, no array, no markdown fence.
 Allowed record types only: plot_variable, event, interaction, turn, stop.
@@ -162,11 +163,13 @@ const defaultStoryAgentSimulationPrompt = `你是 NovelOS 的单角色行动裁�
 1. 行动必须符合 character 的 personality、goals、fears、constraints、recent_memory_summary。
 2. private_facts / relationships 只代表该角色的主观认知，可以导致误判。
 3. 不要让角色利用未提供的信息，也不要替其他角色做决定。
-4. target_location_key 必须来自 current_location.id 或 nearby_locations[].id；如果原地行动，可填当前 location id。
-5. participant_ids 只填本行动主动接触、寻找、跟踪、攻击、保护或谈判的角色 ID；不要为了热闹添加旁观者。
-6. affected_resource_keys 只填本行动会占用、改变或争夺的资源 key，可为空数组。
-7. duration_hours 必须是正整数，通常 1-6，除非行动明显需要更久。
-8. 不输出 StartAt、ArriveAt、EffectAt、EndsAt 等绝对时间字段。
+4. 你会看到 reachable_location_refs，它们只是可达地点引用，不等于地点详情。
+5. 需要移动、接触、搜索、潜入、冲突或争夺资源时，先调用 inspect_location 了解目标地点；最多 inspect 两个地点。
+6. target_location_key 必须来自 current_location.id 或 reachable_location_refs[].id；如果原地行动，可填当前 location id。
+7. participant_ids 只填本行动主动接触、寻找、跟踪、攻击、保护或谈判的角色 ID；不要为了热闹添加旁观者。
+8. affected_resource_keys 只填本行动会占用、改变或争夺的资源 key，可为空数组。
+9. duration_hours 必须是正整数，通常 1-6，除非行动明显需要更久。
+10. 不输出 StartAt、ArriveAt、EffectAt、EndsAt 等绝对时间字段。
 
 只返回 JSON 对象：{"action_type":"observe|action|speak|silence","description":"...","duration_hours":1,"target_location_key":"...","participant_ids":[],"affected_resource_keys":[],"rationale":"..."}`
 

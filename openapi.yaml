@@ -666,7 +666,7 @@ paths:
       tags: [StorySessions]
       summary: Advance story session
       description: |
-        推进故事会话。请求可以携带作者推进语，也可以将 `advance_mode` 设为 `auto` 且不传 `author_message`，由系统基于当前分支、事件头、世界状态、进行中行动和角色目标自动推进。
+        推进故事会话。后续推进不接收作者提示词；系统基于初始化变量、当前分支、事件头、世界状态、进行中行动和角色目标自动推进。
         系统会自动：
         - 读取正式设定状态
         - 识别当前冲突轴
@@ -846,6 +846,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorldMapResponse"
 
+  /projects/{project_id}/world-map/areas:
+    get:
+      tags: [World]
+      summary: List project map areas
+      operationId: listProjectMapAreas
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapAreaListResponse"
+
   /projects/{project_id}/world-map/tiles:
     get:
       tags: [World]
@@ -875,6 +890,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LocationStateListResponse"
+
+  /projects/{project_id}/locations/{location_id}:
+    get:
+      tags: [World]
+      summary: Get project location
+      operationId: getProjectLocation
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: location_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationStateResponse"
+
+  /projects/{project_id}/locations/{location_id}/inspect:
+    post:
+      tags: [World]
+      summary: Inspect reachable location and materialize details
+      operationId: inspectProjectLocation
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: location_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InspectLocationRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationInspectionResponse"
 
   /projects/{project_id}/faction-influences:
     get:
@@ -1581,17 +1642,14 @@ components:
     AdvanceStorySessionRequest:
       type: object
       properties:
-        author_message:
-          type: string
-          description: 作者推进语；自动推进时可省略或为空。
         branch_id:
           type: string
         base_event_id:
           type: string
         advance_mode:
           type: string
-          enum: [manual, auto]
-          description: 推进模式。auto 表示不依赖作者留言，按当前故事状态自主推进。
+          enum: [auto]
+          description: 推进模式。story 后续推进只允许按当前故事状态自主推进。
 
     AutoStorySessionRequest:
       type: object
@@ -1646,8 +1704,6 @@ components:
       type: object
       properties:
         name:
-          type: string
-        author_message:
           type: string
 
     CutChapterRequest:
@@ -2239,6 +2295,47 @@ components:
           type: string
           format: date-time
 
+    MapArea:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        map_id:
+          type: string
+        parent_area_id:
+          type: string
+        name:
+          type: string
+        level:
+          type: string
+        dominant_terrain:
+          type: string
+        status:
+          type: string
+        min_x:
+          type: integer
+        min_y:
+          type: integer
+        max_x:
+          type: integer
+        max_y:
+          type: integer
+        center_x:
+          type: integer
+        center_y:
+          type: integer
+        properties:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     MapTile:
       type: object
       properties:
@@ -2281,11 +2378,19 @@ components:
           type: string
         map_id:
           type: string
+        area_id:
+          type: string
         region_id:
+          type: string
+        parent_location_id:
           type: string
         name:
           type: string
         type:
+          type: string
+        scale:
+          type: string
+        detail_state:
           type: string
         description:
           type: string
@@ -2671,6 +2776,16 @@ components:
             data:
               $ref: "#/components/schemas/WorldMap"
 
+    MapAreaListResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapArea"
+
     MapTileListResponse:
       allOf:
         - $ref: "#/components/schemas/StandardResponse"
@@ -2690,6 +2805,71 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/LocationState"
+
+    LocationStateResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/LocationState"
+
+    InspectLocationRequest:
+      type: object
+      required: [current_location_id]
+      properties:
+        character_id:
+          type: string
+        current_location_id:
+          type: string
+        reason:
+          type: string
+
+    NearbyLocationContext:
+      type: object
+      properties:
+        location:
+          $ref: "#/components/schemas/LocationState"
+        distance:
+          type: number
+        route:
+          type: string
+        relation:
+          type: string
+        faction_influences:
+          type: array
+          items:
+            $ref: "#/components/schemas/FactionInfluence"
+
+    LocationInspectionResult:
+      type: object
+      properties:
+        current_location:
+          $ref: "#/components/schemas/LocationState"
+        inspected_location:
+          $ref: "#/components/schemas/LocationState"
+        ancestors:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocationState"
+        child_locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocationState"
+        reachable_locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/NearbyLocationContext"
+        generated:
+          type: boolean
+
+    LocationInspectionResponse:
+      allOf:
+        - $ref: "#/components/schemas/StandardResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/LocationInspectionResult"
 
     FactionInfluenceListResponse:
       allOf:

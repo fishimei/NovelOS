@@ -215,6 +215,9 @@ func (a *SetupRunApplier) applyWorldInitialization(ctx context.Context, run mode
 	if _, err := a.events.UpsertWorldMap(ctx, result.Map); err != nil {
 		return err
 	}
+	if err := a.events.UpsertMapAreas(ctx, run.ProjectID, result.Areas); err != nil {
+		return err
+	}
 	if err := a.events.UpsertMapTiles(ctx, run.ProjectID, result.Tiles); err != nil {
 		return err
 	}

@@ -248,6 +248,26 @@ type StoryRunResult struct {
 
 func (StoryRunResult) TableName() string { return "story_run_results" }
 
+type StoryAutoRunState struct {
+	ID               string    `gorm:"primaryKey;size:64"`
+	ProjectID        string    `gorm:"not null;index"`
+	SessionID        string    `gorm:"not null;uniqueIndex"`
+	BranchID         string    `gorm:"not null;default:'';index"`
+	BaseEventID      string    `gorm:"not null;default:'';index"`
+	CurrentRunID     string    `gorm:"not null;default:'';index"`
+	Status           string    `gorm:"not null;default:'';index"`
+	StopRequested    bool      `gorm:"not null;default:false"`
+	Iterations       int       `gorm:"not null;default:0"`
+	LastError        string    `gorm:"not null;default:''"`
+	TickDelaySeconds int       `gorm:"not null;default:0"`
+	CreatedAt        time.Time `gorm:"not null"`
+	UpdatedAt        time.Time `gorm:"not null"`
+	LastRunStartedAt *time.Time
+	LastCompletedAt  *time.Time
+}
+
+func (StoryAutoRunState) TableName() string { return "story_auto_run_states" }
+
 type StoryBranch struct {
 	ID                       string    `gorm:"primaryKey;size:64"`
 	ProjectID                string    `gorm:"not null;index"`
@@ -338,21 +358,47 @@ type MapTile struct {
 
 func (MapTile) TableName() string { return "map_tiles" }
 
+type MapArea struct {
+	ID              string    `gorm:"primaryKey;size:64"`
+	ProjectID       string    `gorm:"not null;index"`
+	MapID           string    `gorm:"not null;index"`
+	ParentAreaID    string    `gorm:"not null;default:'';index"`
+	Name            string    `gorm:"not null;default:''"`
+	Level           string    `gorm:"not null;default:'';index"`
+	MinX            int       `gorm:"not null;default:0"`
+	MinY            int       `gorm:"not null;default:0"`
+	MaxX            int       `gorm:"not null;default:0"`
+	MaxY            int       `gorm:"not null;default:0"`
+	CenterX         int       `gorm:"not null;default:0;index"`
+	CenterY         int       `gorm:"not null;default:0;index"`
+	DominantTerrain string    `gorm:"not null;default:''"`
+	Status          string    `gorm:"not null;default:''"`
+	PropertiesJSON  JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt       time.Time `gorm:"not null"`
+	UpdatedAt       time.Time `gorm:"not null"`
+}
+
+func (MapArea) TableName() string { return "map_areas" }
+
 type LocationState struct {
-	ID             string    `gorm:"primaryKey;size:64"`
-	ProjectID      string    `gorm:"not null;index"`
-	MapID          string    `gorm:"not null;default:'';index"`
-	RegionID       string    `gorm:"not null;default:'';index"`
-	Name           string    `gorm:"not null;default:''"`
-	Type           string    `gorm:"not null;default:''"`
-	Description    string    `gorm:"not null;default:''"`
-	X              int       `gorm:"not null;default:0;index"`
-	Y              int       `gorm:"not null;default:0;index"`
-	Radius         int       `gorm:"not null;default:0"`
-	Status         string    `gorm:"not null;default:''"`
-	PropertiesJSON JSONB     `gorm:"type:jsonb;not null"`
-	CreatedAt      time.Time `gorm:"not null"`
-	UpdatedAt      time.Time `gorm:"not null"`
+	ID               string    `gorm:"primaryKey;size:64"`
+	ProjectID        string    `gorm:"not null;index"`
+	MapID            string    `gorm:"not null;default:'';index"`
+	AreaID           string    `gorm:"not null;default:'';index"`
+	RegionID         string    `gorm:"not null;default:'';index"`
+	ParentLocationID string    `gorm:"not null;default:'';index"`
+	Name             string    `gorm:"not null;default:''"`
+	Type             string    `gorm:"not null;default:''"`
+	Scale            string    `gorm:"not null;default:'';index"`
+	DetailState      string    `gorm:"not null;default:'';index"`
+	Description      string    `gorm:"not null;default:''"`
+	X                int       `gorm:"not null;default:0;index"`
+	Y                int       `gorm:"not null;default:0;index"`
+	Radius           int       `gorm:"not null;default:0"`
+	Status           string    `gorm:"not null;default:''"`
+	PropertiesJSON   JSONB     `gorm:"type:jsonb;not null"`
+	CreatedAt        time.Time `gorm:"not null"`
+	UpdatedAt        time.Time `gorm:"not null"`
 }
 
 func (LocationState) TableName() string { return "location_states" }
@@ -443,6 +489,15 @@ type DialogueActionOption struct {
 }
 
 func (DialogueActionOption) TableName() string { return "dialogue_action_options" }
+
+type RunEventCounter struct {
+	RunKind      string    `gorm:"primaryKey;size:32"`
+	RunID        string    `gorm:"primaryKey;size:64"`
+	NextSequence int       `gorm:"not null;default:0"`
+	UpdatedAt    time.Time `gorm:"not null"`
+}
+
+func (RunEventCounter) TableName() string { return "run_event_counters" }
 
 type RunEvent struct {
 	ID          string    `gorm:"primaryKey;size:64"`

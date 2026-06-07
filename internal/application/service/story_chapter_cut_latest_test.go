@@ -289,6 +289,14 @@ func (s *latestSpanEventStore) UpsertWorldMap(context.Context, model.WorldMap) (
 	return model.WorldMap{}, errors.New("not implemented")
 }
 
+func (s *latestSpanEventStore) ListMapAreasByProjectID(context.Context, string) ([]model.MapArea, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *latestSpanEventStore) UpsertMapAreas(context.Context, string, []model.MapArea) error {
+	return errors.New("not implemented")
+}
+
 func (s *latestSpanEventStore) ListMapTilesByProjectID(context.Context, string) ([]model.MapTile, error) {
 	return nil, errors.New("not implemented")
 }
@@ -298,6 +306,14 @@ func (s *latestSpanEventStore) UpsertMapTiles(context.Context, string, []model.M
 }
 
 func (s *latestSpanEventStore) ListLocationsByProjectID(context.Context, string) ([]model.LocationState, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *latestSpanEventStore) GetLocation(context.Context, string, string) (model.LocationState, error) {
+	return model.LocationState{}, errors.New("not implemented")
+}
+
+func (s *latestSpanEventStore) ListLocationsByParentID(context.Context, string, string) ([]model.LocationState, error) {
 	return nil, errors.New("not implemented")
 }
 

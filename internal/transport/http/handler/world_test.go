@@ -17,7 +17,7 @@ func TestWorldHandlerGetMapChecksProjectScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	projects := &worldProjectRepository{}
 	events := &worldEventStore{worldMap: model.WorldMap{ID: "map_1", ProjectID: "project_1"}}
-	handler := NewWorldHandler(projects, events)
+	handler := NewWorldHandler(projects, events, nil)
 	router := gin.New()
 	router.GET("/projects/:project_id/world-map", handler.GetMap)
 
@@ -39,7 +39,7 @@ func TestWorldHandlerGetMapChecksProjectScope(t *testing.T) {
 func TestWorldHandlerInFlightRequiresStoryTime(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	events := &worldEventStore{branch: model.Branch{ID: "branch_1"}}
-	handler := NewWorldHandler(nil, events)
+	handler := NewWorldHandler(nil, events, nil)
 	router := gin.New()
 	router.GET("/story-branches/:branch_id/in-flight-actions", handler.ListInFlightActions)
 
@@ -152,6 +152,14 @@ func (s *worldEventStore) UpsertWorldMap(context.Context, model.WorldMap) (model
 	return model.WorldMap{}, errors.New("not implemented")
 }
 
+func (s *worldEventStore) ListMapAreasByProjectID(context.Context, string) ([]model.MapArea, error) {
+	return nil, nil
+}
+
+func (s *worldEventStore) UpsertMapAreas(context.Context, string, []model.MapArea) error {
+	return errors.New("not implemented")
+}
+
 func (s *worldEventStore) ListMapTilesByProjectID(context.Context, string) ([]model.MapTile, error) {
 	return nil, errors.New("not implemented")
 }
@@ -161,6 +169,14 @@ func (s *worldEventStore) UpsertMapTiles(context.Context, string, []model.MapTil
 }
 
 func (s *worldEventStore) ListLocationsByProjectID(context.Context, string) ([]model.LocationState, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *worldEventStore) GetLocation(context.Context, string, string) (model.LocationState, error) {
+	return model.LocationState{}, errors.New("not implemented")
+}
+
+func (s *worldEventStore) ListLocationsByParentID(context.Context, string, string) ([]model.LocationState, error) {
 	return nil, errors.New("not implemented")
 }
 

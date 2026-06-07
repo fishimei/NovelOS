@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fishimei/NovelOS/internal/application/model"
+	"github.com/fishimei/NovelOS/internal/application/port"
 	"github.com/fishimei/NovelOS/internal/domain"
 )
 
@@ -18,14 +19,17 @@ const (
 )
 
 // StoryAutoRunner 持续按分支事件头推进故事世界。
-// 它维护“开始一次后持续运行，停止一次后暂停”的会话级自动演绎状态；单轮演绎仍由 StorySessionAdvancer 和 RunExecutor 处理。
+// 自动运行状态落库保存；进程重启后由 Resume 恢复 running/stopping 状态。
 type StoryAutoRunner struct {
 	advancer *StorySessionAdvancer
+	states   port.StoryAutoRunRepository
 	sessions map[string]*storyAutoSession
 	mu       sync.Mutex
 }
 
 type storyAutoSession struct {
+	ID               string
+	ProjectID        string
 	SessionID        string
 	BranchID         string
 	BaseEventID      string
@@ -59,11 +63,39 @@ type StoryAutoRunHandle struct {
 	LastRunStartedAt *time.Time `json:"last_run_started_at,omitempty"`
 }
 
-func NewStoryAutoRunner(advancer *StorySessionAdvancer) *StoryAutoRunner {
-	return &StoryAutoRunner{advancer: advancer, sessions: map[string]*storyAutoSession{}}
+func NewStoryAutoRunner(advancer *StorySessionAdvancer, states port.StoryAutoRunRepository) *StoryAutoRunner {
+	return &StoryAutoRunner{advancer: advancer, states: states, sessions: map[string]*storyAutoSession{}}
 }
 
-func (r *StoryAutoRunner) Start(_ context.Context, sessionID string, input model.AdvanceStorySessionInput) (StoryAutoRunHandle, error) {
+func (r *StoryAutoRunner) Resume(ctx context.Context) error {
+	if r == nil || r.advancer == nil || r.states == nil {
+		return nil
+	}
+	states, err := r.states.ListResumable(ctx)
+	if err != nil {
+		return err
+	}
+	for _, persisted := range states {
+		state := storyAutoSessionFromModel(persisted)
+		state.stop = make(chan struct{})
+		state.done = make(chan struct{})
+		if state.Status == StoryAutoStatusStopping {
+			state.StopRequested = true
+			close(state.stop)
+		}
+		r.mu.Lock()
+		if existing, ok := r.sessions[state.SessionID]; ok && existing.Status == StoryAutoStatusRunning {
+			r.mu.Unlock()
+			continue
+		}
+		r.sessions[state.SessionID] = state
+		r.mu.Unlock()
+		go r.loop(context.Background(), state, model.AdvanceStorySessionInput{BranchID: state.BranchID, BaseEventID: state.BaseEventID, TickDelaySeconds: int(state.TickDelay / time.Second)})
+	}
+	return nil
+}
+
+func (r *StoryAutoRunner) Start(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (StoryAutoRunHandle, error) {
 	if r == nil || r.advancer == nil {
 		return StoryAutoRunHandle{SessionID: sessionID, Status: StoryAutoStatusStopped}, nil
 	}
@@ -74,18 +106,36 @@ func (r *StoryAutoRunner) Start(_ context.Context, sessionID string, input model
 		r.mu.Unlock()
 		return handle, nil
 	}
-	state := &storyAutoSession{
-		SessionID:     sessionID,
-		BranchID:      input.BranchID,
-		BaseEventID:   input.BaseEventID,
-		Status:        StoryAutoStatusRunning,
-		TickDelay:     normalizeStoryAutoTickDelay(input),
-		stop:          make(chan struct{}),
-		done:          make(chan struct{}),
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		StopRequested: false,
+	r.mu.Unlock()
+
+	session, err := r.advancer.sessions.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return StoryAutoRunHandle{}, err
 	}
+	persisted := model.StoryAutoRunState{
+		ProjectID:        session.ProjectID,
+		SessionID:        sessionID,
+		BranchID:         input.BranchID,
+		BaseEventID:      input.BaseEventID,
+		Status:           StoryAutoStatusRunning,
+		TickDelaySeconds: int(normalizeStoryAutoTickDelay(input) / time.Second),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	if r.states != nil {
+		persisted, err = r.states.Upsert(ctx, persisted)
+		if err != nil {
+			return StoryAutoRunHandle{}, err
+		}
+	}
+	state := storyAutoSessionFromModel(persisted)
+	state.stop = make(chan struct{})
+	state.done = make(chan struct{})
+	if state.TickDelay == 0 {
+		state.TickDelay = normalizeStoryAutoTickDelay(input)
+	}
+
+	r.mu.Lock()
 	r.sessions[sessionID] = state
 	handle := state.handleLocked()
 	r.mu.Unlock()
@@ -101,6 +151,18 @@ func (r *StoryAutoRunner) Stop(sessionID string) StoryAutoRunHandle {
 	state, ok := r.sessions[sessionID]
 	if !ok {
 		r.mu.Unlock()
+		if r.states != nil {
+			persisted, err := r.states.GetBySessionID(context.Background(), sessionID)
+			if err == nil {
+				persisted.Status = StoryAutoStatusStopped
+				persisted.StopRequested = false
+				persisted.CurrentRunID = ""
+				updated, updateErr := r.states.Update(context.Background(), persisted)
+				if updateErr == nil {
+					return storyAutoSessionFromModel(updated).handleLocked()
+				}
+			}
+		}
 		return StoryAutoRunHandle{SessionID: sessionID, Status: StoryAutoStatusStopped}
 	}
 	if !state.StopRequested {
@@ -108,6 +170,7 @@ func (r *StoryAutoRunner) Stop(sessionID string) StoryAutoRunHandle {
 		state.Status = StoryAutoStatusStopping
 		state.UpdatedAt = time.Now().UTC()
 		close(state.stop)
+		r.persistStateLocked(context.Background(), state)
 	}
 	handle := state.handleLocked()
 	r.mu.Unlock()
@@ -119,9 +182,17 @@ func (r *StoryAutoRunner) Status(sessionID string) StoryAutoRunHandle {
 		return StoryAutoRunHandle{SessionID: sessionID, Status: StoryAutoStatusStopped}
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if state, ok := r.sessions[sessionID]; ok {
-		return state.handleLocked()
+		handle := state.handleLocked()
+		r.mu.Unlock()
+		return handle
+	}
+	r.mu.Unlock()
+	if r.states != nil {
+		persisted, err := r.states.GetBySessionID(context.Background(), sessionID)
+		if err == nil {
+			return storyAutoSessionFromModel(persisted).handleLocked()
+		}
 	}
 	return StoryAutoRunHandle{SessionID: sessionID, Status: StoryAutoStatusStopped}
 }
@@ -129,7 +200,6 @@ func (r *StoryAutoRunner) Status(sessionID string) StoryAutoRunHandle {
 func (r *StoryAutoRunner) loop(ctx context.Context, state *storyAutoSession, input model.AdvanceStorySessionInput) {
 	defer close(state.done)
 	current := input
-	current.AuthorMessage = ""
 	current.AdvanceMode = "auto"
 	for {
 		if r.shouldStop(state) {
@@ -228,6 +298,7 @@ func (r *StoryAutoRunner) markRunStarted(state *storyAutoSession, run model.Stor
 	state.LastError = ""
 	state.LastRunStartedAt = &now
 	state.UpdatedAt = now
+	r.persistStateLocked(context.Background(), state)
 }
 
 func (r *StoryAutoRunner) markRunCompleted(state *storyAutoSession, run model.StoryRun) {
@@ -240,6 +311,7 @@ func (r *StoryAutoRunner) markRunCompleted(state *storyAutoSession, run model.St
 	state.CurrentRunID = ""
 	state.LastCompletedAt = &now
 	state.UpdatedAt = now
+	r.persistStateLocked(context.Background(), state)
 }
 
 func (r *StoryAutoRunner) finishStopped(state *storyAutoSession) {
@@ -249,6 +321,7 @@ func (r *StoryAutoRunner) finishStopped(state *storyAutoSession) {
 	state.CurrentRunID = ""
 	state.StopRequested = false
 	state.UpdatedAt = time.Now().UTC()
+	r.persistStateLocked(context.Background(), state)
 }
 
 func (r *StoryAutoRunner) finishFailed(state *storyAutoSession, err string) {
@@ -258,6 +331,20 @@ func (r *StoryAutoRunner) finishFailed(state *storyAutoSession, err string) {
 	state.LastError = err
 	state.CurrentRunID = ""
 	state.UpdatedAt = time.Now().UTC()
+	r.persistStateLocked(context.Background(), state)
+}
+
+func (r *StoryAutoRunner) persistStateLocked(ctx context.Context, state *storyAutoSession) {
+	if r.states == nil || state.ID == "" {
+		return
+	}
+	updated, err := r.states.Update(ctx, state.model())
+	if err != nil {
+		log.Printf("persist story auto state %s failed: %v", state.SessionID, err)
+		return
+	}
+	state.ID = updated.ID
+	state.UpdatedAt = updated.UpdatedAt
 }
 
 func (s *storyAutoSession) handleLocked() StoryAutoRunHandle {
@@ -275,6 +362,46 @@ func (s *storyAutoSession) handleLocked() StoryAutoRunHandle {
 		UpdatedAt:        s.UpdatedAt,
 		LastCompletedAt:  s.LastCompletedAt,
 		LastRunStartedAt: s.LastRunStartedAt,
+	}
+}
+
+func (s *storyAutoSession) model() model.StoryAutoRunState {
+	return model.StoryAutoRunState{
+		ID:               s.ID,
+		ProjectID:        s.ProjectID,
+		SessionID:        s.SessionID,
+		BranchID:         s.BranchID,
+		BaseEventID:      s.BaseEventID,
+		CurrentRunID:     s.CurrentRunID,
+		Status:           s.Status,
+		StopRequested:    s.StopRequested,
+		Iterations:       s.Iterations,
+		LastError:        s.LastError,
+		TickDelaySeconds: int(s.TickDelay / time.Second),
+		CreatedAt:        s.CreatedAt,
+		UpdatedAt:        s.UpdatedAt,
+		LastRunStartedAt: s.LastRunStartedAt,
+		LastCompletedAt:  s.LastCompletedAt,
+	}
+}
+
+func storyAutoSessionFromModel(state model.StoryAutoRunState) *storyAutoSession {
+	return &storyAutoSession{
+		ID:               state.ID,
+		ProjectID:        state.ProjectID,
+		SessionID:        state.SessionID,
+		BranchID:         state.BranchID,
+		BaseEventID:      state.BaseEventID,
+		CurrentRunID:     state.CurrentRunID,
+		Status:           state.Status,
+		Iterations:       state.Iterations,
+		LastError:        state.LastError,
+		TickDelay:        time.Duration(state.TickDelaySeconds) * time.Second,
+		StopRequested:    state.StopRequested,
+		CreatedAt:        state.CreatedAt,
+		UpdatedAt:        state.UpdatedAt,
+		LastCompletedAt:  state.LastCompletedAt,
+		LastRunStartedAt: state.LastRunStartedAt,
 	}
 }
 

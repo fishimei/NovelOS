@@ -22,36 +22,38 @@ import (
 )
 
 type StoryRunGeneratorDeps struct {
-	Config        config.AIConfig
-	Sessions      port.StorySessionRepository
-	AuthorBibles  port.AuthorBibleRepository
-	WorldState    port.WorldStateRepository
-	Characters    port.CharacterRepository
-	Relationships port.RelationshipRepository
-	Chapters      port.ChapterRepository
-	Memories      port.MemoryRepository
-	MemoryService port.CharacterMemoryService
-	StoryEvents   port.StoryEventStore
-	ActionDecider port.CharacterActionDecider
-	Events        port.GenerationEventStream
-	Audit         port.AuditRepository
-	Clock         port.Clock
-	IDs           port.IDGenerator
+	Config            config.AIConfig
+	Sessions          port.StorySessionRepository
+	AuthorBibles      port.AuthorBibleRepository
+	WorldState        port.WorldStateRepository
+	Characters        port.CharacterRepository
+	Relationships     port.RelationshipRepository
+	Chapters          port.ChapterRepository
+	Memories          port.MemoryRepository
+	MemoryService     port.CharacterMemoryService
+	StoryEvents       port.StoryEventStore
+	ActionDecider     port.CharacterActionDecider
+	LocationInspector port.LocationInspectionService
+	Events            port.GenerationEventStream
+	Audit             port.AuditRepository
+	Clock             port.Clock
+	IDs               port.IDGenerator
 }
 
 type StoryRunGenerator struct {
-	cfg              config.AIConfig
-	model            llmmodel.ToolCallingChatModel
-	actionDecider    port.CharacterActionDecider
-	deps             storyGeneratorDeps
-	clock            port.Clock
-	ids              port.IDGenerator
-	maxTurns         int
-	scenePrompt      string
-	reflectPrompt    string
-	resultPrompt     string
-	maxSceneTokens   int
-	maxReflectTokens int
+	cfg               config.AIConfig
+	model             llmmodel.ToolCallingChatModel
+	actionDecider     port.CharacterActionDecider
+	locationInspector port.LocationInspectionService
+	deps              storyGeneratorDeps
+	clock             port.Clock
+	ids               port.IDGenerator
+	maxTurns          int
+	scenePrompt       string
+	reflectPrompt     string
+	resultPrompt      string
+	maxSceneTokens    int
+	maxReflectTokens  int
 }
 
 func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*StoryRunGenerator, error) {
@@ -76,15 +78,16 @@ func NewStoryRunGenerator(ctx context.Context, deps StoryRunGeneratorDeps) (*Sto
 			events:        deps.Events,
 			audit:         deps.Audit,
 		},
-		actionDecider:    deps.ActionDecider,
-		clock:            deps.Clock,
-		ids:              deps.IDs,
-		maxTurns:         maxTurns,
-		scenePrompt:      deps.Config.StoryAgent.ScenePrompt,
-		reflectPrompt:    deps.Config.StoryAgent.ReflectPrompt,
-		resultPrompt:     deps.Config.StoryAgent.ResultPrompt,
-		maxSceneTokens:   positiveIntOrDefault(deps.Config.StoryAgent.MaxSceneTokens, config.DefaultStoryAgentMaxSceneTokens),
-		maxReflectTokens: positiveIntOrDefault(deps.Config.StoryAgent.MaxReflectTokens, config.DefaultStoryAgentMaxReflectTokens),
+		actionDecider:     deps.ActionDecider,
+		locationInspector: deps.LocationInspector,
+		clock:             deps.Clock,
+		ids:               deps.IDs,
+		maxTurns:          maxTurns,
+		scenePrompt:       deps.Config.StoryAgent.ScenePrompt,
+		reflectPrompt:     deps.Config.StoryAgent.ReflectPrompt,
+		resultPrompt:      deps.Config.StoryAgent.ResultPrompt,
+		maxSceneTokens:    positiveIntOrDefault(deps.Config.StoryAgent.MaxSceneTokens, config.DefaultStoryAgentMaxSceneTokens),
+		maxReflectTokens:  positiveIntOrDefault(deps.Config.StoryAgent.MaxReflectTokens, config.DefaultStoryAgentMaxReflectTokens),
 	}
 	return generator, nil
 }
@@ -128,6 +131,11 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return model.StoryRunResult{}, fmt.Errorf("load scene memories: %w", err)
 	}
 	sceneContext := g.buildSceneContext(input, snapshot, variable, plannedActions)
+	actionLocations, err := g.actionLocationsForScene(ctx, input, plannedActions)
+	if err != nil {
+		return model.StoryRunResult{}, fmt.Errorf("load action locations: %w", err)
+	}
+	sceneContext.SharedObservable.ActionLocations = actionLocations
 	plan, finalVariable, err := g.simulateScene(ctx, input, snapshot, state, sceneContext, variable)
 	if err != nil {
 		return model.StoryRunResult{}, err
@@ -201,7 +209,6 @@ func (g *StoryRunGenerator) publishStoryOrchestrationStarted(ctx context.Context
 	publishStoryEvent(ctx, g.deps, input.Run.RunID, domain.EventStoryOrchestrationStarted, map[string]any{
 		"story_run_id":      input.Run.RunID,
 		"session_id":        input.Session.ID,
-		"author_message":    input.Session.LastAuthorMessage,
 		"author_intent":     input.Session.AuthorIntent,
 		"opening_situation": input.Session.OpeningSituation,
 	})
@@ -284,7 +291,6 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 			Title:               input.Session.Title,
 			OpeningSituation:    input.Session.OpeningSituation,
 			AuthorIntent:        input.Session.AuthorIntent,
-			LastAuthorMessage:   input.Session.LastAuthorMessage,
 			CurrentPlotVariable: input.Session.CurrentPlotVariableSummary,
 		},
 		AuthorBible:       compactAuthorBible(snapshot.AuthorBible),
@@ -305,6 +311,128 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 			MaxInteractions: 3,
 		},
 	}
+}
+
+type actionLocationTarget struct {
+	locationID     string
+	characterID    string
+	requiresDetail bool
+}
+
+func (g *StoryRunGenerator) actionLocationsForScene(ctx context.Context, input port.StoryRunGenerationInput, plannedActions []ScenePlannedAction) ([]model.LocationState, error) {
+	targets := actionLocationTargets(plannedActions, input.InFlightActions, input.CompletedActions, input.SupersededActions)
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	locations, err := g.sceneLocationDirectory(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if len(locations) == 0 {
+		return nil, nil
+	}
+	byID := locationStateMap(locations)
+	projectID := firstText(input.Run.ProjectID, input.Session.ProjectID)
+	out := make([]model.LocationState, 0, len(targets))
+	seen := map[string]struct{}{}
+	for _, target := range targets {
+		if _, ok := seen[target.locationID]; ok {
+			continue
+		}
+		location, ok := byID[target.locationID]
+		if !ok {
+			continue
+		}
+		if location.DetailState != model.LocationDetailInitialized {
+			initialized, initErr := g.inspectActionLocation(ctx, input, projectID, target, location)
+			if initErr != nil {
+				if target.requiresDetail {
+					return nil, initErr
+				}
+			} else if initialized.ID != "" {
+				location = initialized
+			}
+		}
+		if location.DetailState != model.LocationDetailInitialized {
+			continue
+		}
+		seen[target.locationID] = struct{}{}
+		out = append(out, location)
+	}
+	return out, nil
+}
+
+func (g *StoryRunGenerator) sceneLocationDirectory(ctx context.Context, input port.StoryRunGenerationInput) ([]model.LocationState, error) {
+	projectID := firstText(input.Run.ProjectID, input.Session.ProjectID)
+	if g.deps.storyEvents != nil && projectID != "" {
+		locations, err := g.deps.storyEvents.ListLocationsByProjectID(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		return locations, nil
+	}
+	return append([]model.LocationState(nil), input.World.Locations...), nil
+}
+
+func (g *StoryRunGenerator) inspectActionLocation(ctx context.Context, input port.StoryRunGenerationInput, projectID string, target actionLocationTarget, location model.LocationState) (model.LocationState, error) {
+	if g.locationInspector == nil {
+		return model.LocationState{}, fmt.Errorf("action location %q is not initialized", target.locationID)
+	}
+	currentLocationID := ""
+	if state, ok := input.World.Characters[target.characterID]; ok {
+		currentLocationID = state.LocationKey
+	}
+	if currentLocationID == "" {
+		currentLocationID = target.locationID
+	}
+	result, err := g.locationInspector.InspectLocation(ctx, model.LocationInspectionInput{
+		ProjectID:         firstText(projectID, location.ProjectID),
+		CharacterID:       target.characterID,
+		CurrentLocationID: currentLocationID,
+		LocationID:        target.locationID,
+		Reason:            "scene context for planned action",
+		World:             input.World,
+	})
+	if err != nil {
+		return model.LocationState{}, fmt.Errorf("initialize action location %q: %w", target.locationID, err)
+	}
+	return result.InspectedLocation, nil
+}
+
+func actionLocationTargets(planned []ScenePlannedAction, inFlight []model.OngoingAction, completed []model.OngoingAction, superseded []model.OngoingAction) []actionLocationTarget {
+	targets := make([]actionLocationTarget, 0, len(planned)+len(inFlight)+len(completed)+len(superseded))
+	for _, action := range planned {
+		targets = appendActionLocationTarget(targets, action.CharacterID, action.TargetLocationKey, action.ActionType, action.Description)
+	}
+	for _, action := range inFlight {
+		targets = appendActionLocationTarget(targets, action.CharacterID, action.TargetLocationKey, action.ActionType, action.Description)
+	}
+	for _, action := range completed {
+		targets = appendActionLocationTarget(targets, action.CharacterID, action.TargetLocationKey, action.ActionType, action.Description)
+	}
+	for _, action := range superseded {
+		targets = appendActionLocationTarget(targets, action.CharacterID, action.TargetLocationKey, action.ActionType, action.Description)
+	}
+	return targets
+}
+
+func appendActionLocationTarget(targets []actionLocationTarget, characterID string, locationID string, actionType string, description string) []actionLocationTarget {
+	locationID = strings.TrimSpace(locationID)
+	if locationID == "" {
+		return targets
+	}
+	requiresDetail := actionNeedsInspectedTarget(model.CharacterActionDecision{ActionType: actionType, Description: description})
+	return append(targets, actionLocationTarget{locationID: locationID, characterID: strings.TrimSpace(characterID), requiresDetail: requiresDetail})
+}
+
+func locationStateMap(locations []model.LocationState) map[string]model.LocationState {
+	byID := make(map[string]model.LocationState, len(locations))
+	for _, location := range locations {
+		if location.ID != "" {
+			byID[location.ID] = location
+		}
+	}
+	return byID
 }
 
 func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) ([]ScenePlannedAction, error) {
@@ -755,9 +883,9 @@ func memoryContents(memories []model.Memory, limit int) []string {
 
 func (g *StoryRunGenerator) seedPlotVariable(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) (StoryVariablePlan, error) {
 	plot := StoryNarrativePlotVariable{
-		PressureSource:     firstText(input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.CurrentPlotVariableSummary, "当前故事压力"),
+		PressureSource:     firstText(input.Session.OpeningSituation, input.Session.AuthorIntent, input.Session.CurrentPlotVariableSummary, "当前故事压力"),
 		FocalCharacterID:   storyVariableFocalCharacterID(input, snapshot),
-		CoreChoice:         firstText(input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary, "推进当前故事变量"),
+		CoreChoice:         firstText(input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary, "推进当前故事变量"),
 		OptionA:            "暂时维持当前局面",
 		OptionB:            "主动打破当前局面",
 		CostA:              "压力继续累积",
@@ -774,7 +902,7 @@ func (g *StoryRunGenerator) seedPlotVariable(ctx context.Context, input port.Sto
 }
 
 func storyVariableFocalCharacterID(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) string {
-	text := strings.Join([]string{input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary}, "\n")
+	text := strings.Join([]string{input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary}, "\n")
 	for _, character := range snapshot.Characters {
 		if character.Name != "" && strings.Contains(text, character.Name) {
 			return character.ID
@@ -814,7 +942,7 @@ func storyVariableRelatedCharacterIDs(focalCharacterID string, input port.StoryR
 	if focalCharacterID != "" {
 		ids = append(ids, focalCharacterID)
 	}
-	text := strings.Join([]string{input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary}, "\n")
+	text := strings.Join([]string{input.Session.AuthorIntent, input.Session.OpeningSituation, input.Session.CurrentPlotVariableSummary}, "\n")
 	for _, character := range snapshot.Characters {
 		if character.ID == focalCharacterID || character.Name == "" || !strings.Contains(text, character.Name) {
 			continue
@@ -1454,7 +1582,7 @@ func (c *sceneConsumer) finish(ctx context.Context) (StoryPlanResult, StoryVaria
 			TurnIndex:     1,
 			ActorName:     "旁白",
 			ActionType:    "narration",
-			Intent:        firstText(c.variable.PlotVariable.CoreChoice, c.input.Session.LastAuthorMessage, c.input.Session.AuthorIntent, c.input.Session.OpeningSituation, "推进当前故事变量"),
+			Intent:        firstText(c.variable.PlotVariable.CoreChoice, c.input.Session.AuthorIntent, c.input.Session.OpeningSituation, "推进当前故事变量"),
 			ActionSummary: "模型未产生回合，使用旁白占位",
 		}}
 	}
@@ -1691,13 +1819,13 @@ func (g *StoryRunGenerator) assembleStoryRunResult(input port.StoryRunGeneration
 	if len(relatedIDs) == 0 {
 		relatedIDs = relatedCharacterIDs(plan.Turns)
 	}
-	coreChoice := firstText(plotVariable.CoreChoice, sceneSummary, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "advance current story variable")
+	coreChoice := firstText(plotVariable.CoreChoice, sceneSummary, input.Session.AuthorIntent, "advance current story variable")
 	return model.StoryRunResult{
 		RunID:     input.Run.RunID,
 		SessionID: input.Run.SessionID,
 		Status:    domain.RunStatusCompleted,
 		PlotVariable: model.PlotVariable{
-			PressureSource:      firstText(plotVariable.PressureSource, input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "current story pressure"),
+			PressureSource:      firstText(plotVariable.PressureSource, input.Session.OpeningSituation, input.Session.AuthorIntent, "current story pressure"),
 			FocalCharacterID:    focalID,
 			CoreChoice:          coreChoice,
 			OptionA:             firstText(plotVariable.OptionA, "hold the current line"),
@@ -1889,8 +2017,8 @@ func normalizeStoryVariable(variable StoryVariablePlan, input port.StoryRunGener
 	if plot.FocalCharacterID == "" && len(snapshot.Characters) > 0 {
 		plot.FocalCharacterID = snapshot.Characters[0].ID
 	}
-	plot.PressureSource = firstText(plot.PressureSource, input.Session.OpeningSituation, input.Session.LastAuthorMessage, input.Session.AuthorIntent, "当前故事压力")
-	plot.CoreChoice = firstText(plot.CoreChoice, input.Session.LastAuthorMessage, input.Session.AuthorIntent, input.Session.OpeningSituation, "推进当前故事变量")
+	plot.PressureSource = firstText(plot.PressureSource, input.Session.OpeningSituation, input.Session.AuthorIntent, "当前故事压力")
+	plot.CoreChoice = firstText(plot.CoreChoice, input.Session.AuthorIntent, input.Session.OpeningSituation, "推进当前故事变量")
 	plot.OptionA = firstText(plot.OptionA, "暂时维持当前局面")
 	plot.OptionB = firstText(plot.OptionB, "主动打破当前局面")
 	plot.CostA = firstText(plot.CostA, "压力继续累积")

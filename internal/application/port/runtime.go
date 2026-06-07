@@ -84,6 +84,15 @@ type CharacterActionDecider interface {
 	Decide(ctx context.Context, input model.CharacterActionDecisionInput) (model.CharacterActionDecision, error)
 }
 
+type LocationInspectionService interface {
+	EnsureReachableLocations(ctx context.Context, input model.LocationReachabilityInput) (model.LocationInspectionContext, error)
+	InspectLocation(ctx context.Context, input model.LocationInspectionInput) (model.LocationInspectionResult, error)
+}
+
+type LocationSubdivisionGenerator interface {
+	GenerateLocationSubdivision(ctx context.Context, input model.LocationSubdivisionInput) (model.LocationSubdivisionPlan, error)
+}
+
 type WorldInitializationInput struct {
 	ProjectID     string
 	Seed          string
@@ -98,6 +107,7 @@ type WorldInitializationInput struct {
 
 type WorldInitializationResult struct {
 	Map             model.WorldMap
+	Areas           []model.MapArea
 	Tiles           []model.MapTile
 	Locations       []model.LocationState
 	Factions        []model.FactionInfluence

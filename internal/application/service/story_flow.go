@@ -55,10 +55,7 @@ func normalizeStoryAdvanceMode(input model.AdvanceStorySessionInput) string {
 	if mode != "" {
 		return mode
 	}
-	if strings.TrimSpace(input.AuthorMessage) == "" {
-		return "auto"
-	}
-	return "manual"
+	return "auto"
 }
 
 func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error) {
@@ -66,7 +63,6 @@ func (s *StorySessionAdvancer) Advance(ctx context.Context, sessionID string, in
 }
 
 func (s *StorySessionAdvancer) CreateAutoRun(ctx context.Context, sessionID string, input model.AdvanceStorySessionInput) (model.StoryRun, error) {
-	input.AuthorMessage = ""
 	input.AdvanceMode = "auto"
 	return s.createRun(ctx, sessionID, input)
 }
@@ -93,12 +89,6 @@ func (s *StorySessionAdvancer) createRun(ctx context.Context, sessionID string, 
 		}
 		if active {
 			return pkgerr.Conflict(pkgerr.CodeConflict, "story branch already has an active run")
-		}
-		if strings.TrimSpace(input.AuthorMessage) != "" {
-			if _, err := s.sessions.AppendMessage(txCtx, sessionID, "user", input.AuthorMessage); err != nil {
-				return err
-			}
-			session.LastAuthorMessage = input.AuthorMessage
 		}
 		session.Status = domain.SessionStatusAdvancing
 		if _, err := s.sessions.UpdateSession(txCtx, session); err != nil {

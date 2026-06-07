@@ -112,14 +112,14 @@ type SceneSessionContext struct {
 	Title               string `json:"title"`
 	OpeningSituation    string `json:"opening_situation"`
 	AuthorIntent        string `json:"author_intent"`
-	LastAuthorMessage   string `json:"last_author_message"`
 	CurrentPlotVariable string `json:"current_plot_variable"`
 }
 
 type SharedObservableContext struct {
-	LocationHints    []map[string]any `json:"location_hints"`
-	PublicWorldState []map[string]any `json:"public_world_state"`
-	RecentChapters   []map[string]any `json:"recent_chapters"`
+	LocationHints    []map[string]any      `json:"location_hints"`
+	ActionLocations  []model.LocationState `json:"action_locations,omitempty"`
+	PublicWorldState []map[string]any      `json:"public_world_state"`
+	RecentChapters   []map[string]any      `json:"recent_chapters"`
 }
 
 type SceneCharacterView struct {

@@ -180,9 +180,37 @@ func (s *storyEventStore) ResolveStateAt(ctx context.Context, eventID string) (m
 		applyDelta(&state, event)
 		applyActionRuntime(&state, event)
 	}
+	if err := s.mergeProjectWorldDirectory(ctx, &state, event.ProjectID); err != nil {
+		return model.WorldSnapshot{}, err
+	}
 	state.AtEventID = event.ID
 	state.StoryTime = event.StoryTime
 	return state, nil
+}
+
+func (s *storyEventStore) mergeProjectWorldDirectory(ctx context.Context, snapshot *model.WorldSnapshot, projectID string) error {
+	areas, err := s.ListMapAreasByProjectID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if len(areas) > 0 {
+		snapshot.Areas = areas
+	}
+	locations, err := s.ListLocationsByProjectID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if len(locations) > 0 {
+		snapshot.Locations = locations
+	}
+	influences, err := s.ListFactionInfluencesByProjectID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if len(influences) > 0 {
+		snapshot.Factions = influences
+	}
+	return nil
 }
 
 func (s *storyEventStore) InFlightActionsAt(ctx context.Context, branchID string, at time.Time) ([]model.OngoingAction, error) {
@@ -411,6 +439,48 @@ func (s *storyEventStore) UpsertWorldMap(ctx context.Context, worldMap model.Wor
 	return s.GetWorldMapByProjectID(ctx, worldMap.ProjectID)
 }
 
+func (s *storyEventStore) ListMapAreasByProjectID(ctx context.Context, projectID string) ([]model.MapArea, error) {
+	var rows []persistencemodels.MapArea
+	if err := s.dbFor(ctx).Where("project_id = ?", projectID).Order("level asc, created_at asc").Find(&rows).Error; err != nil {
+		return nil, mapDBError(err, "map area not found")
+	}
+	areas := make([]model.MapArea, 0, len(rows))
+	for _, row := range rows {
+		area, err := toMapArea(row)
+		if err != nil {
+			return nil, payloadError("map area", err)
+		}
+		areas = append(areas, area)
+	}
+	return areas, nil
+}
+
+func (s *storyEventStore) UpsertMapAreas(ctx context.Context, projectID string, areas []model.MapArea) error {
+	if len(areas) == 0 {
+		return nil
+	}
+	now := s.now()
+	rows := make([]persistencemodels.MapArea, 0, len(areas))
+	for _, area := range areas {
+		if area.ID == "" {
+			area.ID = s.nextID("area")
+		}
+		area.ProjectID = projectID
+		if area.Status == "" {
+			area.Status = "active"
+		}
+		row, err := mapAreaRowFromModel(area, now)
+		if err != nil {
+			return payloadError("map area", err)
+		}
+		rows = append(rows, row)
+	}
+	return mapDBError(s.dbFor(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"project_id", "map_id", "parent_area_id", "name", "level", "min_x", "min_y", "max_x", "max_y", "center_x", "center_y", "dominant_terrain", "status", "properties_json", "updated_at"}),
+	}).Create(&rows).Error, "map area not found")
+}
+
 func (s *storyEventStore) ListMapTilesByProjectID(ctx context.Context, projectID string) ([]model.MapTile, error) {
 	var rows []persistencemodels.MapTile
 	if err := s.dbFor(ctx).Where("project_id = ?", projectID).Order("y asc, x asc").Find(&rows).Error; err != nil {
@@ -455,6 +525,29 @@ func (s *storyEventStore) ListLocationsByProjectID(ctx context.Context, projectI
 	if err := s.dbFor(ctx).Where("project_id = ?", projectID).Order("created_at asc").Find(&rows).Error; err != nil {
 		return nil, mapDBError(err, "location state not found")
 	}
+	return locationStatesFromRows(rows)
+}
+
+func (s *storyEventStore) GetLocation(ctx context.Context, projectID string, locationID string) (model.LocationState, error) {
+	var row persistencemodels.LocationState
+	if err := s.dbFor(ctx).Where("project_id = ? AND id = ?", projectID, locationID).First(&row).Error; err != nil {
+		return model.LocationState{}, mapDBError(err, "location state not found")
+	}
+	return toLocationState(row)
+}
+
+func (s *storyEventStore) ListLocationsByParentID(ctx context.Context, projectID string, parentLocationID string) ([]model.LocationState, error) {
+	var rows []persistencemodels.LocationState
+	if err := s.dbFor(ctx).
+		Where("project_id = ? AND parent_location_id = ?", projectID, parentLocationID).
+		Order("created_at asc").
+		Find(&rows).Error; err != nil {
+		return nil, mapDBError(err, "location state not found")
+	}
+	return locationStatesFromRows(rows)
+}
+
+func locationStatesFromRows(rows []persistencemodels.LocationState) ([]model.LocationState, error) {
 	locations := make([]model.LocationState, 0, len(rows))
 	for _, row := range rows {
 		location, err := toLocationState(row)
@@ -488,7 +581,7 @@ func (s *storyEventStore) UpsertLocations(ctx context.Context, projectID string,
 	}
 	return mapDBError(s.dbFor(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"project_id", "map_id", "region_id", "name", "type", "description", "x", "y", "radius", "status", "properties_json", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"project_id", "map_id", "area_id", "region_id", "parent_location_id", "name", "type", "scale", "detail_state", "description", "x", "y", "radius", "status", "properties_json", "updated_at"}),
 	}).Create(&rows).Error, "location state not found")
 }
 
@@ -787,6 +880,64 @@ func toMapTile(row persistencemodels.MapTile) (model.MapTile, error) {
 	}, nil
 }
 
+func mapAreaRowFromModel(area model.MapArea, now time.Time) (persistencemodels.MapArea, error) {
+	propertiesJSON, err := encodeJSON(area.Properties)
+	if err != nil {
+		return persistencemodels.MapArea{}, err
+	}
+	if area.CreatedAt.IsZero() {
+		area.CreatedAt = now
+	}
+	if area.UpdatedAt.IsZero() {
+		area.UpdatedAt = now
+	}
+	return persistencemodels.MapArea{
+		ID:              area.ID,
+		ProjectID:       area.ProjectID,
+		MapID:           area.MapID,
+		ParentAreaID:    area.ParentAreaID,
+		Name:            area.Name,
+		Level:           area.Level,
+		MinX:            area.MinX,
+		MinY:            area.MinY,
+		MaxX:            area.MaxX,
+		MaxY:            area.MaxY,
+		CenterX:         area.CenterX,
+		CenterY:         area.CenterY,
+		DominantTerrain: area.DominantTerrain,
+		Status:          area.Status,
+		PropertiesJSON:  propertiesJSON,
+		CreatedAt:       area.CreatedAt,
+		UpdatedAt:       area.UpdatedAt,
+	}, nil
+}
+
+func toMapArea(row persistencemodels.MapArea) (model.MapArea, error) {
+	properties, err := decodeJSON[map[string]any](row.PropertiesJSON)
+	if err != nil {
+		return model.MapArea{}, err
+	}
+	return model.MapArea{
+		ID:              row.ID,
+		ProjectID:       row.ProjectID,
+		MapID:           row.MapID,
+		ParentAreaID:    row.ParentAreaID,
+		Name:            row.Name,
+		Level:           row.Level,
+		MinX:            row.MinX,
+		MinY:            row.MinY,
+		MaxX:            row.MaxX,
+		MaxY:            row.MaxY,
+		CenterX:         row.CenterX,
+		CenterY:         row.CenterY,
+		DominantTerrain: row.DominantTerrain,
+		Status:          row.Status,
+		Properties:      properties,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+	}, nil
+}
+
 func locationStateRowFromModel(location model.LocationState, now time.Time) (persistencemodels.LocationState, error) {
 	propertiesJSON, err := encodeJSON(location.Properties)
 	if err != nil {
@@ -799,20 +950,24 @@ func locationStateRowFromModel(location model.LocationState, now time.Time) (per
 		location.UpdatedAt = now
 	}
 	return persistencemodels.LocationState{
-		ID:             location.ID,
-		ProjectID:      location.ProjectID,
-		MapID:          location.MapID,
-		RegionID:       location.RegionID,
-		Name:           location.Name,
-		Type:           location.Type,
-		Description:    location.Description,
-		X:              location.X,
-		Y:              location.Y,
-		Radius:         location.Radius,
-		Status:         location.Status,
-		PropertiesJSON: propertiesJSON,
-		CreatedAt:      location.CreatedAt,
-		UpdatedAt:      location.UpdatedAt,
+		ID:               location.ID,
+		ProjectID:        location.ProjectID,
+		MapID:            location.MapID,
+		AreaID:           location.AreaID,
+		RegionID:         location.RegionID,
+		ParentLocationID: location.ParentLocationID,
+		Name:             location.Name,
+		Type:             location.Type,
+		Scale:            location.Scale,
+		DetailState:      location.DetailState,
+		Description:      location.Description,
+		X:                location.X,
+		Y:                location.Y,
+		Radius:           location.Radius,
+		Status:           location.Status,
+		PropertiesJSON:   propertiesJSON,
+		CreatedAt:        location.CreatedAt,
+		UpdatedAt:        location.UpdatedAt,
 	}, nil
 }
 
@@ -822,20 +977,24 @@ func toLocationState(row persistencemodels.LocationState) (model.LocationState, 
 		return model.LocationState{}, err
 	}
 	return model.LocationState{
-		ID:          row.ID,
-		ProjectID:   row.ProjectID,
-		MapID:       row.MapID,
-		RegionID:    row.RegionID,
-		Name:        row.Name,
-		Type:        row.Type,
-		Description: row.Description,
-		X:           row.X,
-		Y:           row.Y,
-		Radius:      row.Radius,
-		Status:      row.Status,
-		Properties:  properties,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		ID:               row.ID,
+		ProjectID:        row.ProjectID,
+		MapID:            row.MapID,
+		AreaID:           row.AreaID,
+		RegionID:         row.RegionID,
+		ParentLocationID: row.ParentLocationID,
+		Name:             row.Name,
+		Type:             row.Type,
+		Scale:            row.Scale,
+		DetailState:      row.DetailState,
+		Description:      row.Description,
+		X:                row.X,
+		Y:                row.Y,
+		Radius:           row.Radius,
+		Status:           row.Status,
+		Properties:       properties,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
 	}, nil
 }
 

@@ -186,14 +186,14 @@ func (e *DialogueActionExecutor) execute(ctx context.Context, option model.Dialo
 		if err != nil {
 			return option, err
 		}
-		run, err := e.storyAdvancer.Advance(ctx, session.ID, model.AdvanceStorySessionInput{AuthorMessage: stringValue(option.Payload, "author_message")})
+		run, err := e.storyAdvancer.Advance(ctx, session.ID, model.AdvanceStorySessionInput{})
 		if err != nil {
 			return option, err
 		}
 		option.Result = map[string]any{"story_session_id": session.ID, "story_run_id": run.RunID, "status": run.Status}
 		return option, nil
 	case domain.DialogueActionStoryAdvance:
-		run, err := e.storyAdvancer.Advance(ctx, stringValue(option.Payload, "story_session_id"), model.AdvanceStorySessionInput{AuthorMessage: stringValue(option.Payload, "author_message")})
+		run, err := e.storyAdvancer.Advance(ctx, stringValue(option.Payload, "story_session_id"), model.AdvanceStorySessionInput{})
 		if err != nil {
 			return option, err
 		}
@@ -224,8 +224,7 @@ func (e *DialogueActionExecutor) execute(ctx context.Context, option model.Dialo
 			return option, pkgerr.Internal("story event log service is required", nil)
 		}
 		branch, err := e.storyEventLog.ForkEvent(ctx, stringValue(option.Payload, "event_id"), model.ForkStoryEventInput{
-			Name:          firstNonEmpty(stringValue(option.Payload, "name"), "dialogue fork"),
-			AuthorMessage: firstNonEmpty(input.AuthorNote, stringValue(option.Payload, "author_message")),
+			Name: firstNonEmpty(stringValue(option.Payload, "name"), "dialogue fork"),
 		})
 		if err != nil {
 			return option, err

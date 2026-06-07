@@ -110,6 +110,13 @@ type StorySessionRepository interface {
 	MarkCut(ctx context.Context, runID string) error
 }
 
+type StoryAutoRunRepository interface {
+	Upsert(ctx context.Context, state model.StoryAutoRunState) (model.StoryAutoRunState, error)
+	GetBySessionID(ctx context.Context, sessionID string) (model.StoryAutoRunState, error)
+	ListResumable(ctx context.Context) ([]model.StoryAutoRunState, error)
+	Update(ctx context.Context, state model.StoryAutoRunState) (model.StoryAutoRunState, error)
+}
+
 type StoryEventStore interface {
 	AppendEvent(ctx context.Context, e model.StoryEvent) (model.StoryEvent, error)
 	GetEvent(ctx context.Context, id string) (model.StoryEvent, error)
@@ -130,9 +137,13 @@ type StoryEventStore interface {
 
 	GetWorldMapByProjectID(ctx context.Context, projectID string) (model.WorldMap, error)
 	UpsertWorldMap(ctx context.Context, worldMap model.WorldMap) (model.WorldMap, error)
+	ListMapAreasByProjectID(ctx context.Context, projectID string) ([]model.MapArea, error)
+	UpsertMapAreas(ctx context.Context, projectID string, areas []model.MapArea) error
 	ListMapTilesByProjectID(ctx context.Context, projectID string) ([]model.MapTile, error)
 	UpsertMapTiles(ctx context.Context, projectID string, tiles []model.MapTile) error
+	GetLocation(ctx context.Context, projectID string, locationID string) (model.LocationState, error)
 	ListLocationsByProjectID(ctx context.Context, projectID string) ([]model.LocationState, error)
+	ListLocationsByParentID(ctx context.Context, projectID string, parentLocationID string) ([]model.LocationState, error)
 	UpsertLocations(ctx context.Context, projectID string, locations []model.LocationState) error
 	ListFactionInfluencesByProjectID(ctx context.Context, projectID string) ([]model.FactionInfluence, error)
 	UpsertFactionInfluences(ctx context.Context, projectID string, influences []model.FactionInfluence) error
@@ -174,6 +185,7 @@ type Repositories struct {
 	SetupSessions    SetupSessionRepository
 	DialogueSessions DialogueSessionRepository
 	StorySessions    StorySessionRepository
+	StoryAutoRuns    StoryAutoRunRepository
 	StoryEvents      StoryEventStore
 	Chapters         ChapterRepository
 	Memories         MemoryRepository
