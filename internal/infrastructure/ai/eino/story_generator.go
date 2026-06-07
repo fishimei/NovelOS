@@ -110,10 +110,20 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return model.StoryRunResult{}, fmt.Errorf("seed plot variable: %w", err)
 	}
 	state.variable = variable
-	plannedActions, err := g.planCharacterActions(ctx, input, snapshot)
+	world, err := g.decisionWorldSnapshot(ctx, input, snapshot)
+	if err != nil {
+		return model.StoryRunResult{}, fmt.Errorf("load decision world: %w", err)
+	}
+	attention := selectCharacterAttention(input, snapshot, world, variable)
+	plannedActions, err := g.planCharacterActions(ctx, input, snapshot, world, attention.PrimaryDecisionIDs)
 	if err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("plan character actions: %w", err)
 	}
+	secondarySummaries := summarizeSecondaryCharacters(input, snapshot, world, attention.SecondarySummaryIDs, variable)
+	arrangement := arrangeScene(input, snapshot, world, variable, attention, plannedActions, secondarySummaries)
+	state.mu.Lock()
+	state.arrangement = arrangement
+	state.mu.Unlock()
 	if err := g.returnIfStopped(ctx, input, "planning_actions"); err != nil {
 		return model.StoryRunResult{}, err
 	}
@@ -123,14 +133,17 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		reflection := fallbackReflectionResult(plan, variable)
 		result := g.assembleStoryRunResult(input, plan, reflection, variable)
 		result.CompletedActions = append([]model.OngoingAction(nil), input.CompletedActions...)
+		result.AttentionSelection = attention
+		result.SecondarySummaries = secondarySummaries
+		result.SceneArrangement = arrangement
 		return result, nil
 	}
-	sceneCharacterIDs := sceneCharacterIDsForContext(variable, snapshot.Characters, plannedActions)
+	sceneCharacterIDs := append([]string(nil), arrangement.RenderParticipantIDs...)
 	sceneCharacterIDs = append(sceneCharacterIDs, actionCharacterIDs(input.SupersededActions)...)
 	if err := loadRecentMemoriesForCharacters(ctx, g.deps, state, &snapshot, input.Run.ProjectID, sceneCharacterIDs); err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("load scene memories: %w", err)
 	}
-	sceneContext := g.buildSceneContext(input, snapshot, variable, plannedActions)
+	sceneContext := g.buildSceneContext(input, snapshot, variable, plannedActions, attention, secondarySummaries, arrangement)
 	actionLocations, err := g.actionLocationsForScene(ctx, input, plannedActions)
 	if err != nil {
 		return model.StoryRunResult{}, fmt.Errorf("load action locations: %w", err)
@@ -147,6 +160,9 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		result := g.assembleStoryRunResult(input, plan, reflection, finalVariable)
 		result.CompletedActions = append([]model.OngoingAction(nil), input.CompletedActions...)
 		result.SupersededActions = append([]model.OngoingAction(nil), input.SupersededActions...)
+		result.AttentionSelection = attention
+		result.SecondarySummaries = secondarySummaries
+		result.SceneArrangement = arrangement
 		if !input.CollisionAt.IsZero() {
 			collisionAt := input.CollisionAt
 			result.CollisionAt = &collisionAt
@@ -154,7 +170,7 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 		return result, nil
 	}
 	updateStoryRunStep(ctx, g.deps, input.Run.RunID, domain.RunStatusGeneratingMemoryPatch, 90)
-	reflection, err := g.reflectScene(ctx, input, snapshot, plan, finalVariable)
+	reflection, err := g.reflectScene(ctx, input, snapshot, plan, finalVariable, arrangement, secondarySummaries)
 	if err != nil {
 		if ctx.Err() != nil {
 			return model.StoryRunResult{}, ctx.Err()
@@ -168,6 +184,9 @@ func (g *StoryRunGenerator) Generate(ctx context.Context, input port.StoryRunGen
 	result := g.assembleStoryRunResult(input, plan, reflection, finalVariable)
 	result.CompletedActions = append([]model.OngoingAction(nil), input.CompletedActions...)
 	result.SupersededActions = append([]model.OngoingAction(nil), input.SupersededActions...)
+	result.AttentionSelection = attention
+	result.SecondarySummaries = secondarySummaries
+	result.SceneArrangement = arrangement
 	if !input.CollisionAt.IsZero() {
 		collisionAt := input.CollisionAt
 		result.CollisionAt = &collisionAt
@@ -238,7 +257,25 @@ func (g *StoryRunGenerator) sceneUserPrompt(sceneContext SceneContext) string {
 	return string(payload)
 }
 
-func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, seed StoryVariablePlan, plannedActions []ScenePlannedAction) SceneContext {
+func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, seed StoryVariablePlan, plannedActions []ScenePlannedAction, extras ...any) SceneContext {
+	var attention model.CharacterAttentionSelection
+	var secondarySummaries []model.SecondaryActionSummary
+	var arrangement model.SceneArrangement
+	if len(extras) > 0 {
+		if value, ok := extras[0].(model.CharacterAttentionSelection); ok {
+			attention = value
+		}
+	}
+	if len(extras) > 1 {
+		if value, ok := extras[1].([]model.SecondaryActionSummary); ok {
+			secondarySummaries = value
+		}
+	}
+	if len(extras) > 2 {
+		if value, ok := extras[2].(model.SceneArrangement); ok {
+			arrangement = value
+		}
+	}
 	publicWorld := make([]model.WorldStateEntry, 0, len(snapshot.WorldState))
 	for _, entry := range snapshot.WorldState {
 		if entry.Importance >= 4 || entry.Volatility >= 4 {
@@ -248,7 +285,10 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 	if len(publicWorld) == 0 {
 		publicWorld = firstEntries(snapshot.WorldState, 5)
 	}
-	characterIDs := sceneCharacterIDsForContext(seed, snapshot.Characters, plannedActions)
+	characterIDs := append([]string(nil), arrangement.RenderParticipantIDs...)
+	if len(characterIDs) == 0 {
+		characterIDs = sceneCharacterIDsForContext(seed, snapshot.Characters, plannedActions)
+	}
 	characterViews := make([]SceneCharacterView, 0, len(characterIDs))
 	for _, characterID := range characterIDs {
 		character := characterByID(snapshot.Characters, characterID)
@@ -293,13 +333,16 @@ func (g *StoryRunGenerator) buildSceneContext(input port.StoryRunGenerationInput
 			AuthorIntent:        input.Session.AuthorIntent,
 			CurrentPlotVariable: input.Session.CurrentPlotVariableSummary,
 		},
-		AuthorBible:       compactAuthorBible(snapshot.AuthorBible),
-		PlotVariableSeed:  seed,
-		PlannedActions:    plannedActions,
-		InFlightActions:   append([]model.OngoingAction(nil), input.InFlightActions...),
-		CompletedActions:  append([]model.OngoingAction(nil), input.CompletedActions...),
-		SupersededActions: append([]model.OngoingAction(nil), input.SupersededActions...),
-		CollisionAt:       formatOptionalTime(input.CollisionAt),
+		AuthorBible:        compactAuthorBible(snapshot.AuthorBible),
+		PlotVariableSeed:   seed,
+		PlannedActions:     plannedActions,
+		SecondarySummaries: secondarySummaries,
+		Arrangement:        arrangement,
+		AttentionSelection: attention,
+		InFlightActions:    append([]model.OngoingAction(nil), input.InFlightActions...),
+		CompletedActions:   append([]model.OngoingAction(nil), input.CompletedActions...),
+		SupersededActions:  append([]model.OngoingAction(nil), input.SupersededActions...),
+		CollisionAt:        formatOptionalTime(input.CollisionAt),
 		SharedObservable: SharedObservableContext{
 			LocationHints:    compactWorldState(snapshot.WorldState, 5),
 			PublicWorldState: compactWorldState(publicWorld, 8),
@@ -435,15 +478,29 @@ func locationStateMap(locations []model.LocationState) map[string]model.Location
 	return byID
 }
 
-func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot) ([]ScenePlannedAction, error) {
+func (g *StoryRunGenerator) planCharacterActions(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, args ...any) ([]ScenePlannedAction, error) {
 	if g.actionDecider == nil {
 		return nil, nil
 	}
-	world, err := g.decisionWorldSnapshot(ctx, input, snapshot)
-	if err != nil {
-		return nil, err
+	var world model.WorldSnapshot
+	var characterIDs []string
+	if len(args) > 0 {
+		if value, ok := args[0].(model.WorldSnapshot); ok {
+			world = value
+		}
 	}
-	characterIDs := input.WakeCharacterIDs
+	if len(args) > 1 {
+		if value, ok := args[1].([]string); ok {
+			characterIDs = value
+		}
+	}
+	if world.Characters == nil {
+		loaded, err := g.decisionWorldSnapshot(ctx, input, snapshot)
+		if err != nil {
+			return nil, err
+		}
+		world = loaded
+	}
 	if len(characterIDs) == 0 {
 		characterIDs = idleCharacterIDs(world, snapshot.Characters)
 	}
@@ -1443,6 +1500,11 @@ func (c *sceneConsumer) consumeInteraction(ctx context.Context, group model.Stor
 			c.addIssue("跳过跨地点交涉组")
 			return nil
 		}
+		if len(c.state.arrangement.RenderParticipantIDs) > 0 && !containsString(c.state.arrangement.RenderParticipantIDs, characterID) {
+			c.state.mu.Unlock()
+			c.addIssue("跳过未被编排选中的交涉角色")
+			return nil
+		}
 	}
 	if group.ShouldInteract && selectedInteractionCount(c.state.interactionGroups) >= 3 {
 		c.state.mu.Unlock()
@@ -1510,6 +1572,11 @@ func (c *sceneConsumer) consumeTurn(ctx context.Context, turn StoryTurnPlan) err
 	turn.ActorID = actorID
 	turn.ActorName = actorName
 	turn.TargetActorIDs = targetActorIDs
+	if actorID != "" && len(c.state.arrangement.RenderParticipantIDs) > 0 && !containsString(c.state.arrangement.RenderParticipantIDs, actorID) {
+		c.state.mu.Unlock()
+		c.addIssue("story turn actor must be selected by scene arrangement")
+		return nil
+	}
 	if len(c.state.plannedActions) > 0 && !plannedActionsAllowTurn(c.state.plannedActions, turn.ActorID, turn.TargetActorIDs) {
 		c.state.mu.Unlock()
 		c.addIssue("story turn actor must belong to planned action participants")
@@ -1759,30 +1826,104 @@ func storyPlotVariableUsable(variable StoryNarrativePlotVariable) bool {
 	return strings.TrimSpace(variable.PressureSource) != "" || strings.TrimSpace(variable.CoreChoice) != "" || strings.TrimSpace(variable.FocalCharacterID) != "" || len(variable.RelatedCharacterIDs) > 0 || len(variable.WorldStatePressure) > 0
 }
 
-func (g *StoryRunGenerator) reflectScene(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) (SceneReflectionResult, error) {
+func (g *StoryRunGenerator) reflectScene(ctx context.Context, input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan, extras ...any) (SceneReflectionResult, error) {
+	var arrangement model.SceneArrangement
+	var secondarySummaries []model.SecondaryActionSummary
+	if len(extras) > 0 {
+		if value, ok := extras[0].(model.SceneArrangement); ok {
+			arrangement = value
+		}
+	}
+	if len(extras) > 1 {
+		if value, ok := extras[1].([]model.SecondaryActionSummary); ok {
+			secondarySummaries = value
+		}
+	}
 	if g.model == nil {
 		return SceneReflectionResult{}, errors.New("story model is not configured")
 	}
-	reflectionContext := g.buildReflectionContext(input, snapshot, plan, variable)
+	reflectionContext := g.buildReflectionContext(input, snapshot, plan, variable, arrangement, secondarySummaries)
 	payload, _ := json.Marshal(buildReflectionPromptInput(reflectionContext))
-	msg, err := g.model.Generate(ctx, []*schema.Message{
+	messages := []*schema.Message{
 		schema.SystemMessage(g.reflectSystemPrompt()),
 		schema.UserMessage(string(payload)),
-	}, maxTokensOption(g.cfg.Model, g.reflectTokenLimit()))
-	if err != nil {
-		return SceneReflectionResult{}, err
 	}
-	var reflection SceneReflectionResult
-	if err := decodeModelJSON(msg.Content, &reflection); err != nil {
-		return SceneReflectionResult{}, err
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		msg, err := g.model.Generate(ctx, messages, maxTokensOption(g.cfg.Model, g.reflectTokenLimit()))
+		if err != nil {
+			return SceneReflectionResult{}, err
+		}
+		var reflection SceneReflectionResult
+		if err := decodeModelJSON(msg.Content, &reflection); err != nil {
+			lastErr = err
+			messages = append(messages, msg, schema.UserMessage("输出不是合法 JSON。请只输出一个 JSON 对象，包含 summary, character_takeaways, memory_patch, tier_transitions, ambient_promotions。"))
+			continue
+		}
+		if err := validateSceneReflectionResult(reflection); err != nil {
+			lastErr = err
+			messages = append(messages, msg, schema.UserMessage("reflection 输出字段不完整："+err.Error()+"。如果 ambient 人物值得记录，必须提供 temporary_id、name、role、profile、location_key、promotion_reason；不要提供 character_id，提交层会创建正式角色并赋予 ID。请重新输出完整 JSON。"))
+			continue
+		}
+		if strings.TrimSpace(reflection.Summary) == "" {
+			reflection.Summary = fallbackSceneSummary(plan, variable)
+		}
+		return reflection, nil
 	}
-	if strings.TrimSpace(reflection.Summary) == "" {
-		reflection.Summary = fallbackSceneSummary(plan, variable)
-	}
-	return reflection, nil
+	return SceneReflectionResult{}, fmt.Errorf("invalid scene reflection after retries: %w", lastErr)
 }
 
-func (g *StoryRunGenerator) buildReflectionContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan) ReflectionContext {
+func validateSceneReflectionResult(reflection SceneReflectionResult) error {
+	for _, promotion := range reflection.AmbientPromotions {
+		if strings.TrimSpace(promotion.CharacterID) != "" {
+			return fmt.Errorf("ambient_promotions must not provide character_id before persistence")
+		}
+		if strings.TrimSpace(promotion.TemporaryID) == "" {
+			return fmt.Errorf("ambient_promotions[].temporary_id is required")
+		}
+		if strings.TrimSpace(promotion.Name) == "" {
+			return fmt.Errorf("ambient_promotions[].name is required")
+		}
+		if strings.TrimSpace(promotion.Role) == "" {
+			return fmt.Errorf("ambient_promotions[].role is required")
+		}
+		if strings.TrimSpace(promotion.Profile) == "" {
+			return fmt.Errorf("ambient_promotions[].profile is required")
+		}
+		if strings.TrimSpace(promotion.LocationKey) == "" {
+			return fmt.Errorf("ambient_promotions[].location_key is required")
+		}
+		if strings.TrimSpace(promotion.PromotionReason) == "" {
+			return fmt.Errorf("ambient_promotions[].promotion_reason is required")
+		}
+	}
+	for _, transition := range reflection.TierTransitions {
+		if strings.TrimSpace(transition.CharacterID) == "" {
+			return fmt.Errorf("tier_transitions[].character_id is required")
+		}
+		if strings.TrimSpace(transition.ToTier) == "" {
+			return fmt.Errorf("tier_transitions[].to_tier is required")
+		}
+		if strings.TrimSpace(transition.Reason) == "" {
+			return fmt.Errorf("tier_transitions[].reason is required")
+		}
+	}
+	return nil
+}
+
+func (g *StoryRunGenerator) buildReflectionContext(input port.StoryRunGenerationInput, snapshot StoryContextSnapshot, plan StoryPlanResult, variable StoryVariablePlan, extras ...any) ReflectionContext {
+	var arrangement model.SceneArrangement
+	var secondarySummaries []model.SecondaryActionSummary
+	if len(extras) > 0 {
+		if value, ok := extras[0].(model.SceneArrangement); ok {
+			arrangement = value
+		}
+	}
+	if len(extras) > 1 {
+		if value, ok := extras[1].([]model.SecondaryActionSummary); ok {
+			secondarySummaries = value
+		}
+	}
 	characters := make([]ReflectionCharacter, 0, len(snapshot.Characters))
 	for _, character := range snapshot.Characters {
 		characters = append(characters, ReflectionCharacter{ID: character.ID, Name: character.Name, Role: character.Role})
@@ -1795,11 +1936,13 @@ func (g *StoryRunGenerator) buildReflectionContext(input port.StoryRunGeneration
 			InteractionTranscripts: plan.InteractionTranscripts,
 			StopReason:             plan.StopReason,
 		},
-		Characters:      characters,
-		PerceptionIndex: buildPerceptionIndex(snapshot.Characters, plan),
-		PriorMemories:   compactMemories(snapshot.RecentMemories, 8),
-		Relationships:   compactRelationships(snapshot.Relationships, 20),
-		WorldState:      compactWorldState(snapshot.WorldState, 20),
+		Characters:         characters,
+		PerceptionIndex:    buildPerceptionIndex(snapshot.Characters, plan),
+		PriorMemories:      compactMemories(snapshot.RecentMemories, 8),
+		Relationships:      compactRelationships(snapshot.Relationships, 20),
+		WorldState:         compactWorldState(snapshot.WorldState, 20),
+		Arrangement:        arrangement,
+		SecondarySummaries: secondarySummaries,
 	}
 }
 
@@ -1859,6 +2002,8 @@ func (g *StoryRunGenerator) assembleStoryRunResult(input port.StoryRunGeneration
 			RelationshipUpdates:    toRelationshipUpdates(reflection.MemoryPatch.RelationshipUpdates),
 			WorldStateUpdates:      toWorldStateUpdates(reflection.MemoryPatch.WorldStateUpdates),
 		},
+		TierTransitions:   reflection.TierTransitions,
+		AmbientPromotions: reflection.AmbientPromotions,
 	}
 }
 

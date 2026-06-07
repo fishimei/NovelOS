@@ -76,20 +76,23 @@ type StoryVariablePlan struct {
 }
 
 type SceneContext struct {
-	StoryRunID        string                  `json:"story_run_id"`
-	ProjectID         string                  `json:"project_id"`
-	SessionID         string                  `json:"session_id"`
-	Session           SceneSessionContext     `json:"session"`
-	AuthorBible       map[string]any          `json:"author_bible,omitempty"`
-	PlotVariableSeed  StoryVariablePlan       `json:"plot_variable_seed"`
-	PlannedActions    []ScenePlannedAction    `json:"planned_actions,omitempty"`
-	InFlightActions   []model.OngoingAction   `json:"in_flight_actions,omitempty"`
-	CompletedActions  []model.OngoingAction   `json:"completed_actions,omitempty"`
-	SupersededActions []model.OngoingAction   `json:"superseded_actions,omitempty"`
-	CollisionAt       string                  `json:"collision_at,omitempty"`
-	SharedObservable  SharedObservableContext `json:"shared_observable"`
-	CharacterViews    []SceneCharacterView    `json:"character_views"`
-	Constraints       SceneConstraints        `json:"constraints"`
+	StoryRunID         string                            `json:"story_run_id"`
+	ProjectID          string                            `json:"project_id"`
+	SessionID          string                            `json:"session_id"`
+	Session            SceneSessionContext               `json:"session"`
+	AuthorBible        map[string]any                    `json:"author_bible,omitempty"`
+	PlotVariableSeed   StoryVariablePlan                 `json:"plot_variable_seed"`
+	PlannedActions     []ScenePlannedAction              `json:"planned_actions,omitempty"`
+	SecondarySummaries []model.SecondaryActionSummary    `json:"secondary_summaries,omitempty"`
+	Arrangement        model.SceneArrangement            `json:"arrangement,omitempty"`
+	AttentionSelection model.CharacterAttentionSelection `json:"attention_selection,omitempty"`
+	InFlightActions    []model.OngoingAction             `json:"in_flight_actions,omitempty"`
+	CompletedActions   []model.OngoingAction             `json:"completed_actions,omitempty"`
+	SupersededActions  []model.OngoingAction             `json:"superseded_actions,omitempty"`
+	CollisionAt        string                            `json:"collision_at,omitempty"`
+	SharedObservable   SharedObservableContext           `json:"shared_observable"`
+	CharacterViews     []SceneCharacterView              `json:"character_views"`
+	Constraints        SceneConstraints                  `json:"constraints"`
 }
 
 type ScenePlannedAction struct {
@@ -159,12 +162,14 @@ type sceneBatchResult struct {
 }
 
 type ReflectionContext struct {
-	Scene           ReflectionScene        `json:"scene"`
-	Characters      []ReflectionCharacter  `json:"characters"`
-	PerceptionIndex []PerceptionIndexEntry `json:"perception_index"`
-	PriorMemories   map[string][]string    `json:"prior_memories"`
-	Relationships   []map[string]any       `json:"relationships"`
-	WorldState      []map[string]any       `json:"world_state"`
+	Scene              ReflectionScene                `json:"scene"`
+	Characters         []ReflectionCharacter          `json:"characters"`
+	PerceptionIndex    []PerceptionIndexEntry         `json:"perception_index"`
+	PriorMemories      map[string][]string            `json:"prior_memories"`
+	Relationships      []map[string]any               `json:"relationships"`
+	WorldState         []map[string]any               `json:"world_state"`
+	Arrangement        model.SceneArrangement         `json:"arrangement,omitempty"`
+	SecondarySummaries []model.SecondaryActionSummary `json:"secondary_summaries,omitempty"`
 }
 
 type ReflectionScene struct {
@@ -188,9 +193,11 @@ type PerceptionIndexEntry struct {
 }
 
 type SceneReflectionResult struct {
-	Summary            string                        `json:"summary"`
-	CharacterTakeaways []CharacterReflectionTakeaway `json:"character_takeaways"`
-	MemoryPatch        StoryNarrativeMemoryPatch     `json:"memory_patch"`
+	Summary            string                          `json:"summary"`
+	CharacterTakeaways []CharacterReflectionTakeaway   `json:"character_takeaways"`
+	MemoryPatch        StoryNarrativeMemoryPatch       `json:"memory_patch"`
+	TierTransitions    []model.CharacterTierTransition `json:"tier_transitions,omitempty"`
+	AmbientPromotions  []model.AmbientPromotionRequest `json:"ambient_promotions,omitempty"`
 }
 
 type CharacterReflectionTakeaway struct {

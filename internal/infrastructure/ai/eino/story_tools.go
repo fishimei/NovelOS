@@ -40,6 +40,7 @@ type storyRunState struct {
 	locationGroups         []model.StoryLocationGroup
 	interactionGroups      []model.StoryInteractionGroup
 	interactionTranscripts []model.StoryInteractionTranscript
+	arrangement            model.SceneArrangement
 	stopReason             string
 	summary                string
 	variable               StoryVariablePlan
@@ -140,6 +141,9 @@ func recallCharacterMemories(ctx context.Context, deps storyGeneratorDeps, runID
 			log.Printf("story run %s external memory recall failed for character %s: %v", runID, characterID, err)
 			publishStoryEvent(ctx, deps, runID, domain.EventGenerationStep, map[string]any{"step": "external_memory_recall_failed", "character_id": characterID, "error": err.Error()})
 		}
+	}
+	if deps.memories == nil {
+		return nil, nil
 	}
 	return deps.memories.ListByCharacterID(ctx, characterID, 5)
 }
@@ -246,6 +250,10 @@ func selectStoryInteraction(ctx context.Context, deps storyGeneratorDeps, state 
 			state.mu.Unlock()
 			return model.StoryInteractionGroup{}, pkgerr.Validation("interaction characters must share the same location")
 		}
+		if len(state.arrangement.RenderParticipantIDs) > 0 && !containsString(state.arrangement.RenderParticipantIDs, characterID) {
+			state.mu.Unlock()
+			return model.StoryInteractionGroup{}, pkgerr.Validation("interaction character must be selected by scene arrangement")
+		}
 	}
 	if input.ShouldInteract && selectedInteractionCount(state.interactionGroups) >= 3 {
 		state.mu.Unlock()
@@ -294,6 +302,9 @@ func chooseNextStoryActor(ctx context.Context, deps storyGeneratorDeps, state *s
 	actorID, actorName, err := resolveStoryActor(state.characters, input.ActorID, input.ActorName, input.ActionType)
 	if err != nil {
 		return StoryTurnPlan{}, err
+	}
+	if actorID != "" && len(state.arrangement.RenderParticipantIDs) > 0 && !containsString(state.arrangement.RenderParticipantIDs, actorID) {
+		return StoryTurnPlan{}, pkgerr.Validation("story actor must be selected by scene arrangement")
 	}
 	targetActorIDs, err := validStoryTargetActorIDs(state.characters, input.TargetActorIDs)
 	if err != nil {

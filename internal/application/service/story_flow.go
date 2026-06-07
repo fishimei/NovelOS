@@ -27,19 +27,21 @@ func (s *StorySessionStarter) Start(ctx context.Context, projectID string, input
 }
 
 type StorySessionAdvancer struct {
-	sessions  port.StorySessionRepository
-	store     port.StoryEventStore
-	audit     port.AuditRepository
-	generator port.StoryRunGenerator
-	events    port.GenerationEventStream
-	tx        port.TxManager
-	clock     port.Clock
-	ids       port.IDGenerator
+	sessions   port.StorySessionRepository
+	store      port.StoryEventStore
+	characters port.CharacterRepository
+	audit      port.AuditRepository
+	generator  port.StoryRunGenerator
+	events     port.GenerationEventStream
+	tx         port.TxManager
+	clock      port.Clock
+	ids        port.IDGenerator
 }
 
 func NewStorySessionAdvancer(
 	sessions port.StorySessionRepository,
 	store port.StoryEventStore,
+	characters port.CharacterRepository,
 	audit port.AuditRepository,
 	generator port.StoryRunGenerator,
 	events port.GenerationEventStream,
@@ -47,7 +49,7 @@ func NewStorySessionAdvancer(
 	clock port.Clock,
 	ids port.IDGenerator,
 ) *StorySessionAdvancer {
-	return &StorySessionAdvancer{sessions: sessions, store: store, audit: audit, generator: generator, events: events, tx: tx, clock: clock, ids: ids}
+	return &StorySessionAdvancer{sessions: sessions, store: store, characters: characters, audit: audit, generator: generator, events: events, tx: tx, clock: clock, ids: ids}
 }
 
 func normalizeStoryAdvanceMode(input model.AdvanceStorySessionInput) string {
@@ -541,6 +543,11 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 			"completed_actions":       result.CompletedActions,
 			"superseded_actions":      result.SupersededActions,
 			"collision_at":            result.CollisionAt,
+			"tier_transitions":        result.TierTransitions,
+			"ambient_promotions":      result.AmbientPromotions,
+			"scene_arrangement":       result.SceneArrangement,
+			"secondary_summaries":     result.SecondarySummaries,
+			"attention_selection":     result.AttentionSelection,
 		},
 		StateDelta: model.EventStateDelta{MemoryPatch: result.MemoryPatch},
 		CreatedAt:  currentTime(s.clock),
@@ -549,15 +556,141 @@ func (s *StorySessionAdvancer) persistResultEvents(ctx context.Context, run mode
 		return model.StoryRunResult{}, err
 	}
 	written = append(written, sceneEvent)
-	result.Events = written
-	result.HeadEventID = sceneEvent.ID
-	if err := s.store.UpdateBranchHead(ctx, run.BranchID, sceneEvent.ID); err != nil {
+	parentEventID = sceneEvent.ID
+	storyTime = sceneEvent.StoryTime
+	promotionEvents, result, err := s.persistTierLifecycleEvents(ctx, run, result, parentEventID, storyTime)
+	if err != nil {
 		return model.StoryRunResult{}, err
 	}
-	if err := s.sessions.UpdateRunHead(ctx, run.RunID, sceneEvent.ID); err != nil {
+	if len(promotionEvents) > 0 {
+		written = append(written, promotionEvents...)
+		parentEventID = promotionEvents[len(promotionEvents)-1].ID
+	}
+	result.Events = written
+	result.HeadEventID = parentEventID
+	if err := s.store.UpdateBranchHead(ctx, run.BranchID, parentEventID); err != nil {
+		return model.StoryRunResult{}, err
+	}
+	if err := s.sessions.UpdateRunHead(ctx, run.RunID, parentEventID); err != nil {
 		return model.StoryRunResult{}, err
 	}
 	return result, nil
+}
+
+func (s *StorySessionAdvancer) persistTierLifecycleEvents(ctx context.Context, run model.StoryRun, result model.StoryRunResult, parentEventID string, storyTime time.Time) ([]model.StoryEvent, model.StoryRunResult, error) {
+	if len(result.AmbientPromotions) == 0 && len(result.TierTransitions) == 0 {
+		return nil, result, nil
+	}
+	branch := model.Branch{ID: run.BranchID, ProjectID: run.ProjectID, SessionID: run.SessionID}
+	written := make([]model.StoryEvent, 0, len(result.AmbientPromotions)+len(result.TierTransitions))
+	for idx := range result.AmbientPromotions {
+		promotion := &result.AmbientPromotions[idx]
+		if strings.TrimSpace(promotion.Name) == "" || strings.TrimSpace(promotion.Role) == "" {
+			continue
+		}
+		characterID := strings.TrimSpace(promotion.CharacterID)
+		if characterID == "" && s.characters != nil {
+			created, err := s.characters.Create(ctx, run.ProjectID, model.CreateCharacterInput{
+				Name:        promotion.Name,
+				Role:        promotion.Role,
+				Profile:     firstNonEmpty(promotion.Profile, promotion.PromotionReason),
+				Personality: promotion.Personality,
+				VoiceStyle:  promotion.VoiceStyle,
+				Goals:       promotion.Goals,
+				Fears:       promotion.Fears,
+				Constraints: promotion.Constraints,
+			})
+			if err != nil {
+				return nil, result, err
+			}
+			characterID = created.ID
+			promotion.CharacterID = characterID
+		}
+		if characterID == "" {
+			continue
+		}
+		change := model.CharacterTierChange{CharacterID: characterID, FromTier: model.CharacterTierAmbient, ToTier: model.CharacterTierSecondary, Reason: promotion.PromotionReason}
+		move := model.CharacterMove{CharacterID: characterID, LocationKey: strings.TrimSpace(promotion.LocationKey)}
+		event, err := s.appendTierChangeEvent(ctx, branch, parentEventID, storyTime, run.RunID, []model.CharacterTierChange{change}, []model.CharacterMove{move}, map[string]any{"ambient_promotion": *promotion})
+		if err != nil {
+			return nil, result, err
+		}
+		written = append(written, event)
+		parentEventID = event.ID
+		storyTime = event.StoryTime
+	}
+	for _, change := range tierChangesFromTransitions(result.TierTransitions) {
+		event, err := s.appendTierChangeEvent(ctx, branch, parentEventID, storyTime, run.RunID, []model.CharacterTierChange{change}, nil, map[string]any{"tier_transition": change})
+		if err != nil {
+			return nil, result, err
+		}
+		written = append(written, event)
+		parentEventID = event.ID
+		storyTime = event.StoryTime
+	}
+	return written, result, nil
+}
+
+func (s *StorySessionAdvancer) appendTierChangeEvent(ctx context.Context, branch model.Branch, parentEventID string, storyTime time.Time, runID string, changes []model.CharacterTierChange, moves []model.CharacterMove, payload map[string]any) (model.StoryEvent, error) {
+	if len(changes) == 0 {
+		return model.StoryEvent{}, nil
+	}
+	actorIDs := make([]string, 0, len(changes))
+	summaryParts := make([]string, 0, len(changes))
+	for _, change := range changes {
+		actorIDs = append(actorIDs, change.CharacterID)
+		summaryParts = append(summaryParts, change.CharacterID+":"+change.FromTier+"->"+change.ToTier)
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["source_run_id"] = runID
+	payload["tier_changes"] = changes
+	if len(moves) > 0 {
+		payload["character_moves"] = moves
+	}
+	return s.store.AppendEvent(ctx, model.StoryEvent{
+		ProjectID:     branch.ProjectID,
+		SessionID:     branch.SessionID,
+		BranchID:      branch.ID,
+		ParentEventID: parentEventID,
+		StoryTime:     storyTime,
+		Kind:          model.EventKindPromotion,
+		ActorIDs:      uniqueStrings(actorIDs),
+		Summary:       "character tier lifecycle: " + strings.Join(summaryParts, ", "),
+		Payload:       payload,
+		StateDelta:    model.EventStateDelta{CharacterTierChanges: changes, CharacterMoves: validCharacterMoves(moves)},
+		CreatedAt:     currentTime(s.clock),
+	})
+}
+
+func validCharacterMoves(moves []model.CharacterMove) []model.CharacterMove {
+	out := make([]model.CharacterMove, 0, len(moves))
+	for _, move := range moves {
+		move.CharacterID = strings.TrimSpace(move.CharacterID)
+		move.LocationKey = strings.TrimSpace(move.LocationKey)
+		if move.CharacterID == "" || move.LocationKey == "" {
+			continue
+		}
+		out = append(out, move)
+	}
+	return out
+}
+
+func tierChangesFromTransitions(transitions []model.CharacterTierTransition) []model.CharacterTierChange {
+	changes := make([]model.CharacterTierChange, 0, len(transitions))
+	for _, transition := range transitions {
+		if strings.TrimSpace(transition.CharacterID) == "" || strings.TrimSpace(transition.ToTier) == "" {
+			continue
+		}
+		changes = append(changes, model.CharacterTierChange{
+			CharacterID: transition.CharacterID,
+			FromTier:    transition.FromTier,
+			ToTier:      transition.ToTier,
+			Reason:      transition.Reason,
+		})
+	}
+	return changes
 }
 
 func validateNoOverlappingCharacterPlans(events []model.StoryEventPlan, baseStoryTime time.Time) error {

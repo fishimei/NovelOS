@@ -1087,12 +1087,25 @@ func applyDelta(snapshot *model.WorldSnapshot, event model.StoryEvent) {
 		state.X = move.X
 		state.Y = move.Y
 		if state.Tier == "" {
-			state.Tier = "main"
+			state.Tier = model.CharacterTierPrimary
 		}
 		if state.Status == "" {
 			state.Status = "active"
 		}
 		snapshot.Characters[move.CharacterID] = state
+	}
+	for _, change := range event.StateDelta.CharacterTierChanges {
+		if change.CharacterID == "" || change.ToTier == "" {
+			continue
+		}
+		state := snapshot.Characters[change.CharacterID]
+		state.CharacterID = change.CharacterID
+		state.Tier = change.ToTier
+		if state.Status == "" {
+			state.Status = "active"
+		}
+		state.LastTierChangedAt = event.StoryTime
+		snapshot.Characters[change.CharacterID] = state
 	}
 	for _, relationship := range event.StateDelta.RelationshipUpdates {
 		id := relationship.PairID

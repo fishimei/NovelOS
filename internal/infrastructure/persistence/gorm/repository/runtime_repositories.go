@@ -83,6 +83,11 @@ type storyRunResultPayload struct {
 	CompletedActions       []model.OngoingAction              `json:"completed_actions,omitempty"`
 	SupersededActions      []model.OngoingAction              `json:"superseded_actions,omitempty"`
 	CollisionAt            *time.Time                         `json:"collision_at,omitempty"`
+	AttentionSelection     model.CharacterAttentionSelection  `json:"attention_selection,omitempty"`
+	SecondarySummaries     []model.SecondaryActionSummary     `json:"secondary_summaries,omitempty"`
+	SceneArrangement       model.SceneArrangement             `json:"scene_arrangement,omitempty"`
+	TierTransitions        []model.CharacterTierTransition    `json:"tier_transitions,omitempty"`
+	AmbientPromotions      []model.AmbientPromotionRequest    `json:"ambient_promotions,omitempty"`
 }
 
 type dialogueRunResultPayload struct {
@@ -1142,6 +1147,11 @@ func (r *storySessionRepository) GetRunResultByID(ctx context.Context, runID str
 		CompletedActions:       payload.CompletedActions,
 		SupersededActions:      payload.SupersededActions,
 		CollisionAt:            payload.CollisionAt,
+		AttentionSelection:     payload.AttentionSelection,
+		SecondarySummaries:     payload.SecondarySummaries,
+		SceneArrangement:       payload.SceneArrangement,
+		TierTransitions:        payload.TierTransitions,
+		AmbientPromotions:      payload.AmbientPromotions,
 	}, nil
 }
 
@@ -1163,6 +1173,11 @@ func (r *storySessionRepository) SaveRunResult(ctx context.Context, runID string
 		CompletedActions:       result.CompletedActions,
 		SupersededActions:      result.SupersededActions,
 		CollisionAt:            result.CollisionAt,
+		AttentionSelection:     result.AttentionSelection,
+		SecondarySummaries:     result.SecondarySummaries,
+		SceneArrangement:       result.SceneArrangement,
+		TierTransitions:        result.TierTransitions,
+		AmbientPromotions:      result.AmbientPromotions,
 	})
 	if err != nil {
 		return payloadError("story run result", err)

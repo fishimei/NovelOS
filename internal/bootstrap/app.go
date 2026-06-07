@@ -126,6 +126,7 @@ func New(cfg config.Config) *App {
 	storyAdvancer := service.NewStorySessionAdvancer(
 		repos.StorySessions,
 		repos.StoryEvents,
+		repos.Characters,
 		repos.Audit,
 		storyGenerator,
 		eventStream,

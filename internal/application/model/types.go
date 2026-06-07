@@ -602,9 +602,101 @@ type StoryEvent struct {
 // EventStateDelta 是事件对正史状态的完整增量；world/relationship 变更必须留在这里，不能随外部记忆提交迁走。
 type EventStateDelta struct {
 	MemoryPatch
-	CharacterMoves []CharacterMove `json:"character_moves,omitempty"`
-	FactionDeltas  []FactionDelta  `json:"faction_deltas,omitempty"`
-	LocationDeltas []LocationDelta `json:"location_deltas,omitempty"`
+	CharacterMoves       []CharacterMove       `json:"character_moves,omitempty"`
+	CharacterTierChanges []CharacterTierChange `json:"character_tier_changes,omitempty"`
+	FactionDeltas        []FactionDelta        `json:"faction_deltas,omitempty"`
+	LocationDeltas       []LocationDelta       `json:"location_deltas,omitempty"`
+}
+
+type CharacterTierChange struct {
+	CharacterID string `json:"character_id"`
+	FromTier    string `json:"from_tier"`
+	ToTier      string `json:"to_tier"`
+	Reason      string `json:"reason,omitempty"`
+}
+
+type CharacterAttentionSelection struct {
+	PrimaryDecisionIDs     []string               `json:"primary_decision_ids,omitempty"`
+	SecondarySummaryIDs    []string               `json:"secondary_summary_ids,omitempty"`
+	SceneCandidateIDs      []string               `json:"scene_candidate_ids,omitempty"`
+	AmbientCandidateHints  []AmbientCharacterHint `json:"ambient_candidate_hints,omitempty"`
+	SuppressedCharacterIDs []string               `json:"suppressed_character_ids,omitempty"`
+	Rationale              string                 `json:"rationale,omitempty"`
+}
+
+type SecondaryActionSummary struct {
+	CharacterID        string   `json:"character_id"`
+	CharacterName      string   `json:"character_name,omitempty"`
+	CurrentLocationKey string   `json:"current_location_key,omitempty"`
+	TargetLocationKey  string   `json:"target_location_key,omitempty"`
+	StatusSummary      string   `json:"status_summary"`
+	IntentSummary      string   `json:"intent_summary,omitempty"`
+	RelevantSignals    []string `json:"relevant_signals,omitempty"`
+	MayEnterScene      bool     `json:"may_enter_scene"`
+	ParticipantIDs     []string `json:"participant_ids,omitempty"`
+	ResourceKeys       []string `json:"resource_keys,omitempty"`
+	Rationale          string   `json:"rationale,omitempty"`
+}
+
+type AmbientCharacterHint struct {
+	TemporaryID    string `json:"temporary_id,omitempty"`
+	Name           string `json:"name,omitempty"`
+	Role           string `json:"role"`
+	LocationKey    string `json:"location_key"`
+	Description    string `json:"description,omitempty"`
+	PossibleImpact string `json:"possible_impact,omitempty"`
+	Source         string `json:"source,omitempty"`
+}
+
+type InteractionCandidate struct {
+	LocationKey  string   `json:"location_key"`
+	CharacterIDs []string `json:"character_ids"`
+	Reason       string   `json:"reason"`
+	ConflictType string   `json:"conflict_type,omitempty"`
+	Priority     int      `json:"priority,omitempty"`
+}
+
+type CharacterSuppressReason struct {
+	CharacterID string `json:"character_id"`
+	Reason      string `json:"reason"`
+}
+
+type SceneArrangement struct {
+	FocusLocationKey      string                    `json:"focus_location_key"`
+	FocusLocationName     string                    `json:"focus_location_name,omitempty"`
+	NearbyLocationKeys    []string                  `json:"nearby_location_keys,omitempty"`
+	RenderParticipantIDs  []string                  `json:"render_participant_ids,omitempty"`
+	ObserverCharacterIDs  []string                  `json:"observer_character_ids,omitempty"`
+	OffscreenCharacterIDs []string                  `json:"offscreen_character_ids,omitempty"`
+	AmbientActors         []AmbientCharacterHint    `json:"ambient_actors,omitempty"`
+	InteractionCandidates []InteractionCandidate    `json:"interaction_candidates,omitempty"`
+	SelectedReason        string                    `json:"selected_reason,omitempty"`
+	SuppressedReasons     []CharacterSuppressReason `json:"suppressed_reasons,omitempty"`
+}
+
+type CharacterTierTransition struct {
+	CharacterID string   `json:"character_id,omitempty"`
+	TemporaryID string   `json:"temporary_id,omitempty"`
+	FromTier    string   `json:"from_tier"`
+	ToTier      string   `json:"to_tier"`
+	Reason      string   `json:"reason"`
+	Evidence    []string `json:"evidence,omitempty"`
+}
+
+type AmbientPromotionRequest struct {
+	TemporaryID     string   `json:"temporary_id"`
+	CharacterID     string   `json:"character_id,omitempty"`
+	Name            string   `json:"name"`
+	Role            string   `json:"role"`
+	Profile         string   `json:"profile"`
+	Personality     string   `json:"personality,omitempty"`
+	VoiceStyle      string   `json:"voice_style,omitempty"`
+	Goals           []string `json:"goals,omitempty"`
+	Fears           []string `json:"fears,omitempty"`
+	Constraints     []string `json:"constraints,omitempty"`
+	LocationKey     string   `json:"location_key,omitempty"`
+	PromotionReason string   `json:"promotion_reason"`
+	ContinuityHooks []string `json:"continuity_hooks,omitempty"`
 }
 
 type CharacterMove struct {
@@ -629,6 +721,12 @@ type LocationDelta struct {
 }
 
 // OngoingAction 是排程阶段登记在事件账本中的动作占用。
+const (
+	CharacterTierPrimary   = "tier_1"
+	CharacterTierSecondary = "tier_2"
+	CharacterTierAmbient   = "tier_3"
+)
+
 type OngoingAction struct {
 	ID                string    `json:"id,omitempty"`
 	CharacterID       string    `json:"character_id"`
@@ -646,13 +744,18 @@ type OngoingAction struct {
 }
 
 type CharacterRuntimeState struct {
-	CharacterID   string         `json:"character_id"`
-	Tier          string         `json:"tier"`
-	LocationKey   string         `json:"location_key"`
-	X             int            `json:"x"`
-	Y             int            `json:"y"`
-	Status        string         `json:"status"`
-	OngoingAction *OngoingAction `json:"ongoing_action,omitempty"`
+	CharacterID          string         `json:"character_id"`
+	Tier                 string         `json:"tier"`
+	LocationKey          string         `json:"location_key"`
+	X                    int            `json:"x"`
+	Y                    int            `json:"y"`
+	Status               string         `json:"status"`
+	AttentionScore       int            `json:"attention_score,omitempty"`
+	InactiveTicks        int            `json:"inactive_ticks,omitempty"`
+	ContinuityImportance int            `json:"continuity_importance,omitempty"`
+	LastSceneEventID     string         `json:"last_scene_event_id,omitempty"`
+	LastTierChangedAt    time.Time      `json:"last_tier_changed_at,omitempty"`
+	OngoingAction        *OngoingAction `json:"ongoing_action,omitempty"`
 }
 
 type WorldSnapshot struct {
@@ -857,7 +960,7 @@ type LocationSubdivisionChild struct {
 
 type LocationSubdivisionInput struct {
 	ProjectID         string             `json:"project_id"`
-	ParentLocation   LocationState      `json:"parent_location"`
+	ParentLocation    LocationState      `json:"parent_location"`
 	Area              MapArea            `json:"area,omitempty"`
 	ExistingChildren  []LocationState    `json:"existing_children,omitempty"`
 	SiblingLocations  []LocationState    `json:"sibling_locations,omitempty"`
@@ -868,7 +971,7 @@ type LocationSubdivisionInput struct {
 }
 
 type LocationSubdivisionPlan struct {
-	Detail   LocationDetailPatch       `json:"detail"`
+	Detail   LocationDetailPatch        `json:"detail"`
 	Children []LocationSubdivisionChild `json:"children,omitempty"`
 }
 
@@ -964,6 +1067,11 @@ type StoryRunResult struct {
 	CompletedActions       []OngoingAction              `json:"completed_actions,omitempty"`  // 本 tick 完成并唤醒的既有动作
 	SupersededActions      []OngoingAction              `json:"superseded_actions,omitempty"` // 本 tick 被场景抢占/作废的既有动作
 	CollisionAt            *time.Time                   `json:"collision_at,omitempty"`       // 抢占/碰撞发生的世界时间
+	AttentionSelection     CharacterAttentionSelection  `json:"attention_selection,omitempty"`
+	SecondarySummaries     []SecondaryActionSummary     `json:"secondary_summaries,omitempty"`
+	SceneArrangement       SceneArrangement             `json:"scene_arrangement,omitempty"`
+	TierTransitions        []CharacterTierTransition    `json:"tier_transitions,omitempty"`
+	AmbientPromotions      []AmbientPromotionRequest    `json:"ambient_promotions,omitempty"`
 }
 
 type CutChapterResult struct {

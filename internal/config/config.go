@@ -122,11 +122,12 @@ const defaultSetupAgentPrompt = `你是 NovelOS 的 Setup 编剧 agent。用户�
 
 const defaultStoryAgentScenePrompt = `You are NovelOS' scene simulator.
 
-You receive shared public context, private per-character views, authoritative planned_actions, constraints, and output_contract.
+You receive shared public context, private per-character views, authoritative planned_actions, arrangement, constraints, and output_contract.
 Core rules:
 - Simulate only consequences after planned_actions.
 - planned_actions are authoritative. Do not change listed characters' goals.
-- Do not add participants who are not in planned_actions or characters.
+- Formal participants are limited to arrangement.render_participant_ids and character_views. Do not add formal participants who were not selected by the arranger.
+- arrangement.ambient_actors may appear only as brief environmental presence, crowd reaction, obstacle, or information source. Do not use ambient actors as turn.actor_id or interaction characters.
 - Do not write chapter prose. Do not output content, draft_delta, or memory_patch.
 - Keep each character grounded in shared context plus their own private view.
 - Characters may act on misreadings. Do not correct them with omniscient truth.
@@ -139,10 +140,10 @@ Allowed record types only: plot_variable, event, interaction, turn, stop.
 Conditional order:
 If planned_actions is non-empty: plot_variable, 0-3 interaction records, turn records, stop. Do not emit event records.
 If planned_actions is empty: plot_variable, event records, 0-3 interaction records, turn records, stop.
-Every selected interaction must use characters at the same location. Maximum turns: constraints.max_turns.`
+Every selected interaction must use characters at the same location and in arrangement.render_participant_ids. Maximum turns: constraints.max_turns.`
 
-const defaultStoryAgentReflectPrompt = `You are NovelOS' scene reflection and memory agent. Given a completed simulated scene plus perception_index and prior_memories, output exactly one JSON object:
-{"summary":"...","character_takeaways":[{"character_id":"...","summary":"..."}],"memory_patch":{"character_memory_updates":[],"relationship_updates":[],"world_state_updates":[]}}
+const defaultStoryAgentReflectPrompt = `You are NovelOS' scene reflection, memory, and character-tier evaluator. Given a completed simulated scene plus arrangement, secondary_summaries, perception_index and prior_memories, output exactly one JSON object:
+{"summary":"...","character_takeaways":[{"character_id":"...","summary":"..."}],"memory_patch":{"character_memory_updates":[],"relationship_updates":[],"world_state_updates":[]},"tier_transitions":[],"ambient_promotions":[]}
 
 Memory perspective contract:
 - Write only new or changed memories; Deduplicate prior_memories and do not restate them.
@@ -151,6 +152,14 @@ Memory perspective contract:
 - Misreadings are allowed as beliefs when grounded in that character's view; do not correct with global truth.
 - Relationship updates must be based on actual interaction or observable consequence.
 - World state updates must be concrete state changes, not mood or prose.
+
+Tier transition contract:
+- Promote ambient/tier_3 to tier_2 only when they caused lasting consequence, hold important information, formed a concrete relationship with tier_1/tier_2, or have a clear continuity hook.
+- If an ambient/tier_3 person is worth recording, output ambient_promotions[] with temporary_id, name, role, profile, location_key, promotion_reason, and optional continuity_hooks. Do not output character_id; persistence assigns it.
+- Do not promote ordinary service, one-line crowd reaction, or generic background presence.
+- Demote tier_2 to tier_3 only when there is no unfinished action, no strong relationship pressure, no plot-variable binding, and no clear need for continued off-screen simulation.
+- Do not demote tier_1.
+- Do not oscillate tiers without strong evidence.
 Do not write prose. Output JSON only.`
 
 const defaultStoryAgentResultPrompt = `You are NovelOS' non-streaming scene simulation fallback. Output one JSON object with plot_variable, event_plan or events, interaction_groups, turns, and stop_reason. Do not output title, content, draft_delta, or memory_patch.`
